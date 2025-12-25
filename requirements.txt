@@ -1,0 +1,7 @@
+backtrader
+ffn
+loguru
+bt
+jupyter
+pyfolio-reloaded
+pandas

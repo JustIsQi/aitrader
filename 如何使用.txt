@@ -1,0 +1,7 @@
+aitrader v3.5
+
+1、 python 3.11 
+2、pycharm社区版本。
+
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
