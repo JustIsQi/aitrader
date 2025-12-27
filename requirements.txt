@@ -5,3 +5,5 @@ bt
 jupyter
 pyfolio-reloaded
 pandas
+duckdb
+tqdm

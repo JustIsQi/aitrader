@@ -1,7 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(python:*)",
+      "Bash(yes:*)",
+      "Bash(ls:*)",
+      "Bash(sqlite3:*)",
+      "Bash(python3:*)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(find:*)",
+      "Bash(while read dir)",
+      "Bash(do:*)",
+      "Bash(echo:*)",
+      "Bash(done:*)",
+      "Bash(grep:*)",
+      "Bash(fi:*)"
     ]
   }
 }
