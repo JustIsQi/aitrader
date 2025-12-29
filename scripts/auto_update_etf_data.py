@@ -53,7 +53,7 @@ def update_symbol_data(symbol):
                 else:
                     last_db_date = db.get_stock_latest_date(symbol)
 
-                if last_db_date:
+                if last_db_date is not None and pd.notna(last_db_date):
                     # 计算最新日期+1天，作为akshare需要的YYYYMMDD格式
                     next_day = last_db_date + timedelta(days=1)
                     start_date = next_day.strftime('%Y%m%d')

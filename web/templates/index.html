@@ -93,7 +93,9 @@
                         </div>
                         <div class="form-group">
                             <label for="strategy_name">Strategy:</label>
-                            <input type="text" id="strategy_name" name="strategy_name" placeholder="Optional">
+                            <select id="strategy_name" name="strategy_name">
+                                <option value="">-- Select Strategy --</option>
+                            </select>
                         </div>
                         <button type="submit">Add Record</button>
                     </form>
@@ -117,10 +119,10 @@
                                 {% for pos in positions %}
                                 <tr>
                                     <td>{{ pos.symbol }}</td>
-                                    <td>{{ pos.quantity }}</td>
-                                    <td>{{ pos.avg_cost }}</td>
-                                    <td>{{ pos.current_price }}</td>
-                                    <td>{{ pos.market_value }}</td>
+                                    <td>{{ "%.2f"|format(pos.quantity) if pos.quantity is not none else "-" }}</td>
+                                    <td>{{ "%.3f"|format(pos.avg_cost) if pos.avg_cost is not none else "-" }}</td>
+                                    <td>{{ "%.3f"|format(pos.current_price) if pos.current_price is not none else "-" }}</td>
+                                    <td>{{ "%.2f"|format(pos.market_value) if pos.market_value is not none else "-" }}</td>
                                 </tr>
                                 {% endfor %}
                             {% else %}
@@ -143,6 +145,44 @@
         </div>
     </main>
 
+    <script>
+        // 确保在加载完 DOM 后执行
+        window.addEventListener('DOMContentLoaded', async function() {
+            const strategySelect = document.getElementById('strategy_name');
+            if (!strategySelect) {
+                console.error('Strategy select element not found!');
+                return;
+            }
+
+            console.log('Loading strategies...');
+
+            try {
+                const response = await fetch('/api/trading/strategies');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const strategies = await response.json();
+                console.log('Strategies loaded:', strategies);
+
+                // Clear existing options (except the first one)
+                strategySelect.innerHTML = '<option value="">-- Select Strategy --</option>';
+
+                // Add strategy options
+                strategies.forEach(strategy => {
+                    const option = document.createElement('option');
+                    option.value = strategy;
+                    option.textContent = strategy;
+                    strategySelect.appendChild(option);
+                });
+
+                console.log(`Added ${strategies.length} strategies to dropdown`);
+            } catch (error) {
+                console.error('Failed to load strategies:', error);
+                strategySelect.innerHTML = '<option value="">Error loading strategies</option>';
+            }
+        });
+    </script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

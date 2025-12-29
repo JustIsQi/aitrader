@@ -4,12 +4,16 @@ Trading API endpoints
 from fastapi import APIRouter, HTTPException
 from typing import List
 from datetime import date
+from pathlib import Path
 from database.db_manager import get_db
 from web.models import TradingRecord, TransactionResponse, PositionResponse
 import numpy as np
 import pandas as pd
 
 router = APIRouter()
+
+# 策略目录
+STRATEGY_DIR = Path(__file__).parent.parent.parent / "strategies"
 
 
 def clean_dataframe(df):
@@ -191,5 +195,30 @@ async def get_positions():
             cleaned_positions.append(cleaned_record)
 
         return cleaned_positions
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/strategies", response_model=List[str])
+async def get_strategies():
+    """
+    获取可用策略列表
+
+    Returns:
+        策略名称列表
+    """
+    try:
+        if not STRATEGY_DIR.exists():
+            return []
+
+        # 获取所有 .py 策略文件名（去掉扩展名）
+        strategies = []
+        for py_file in STRATEGY_DIR.glob("*.py"):
+            # 跳过缓存文件和隐藏文件
+            if "__pycache__" in str(py_file) or py_file.name.startswith("."):
+                continue
+            strategies.append(py_file.stem)
+
+        return sorted(strategies)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -21,7 +21,9 @@
       "Bash(dos2unix:*)",
       "Bash(curl:*)",
       "Bash(chmod:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(sudo systemctl:*)",
+      "Bash(duckdb:*)"
     ]
   }
 }

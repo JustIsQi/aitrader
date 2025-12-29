@@ -317,8 +317,9 @@ class DuckDBManager:
             WHERE symbol = '{symbol}'
         """).df()
 
-        if result['latest_date'].iloc[0]:
-            return pd.to_datetime(result['latest_date'].iloc[0])
+        latest_date = result['latest_date'].iloc[0]
+        if pd.notna(latest_date):
+            return pd.to_datetime(latest_date)
         return None
 
     def insert_etf_history(self, df: pd.DataFrame, symbol: str = None):
@@ -439,8 +440,9 @@ class DuckDBManager:
             WHERE symbol = '{symbol}'
         """).df()
 
-        if result['latest_date'].iloc[0]:
-            return pd.to_datetime(result['latest_date'].iloc[0])
+        latest_date = result['latest_date'].iloc[0]
+        if pd.notna(latest_date):
+            return pd.to_datetime(latest_date)
         return None
 
     def get_all_symbols(self) -> list:

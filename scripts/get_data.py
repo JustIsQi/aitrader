@@ -9,7 +9,6 @@ import urllib3
 import pandas as pd
 import random
 from tqdm import tqdm
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -18,12 +17,19 @@ import threading
 
 # ==================== 代理配置 ====================
 # 代理池配置 - 支持多个代理自动切换
+# 注意：如果代理不可用，会自动跳过代理直连
 PROXY_POOL = [
     {"http": "http://g896.kdltps.com:15818", "https": "http://g896.kdltps.com:15818"},
     # 添加更多代理以实现轮换
     # {"http": "http://proxy2.example.com:8080", "https": "http://proxy2.example.com:8080"},
     # {"http": "http://proxy3.example.com:8080", "https": "http://proxy3.example.com:8080"},
 ]
+
+# 是否启用代理（设为False可以禁用代理）
+ENABLE_PROXY = True  # 必须使用代理，避免IP被封禁
+
+# 最大重试次数（当代理IP被封锁时重复请求）
+MAX_RETRY_TIMES = 10  # 每个数据最多重试10次
 
 class ProxyManager:
     """代理管理器 - 支持自动切换和健康检查"""
@@ -113,12 +119,16 @@ class ProxyManager:
 # 创建全局代理管理器
 proxy_manager = ProxyManager(PROXY_POOL)
 
-# 设置代理到环境变量（akshare会使用）
-current_proxy = proxy_manager.get_next_proxy()
-os.environ['HTTP_PROXY'] = current_proxy['http']
-os.environ['HTTPS_PROXY'] = current_proxy['https']
-proxy_info = proxy_manager.get_proxy_info()
-print(f"使用代理 {proxy_info['index']+1}/{proxy_info['total']}: {current_proxy['http']}")
+# 根据配置决定是否启用代理
+if ENABLE_PROXY:
+    # 设置代理到环境变量（akshare会使用）
+    current_proxy = proxy_manager.get_next_proxy()
+    os.environ['HTTP_PROXY'] = current_proxy['http']
+    os.environ['HTTPS_PROXY'] = current_proxy['https']
+    proxy_info = proxy_manager.get_proxy_info()
+    print(f"使用代理 {proxy_info['index']+1}/{proxy_info['total']}: {current_proxy['http']}")
+else:
+    print("代理已禁用，将直连网络")
 
 # 禁用SSL警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -187,11 +197,12 @@ def fetch_with_retry(func, *args, max_retries=5, wait_seconds=3, **kwargs):
         except Exception as e:
             error_msg = str(e)
 
-            # 判断是否是代理相关错误
+            # 判断是否是代理相关错误（包括数据为空的情况，可能是IP被封）
             is_proxy_error = any(keyword in error_msg for keyword in [
                 'ProxyError', 'Tunnel connection failed', 'Proxy Setup Failed',
                 'Cannot connect to proxy', 'ConnectionRefusedError',
-                '517', '502', '503', '504'
+                '517', '502', '503', '504',
+                '数据为空', '可能是代理问题'  # 新增：检测我们自定义的空数据错误
             ])
 
             if is_proxy_error:
@@ -201,7 +212,7 @@ def fetch_with_retry(func, *args, max_retries=5, wait_seconds=3, **kwargs):
                 os.environ['HTTP_PROXY'] = new_proxy['http']
                 os.environ['HTTPS_PROXY'] = new_proxy['https']
                 proxy_info = proxy_manager.get_proxy_info()
-                print(f"    [代理切换] 第 {attempt+1} 次失败，切换到代理 {proxy_info['index']+1}/{proxy_info['total']}")
+                print(f"    [代理切换] 第 {attempt+1} 次失败（检测到:{error_msg[:30]}...），切换到代理 {proxy_info['index']+1}/{proxy_info['total']}")
             else:
                 print(f"    [请求失败] 第 {attempt+1} 次: {e}")
 
@@ -213,25 +224,18 @@ def fetch_with_retry(func, *args, max_retries=5, wait_seconds=3, **kwargs):
                 raise
 
 
-@retry(
-    stop=stop_after_attempt(3),  # 每个代理最多重试3次
-    wait=wait_fixed(2),
-    reraise=True
-)
 def fetch_stock_history(symbol, start_date=None, end_date=None):
-    """获取股票历史数据，配合代理切换使用
+    """获取股票历史数据
 
     Args:
         symbol: 股票代码
         start_date: 开始日期 (YYYYMMDD 格式)
         end_date: 结束日期 (YYYYMMDD 格式)
     """
-    try:
-        return ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="hfq",
-                                  start_date=start_date, end_date=end_date)
-    except Exception as e:
-        # 让外层的 fetch_with_retry 来处理代理切换
-        raise
+    result = ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="hfq",
+                              start_date=start_date, end_date=end_date)
+    return result
+
 
 def fetch_etf_history(symbol, start_date=None, end_date=None):
     """获取ETF历史数据
@@ -241,33 +245,62 @@ def fetch_etf_history(symbol, start_date=None, end_date=None):
         start_date: 开始日期 (YYYYMMDD 格式)
         end_date: 结束日期 (YYYYMMDD 格式)
     """
-    try:
-        return ak.fund_etf_hist_em(symbol=symbol, period="daily", adjust="hfq",
-                                    start_date=start_date, end_date=end_date)
-    except Exception as e:
-        raise
+    result = ak.fund_etf_hist_em(symbol=symbol, period="daily", adjust="hfq",
+                                start_date=start_date, end_date=end_date)
+    return result
 
 def fetch_stock_history_with_proxy(symbol, func=fetch_stock_history, start_date=None, end_date=None):
-    """使用代理管理器获取股票/ETF历史数据
+    """使用代理获取股票/ETF历史数据，失败时自动重试
 
     Args:
         symbol: 股票或ETF代码
         func: 获取函数，默认为 fetch_stock_history，可传入 fetch_etf_history
         start_date: 开始日期 (YYYYMMDD 格式)
         end_date: 结束日期 (YYYYMMDD 格式)
-    """
-    proxy_info = proxy_manager.get_proxy_info()
-    func_name = func.__name__.replace('fetch_', '').replace('_', ' ').title()
-    print(f'  [代理 {proxy_info["index"]+1}/{proxy_info["total"]}] 正在获取 {symbol} ({func_name})...')
 
-    try:
-        result = fetch_with_retry(func, symbol, start_date=start_date, end_date=end_date,
-                                  max_retries=5, wait_seconds=2)
-        proxy_manager.mark_success()
-        return result
-    except Exception as e:
-        print(f'  [{symbol}] 获取失败: {e}')
-        raise
+    Note:
+        - 全量下载（start_date=None）时，如果返回空数据会重试最多 MAX_RETRY_TIMES 次
+        - 增量下载（start_date有值）时，返回空数据是正常的（表示没有新数据），不会重试
+        - 每次重试之间会等待 2 秒
+    """
+    func_name = func.__name__.replace('fetch_', '').replace('_', ' ').title()
+    print(f'  [代理] 正在获取 {symbol} ({func_name})...')
+
+    # 判断是否为增量下载
+    is_incremental = start_date is not None
+
+    # 直接重试，不切换代理
+    for attempt in range(MAX_RETRY_TIMES):
+        try:
+            result = func(symbol, start_date=start_date, end_date=end_date)
+
+            # 检查结果是否为空
+            if result is None or result.empty or result.shape[1] == 0:
+                # 增量下载返回空数据是正常的，直接返回
+                if is_incremental:
+                    return result
+
+                # 全量下载返回空数据，需要重试
+                raise ValueError(f"获取 {symbol} 的数据为空（第 {attempt+1}/{MAX_RETRY_TIMES} 次尝试）")
+
+            # 成功获取数据
+            if attempt > 0:
+                print(f'    ✓ 第 {attempt+1} 次尝试成功')
+            return result
+
+        except Exception as e:
+            error_msg = str(e)
+
+            # 最后一次尝试失败
+            if attempt == MAX_RETRY_TIMES - 1:
+                print(f'  [{symbol}] 获取失败: 已重试 {MAX_RETRY_TIMES} 次，最后错误: {error_msg[:50]}...')
+                raise
+
+            # 显示重试信息
+            print(f'    ⚠ 第 {attempt+1}/{MAX_RETRY_TIMES} 次失败: {error_msg[:50]}...，2秒后重试...')
+
+            # 等待后重试
+            time.sleep(2)
 
 
 def is_etf(symbol):

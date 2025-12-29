@@ -13,11 +13,11 @@ def is_etf(symbol: str) -> bool:
     """判断是否为 ETF 代码
 
     ETF 代码特征:
-    - 上海 51xxxx, 56xxxx
+    - 上海 51xxxx, 56xxxx, 58xxxx (科创板ETF)
     - 深圳 159xxx
     """
     code = symbol.split('.')[0]
-    return code.startswith('51') or code.startswith('56') or code.startswith('159')
+    return code.startswith('51') or code.startswith('56') or code.startswith('58') or code.startswith('159')
 
 
 def extract_codes_from_strategies(strategy_dir: Path) -> tuple:
@@ -53,7 +53,7 @@ def extract_codes_from_strategies(strategy_dir: Path) -> tuple:
 
 def sync_codes():
     """同步代码到数据库"""
-    strategy_dir = Path('./strategy')
+    strategy_dir = Path('./strategies')
     db_path = '/data/home/yy/data/duckdb/trading.db'
 
     logger.info('='*60)

@@ -4,6 +4,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize dashboard date groups expand/collapse
     initDashboardDateGroups();
 
+    // Load strategies dropdown
+    loadStrategies();
+
     // Initialize trading form
     const tradingForm = document.getElementById('tradingForm');
     if (tradingForm) {
@@ -75,6 +78,29 @@ function initDashboardDateGroups() {
             }
         });
     });
+}
+
+async function loadStrategies() {
+    const strategySelect = document.getElementById('strategy_name');
+    if (!strategySelect) return;
+
+    try {
+        const response = await fetch('/api/trading/strategies');
+        const strategies = await response.json();
+
+        // Clear existing options (except the first one)
+        strategySelect.innerHTML = '<option value="">-- Select Strategy --</option>';
+
+        // Add strategy options
+        strategies.forEach(strategy => {
+            const option = document.createElement('option');
+            option.value = strategy;
+            option.textContent = strategy;
+            strategySelect.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Failed to load strategies:', error);
+    }
 }
 
 async function loadProfitLoss() {
