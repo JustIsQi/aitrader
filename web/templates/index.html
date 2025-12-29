@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AITrader Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header>
+        <h1>AITrader Trading Dashboard</h1>
+        <nav>
+            <a href="/" class="active">Dashboard</a>
+            <a href="/history">History</a>
+            <a href="/trading">Trading</a>
+        </nav>
+    </header>
+
+    <main>
+        <div class="dashboard-grid">
+            <!-- Left Module: Latest 5 Trading Days Recommendations -->
+            <section class="signals-panel">
+                <h2>Latest 5 Trading Days</h2>
+                <div id="dashboard-signals-container">
+                    {% if signals_by_date %}
+                        {% for date_group in signals_by_date %}
+                        <div class="date-group">
+                            <div class="date-header">
+                                <div class="date-header-content">
+                                    <div class="date-title">{{ date_group.date }}</div>
+                                    <div class="date-count">{{ date_group.signals|length }} signals</div>
+                                </div>
+                                <div class="expand-icon">&#9662;</div>
+                            </div>
+                            <div class="signals-list">
+                                {% for signal in date_group.signals %}
+                                <div class="signal-card {{ 'buy' if signal.signal_type == 'buy' else 'sell' }}">
+                                    <div class="signal-header">
+                                        <span class="symbol">{{ signal.symbol }}</span>
+                                        <span class="signal-type">{{ signal.signal_type.upper() }}</span>
+                                    </div>
+                                    <div class="signal-details">
+                                        <p>Price: {{ signal.price }}</p>
+                                        <p>Strategies: {{ signal.strategies }}</p>
+                                        {% if signal.score is not none %}
+                                        <p>Score: {{ "%.4f"|format(signal.score) }}</p>
+                                        {% endif %}
+                                    </div>
+                                    <div class="signal-date">
+                                        {{ signal.created_at }}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="no-data">No signals available</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <!-- Right Module: Trading Records -->
+            <section class="trading-panel">
+                <h2>Trading Records</h2>
+
+                <!-- Add Trading Record Form -->
+                <div class="trading-form">
+                    <h3>Add New Trading Record</h3>
+                    <form id="tradingForm">
+                        <div class="form-group">
+                            <label for="symbol">Symbol:</label>
+                            <input type="text" id="symbol" name="symbol" required placeholder="e.g., 513100.SH">
+                        </div>
+                        <div class="form-group">
+                            <label for="buy_sell">Type:</label>
+                            <select id="buy_sell" name="buy_sell" required>
+                                <option value="buy">Buy</option>
+                                <option value="sell">Sell</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="quantity">Quantity:</label>
+                            <input type="number" id="quantity" name="quantity" required step="0.01" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="price">Price:</label>
+                            <input type="number" id="price" name="price" required step="0.001" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="trade_date">Date:</label>
+                            <input type="date" id="trade_date" name="trade_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="strategy_name">Strategy:</label>
+                            <input type="text" id="strategy_name" name="strategy_name" placeholder="Optional">
+                        </div>
+                        <button type="submit">Add Record</button>
+                    </form>
+                </div>
+
+                <!-- Current Positions -->
+                <div class="positions-section">
+                    <h3>Current Positions</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Quantity</th>
+                                <th>Avg Cost</th>
+                                <th>Current Price</th>
+                                <th>Market Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if positions %}
+                                {% for pos in positions %}
+                                <tr>
+                                    <td>{{ pos.symbol }}</td>
+                                    <td>{{ pos.quantity }}</td>
+                                    <td>{{ pos.avg_cost }}</td>
+                                    <td>{{ pos.current_price }}</td>
+                                    <td>{{ pos.market_value }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" class="no-data">No positions</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Profit/Loss Summary -->
+                <div class="pl-summary">
+                    <h3>Profit/Loss Summary</h3>
+                    <div id="pl-container">
+                        <p>Loading...</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

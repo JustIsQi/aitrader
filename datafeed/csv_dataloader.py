@@ -38,20 +38,30 @@ class CsvDataLoader:
     def _download_to_duckdb(self, symbol):
         """下载数据并直接写入DuckDB，不保存CSV文件"""
         try:
-            from scripts.get_data import is_etf, fetch_stock_history_with_proxy, fetch_etf_history, fetch_stock_history
+            from scripts.get_data import is_etf, fetch_stock_history_with_proxy, fetch_etf_history, fetch_stock_history, get_latest_date_from_db
+            from datetime import timedelta
             import akshare as ak
 
             logger.info(f'🔄 [DuckDB] 开始下载 {symbol} 数据...')
+
+            # 从数据库获取最新日期的次日作为start_date
+            start_date = get_latest_date_from_db(symbol)
+            if start_date:
+                logger.info(f'📅 [DuckDB] {symbol} 从 {start_date} 开始增量下载')
+            else:
+                logger.info(f'📅 [DuckDB] {symbol} 无历史数据，全量下载')
 
             # 判断是ETF还是股票
             if is_etf(symbol):
                 code = symbol.split('.')[0]
                 logger.info(f'📊 [DuckDB] {symbol} 识别为 ETF，代码: {code}')
-                df = fetch_stock_history_with_proxy(code, func=fetch_etf_history)
+                df = fetch_stock_history_with_proxy(code, func=fetch_etf_history,
+                                                     start_date=start_date, end_date=None)
             else:
                 code = symbol.split('.')[0]
                 logger.info(f'📊 [DuckDB] {symbol} 识别为股票，代码: {code}')
-                df = fetch_stock_history_with_proxy(code, func=fetch_stock_history)
+                df = fetch_stock_history_with_proxy(code, func=fetch_stock_history,
+                                                     start_date=start_date, end_date=None)
 
             if df is None or df.empty:
                 logger.error(f'❌ [DuckDB] 获取 {symbol} 数据为空')

@@ -1,0 +1,14 @@
+[Unit]
+Description=AITrader Web Application
+After=network.target
+
+[Service]
+Type=simple
+User=yy
+WorkingDirectory=/data/home/yy/code/aitrader
+ExecStart=/root/miniconda3/bin/python -m uvicorn web.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

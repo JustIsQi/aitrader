@@ -41,28 +41,41 @@ def update_symbol_data(symbol):
         # 获取代码部分（去掉市场后缀）
         code = symbol.split('.')[0]
 
-        # 获取最新数据
-        print(f'  正在更新 {symbol}...')
-        if is_etf_symbol:
-            df_new = fetch_stock_history_with_proxy(code, func=fetch_etf_history)
-        else:
-            df_new = fetch_stock_history_with_proxy(code, func=fetch_stock_history)
-
-        if df_new is None or df_new.empty:
-            print(f'    [{symbol}] 获取到的数据为空')
-            return False
-
-        # 检查数据库中最新日期
-        last_db_date = None
+        # 从数据库获取最新日期的次日作为start_date
+        start_date = None
         if ENABLE_DUCKDB:
             try:
+                from datetime import timedelta
                 db = get_db(DUCKDB_PATH)
+
                 if is_etf_symbol:
                     last_db_date = db.get_latest_date(symbol)
                 else:
                     last_db_date = db.get_stock_latest_date(symbol)
+
+                if last_db_date:
+                    # 计算最新日期+1天，作为akshare需要的YYYYMMDD格式
+                    next_day = last_db_date + timedelta(days=1)
+                    start_date = next_day.strftime('%Y%m%d')
+                    print(f'  正在更新 {symbol}... (从 {start_date} 开始)')
             except Exception as e:
                 print(f'    [{symbol}] 获取数据库最新日期失败: {e}')
+                print(f'  正在更新 {symbol}... (全量下载)')
+
+        if not start_date:
+            print(f'  正在更新 {symbol}... (全量下载)')
+
+        # 获取增量数据
+        if is_etf_symbol:
+            df_new = fetch_stock_history_with_proxy(code, func=fetch_etf_history,
+                                                     start_date=start_date, end_date=None)
+        else:
+            df_new = fetch_stock_history_with_proxy(code, func=fetch_stock_history,
+                                                     start_date=start_date, end_date=None)
+
+        if df_new is None or df_new.empty:
+            print(f'    [{symbol}] 获取到的数据为空')
+            return False
 
         # 转换新数据日期
         if '日期' in df_new.columns:
@@ -71,13 +84,10 @@ def update_symbol_data(symbol):
         # 保存最新日期的引用用于打印
         latest_date = df_new['日期'].max()
 
-        # 如果有历史数据，只保留新数据
-        if last_db_date is not None:
-            df_new = df_new[df_new['日期'] > last_db_date]
-
-            if df_new.empty:
-                print(f'    [{symbol}] 数据已是最新，无需更新')
-                return True
+        # 检查是否获取到新数据
+        if df_new.empty:
+            print(f'    [{symbol}] 数据已是最新，无需更新')
+            return True
 
         # ========== 保存到 DuckDB ==========
         if ENABLE_DUCKDB:

@@ -1,0 +1,3 @@
+"""
+AITrader Web Application
+"""

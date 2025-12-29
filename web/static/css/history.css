@@ -1,0 +1,257 @@
+/* History Page Specific Styles */
+
+.history-section {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Controls */
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+}
+
+.controls label {
+    font-weight: 500;
+    color: #555;
+}
+
+.controls select,
+.controls input.date-input {
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    background-color: white;
+}
+
+.controls input.date-input {
+    width: 140px;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    width: auto;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+/* Loading indicator */
+.loading {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: #999;
+}
+
+/* Date Group */
+.date-group {
+    margin-bottom: 1.5rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.date-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.3s;
+}
+
+.date-header:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #6a4190 100%);
+}
+
+.date-header-content {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.date-title {
+    font-size: 1.25rem;
+    font-weight: bold;
+}
+
+.date-count {
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.875rem;
+}
+
+.expand-icon {
+    font-size: 1.5rem;
+    transition: transform 0.3s ease;
+}
+
+.date-group.collapsed .expand-icon {
+    transform: rotate(-90deg);
+}
+
+/* Signals Container */
+.signals-list {
+    max-height: 2000px;
+    overflow: hidden;
+    transition: max-height 0.4s ease-out;
+}
+
+.date-group.collapsed .signals-list {
+    max-height: 0;
+}
+
+/* Signal Card in History */
+.signal-card {
+    border: 1px solid #e0e0e0;
+    border-left: 4px solid #ddd;
+    border-radius: 6px;
+    padding: 1rem;
+    margin: 1rem;
+    background-color: #fafafa;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.signal-card:hover {
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.signal-card.buy {
+    border-left-color: #27ae60;
+    background-color: #f0fdf4;
+}
+
+.signal-card.sell {
+    border-left-color: #e74c3c;
+    background-color: #fef5f5;
+}
+
+.signal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.symbol {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.signal-type {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.signal-card.buy .signal-type {
+    background-color: #27ae60;
+    color: white;
+}
+
+.signal-card.sell .signal-type {
+    background-color: #e74c3c;
+    color: white;
+}
+
+.signal-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.signal-detail-item {
+    font-size: 0.9rem;
+}
+
+.signal-label {
+    color: #666;
+    font-size: 0.85rem;
+}
+
+.signal-value {
+    font-weight: 500;
+    color: #333;
+}
+
+.signal-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e0e0e0;
+    font-size: 0.85rem;
+    color: #666;
+}
+
+.signal-strategies {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.strategy-tag {
+    background-color: #e3f2fd;
+    color: #1976d2;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .controls select,
+    .controls button {
+        width: 100%;
+    }
+
+    .date-header {
+        padding: 0.75rem 1rem;
+    }
+
+    .date-title {
+        font-size: 1rem;
+    }
+
+    .signal-details {
+        grid-template-columns: 1fr;
+    }
+}

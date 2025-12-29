@@ -74,7 +74,94 @@ def parse_arguments():
         help='显示详细执行信息'
     )
 
+    parser.add_argument(
+        '--save-to-db',
+        action='store_true',
+        help='保存信号到数据库trader表'
+    )
+
     return parser.parse_args()
+
+
+def save_signals_to_db(all_signals: dict, db):
+    """
+    保存所有策略信号到数据库
+
+    Args:
+        all_signals: 策略信号字典 {strategy_name: StrategySignals}
+        db: 数据库管理器实例
+    """
+    from signals.multi_strategy_signals import StrategySignals
+    from datetime import datetime
+
+    # 获取当前日期 YYYY-MM-DD
+    signal_date = datetime.now().strftime('%Y-%m-%d')
+
+    # 收集所有买入和卖出信号
+    buy_signals_by_symbol = {}  # symbol -> [{'strategy': name, 'score': val, 'rank': r, 'price': p}]
+    sell_signals_by_symbol = {}  # symbol -> [{'strategy': name, 'price': p}]
+
+    for strategy_name, signals in all_signals.items():
+        # 收集买入信号
+        for buy_signal in signals.buy_signals:
+            if buy_signal.symbol not in buy_signals_by_symbol:
+                buy_signals_by_symbol[buy_signal.symbol] = []
+
+            buy_signals_by_symbol[buy_signal.symbol].append({
+                'strategy': strategy_name,
+                'score': buy_signal.score,
+                'rank': buy_signal.rank,
+                'price': buy_signal.price,
+                'quantity': buy_signal.suggested_quantity
+            })
+
+        # 收集卖出信号
+        for sell_signal in signals.sell_signals:
+            if sell_signal.symbol not in sell_signals_by_symbol:
+                sell_signals_by_symbol[sell_signal.symbol] = []
+
+            sell_signals_by_symbol[sell_signal.symbol].append({
+                'strategy': strategy_name,
+                'price': sell_signal.current_price
+            })
+
+    # 插入买入信号
+    buy_count = 0
+    for symbol, signals_list in buy_signals_by_symbol.items():
+        strategies = [s['strategy'] for s in signals_list]
+        avg_score = sum(s['score'] for s in signals_list) / len(signals_list)
+        min_rank = min(s['rank'] for s in signals_list)
+        price = signals_list[0]['price']
+        quantity = signals_list[0]['quantity']
+
+        db.insert_trader_signal(
+            symbol=symbol,
+            signal_type='buy',
+            strategies=strategies,
+            signal_date=signal_date,
+            price=price,
+            score=avg_score,
+            rank=min_rank,
+            quantity=quantity
+        )
+        buy_count += 1
+
+    # 插入卖出信号
+    sell_count = 0
+    for symbol, signals_list in sell_signals_by_symbol.items():
+        strategies = [s['strategy'] for s in signals_list]
+        price = signals_list[0]['price']
+
+        db.insert_trader_signal(
+            symbol=symbol,
+            signal_type='sell',
+            strategies=strategies,
+            signal_date=signal_date,
+            price=price
+        )
+        sell_count += 1
+
+    print(f"      ✓ 保存信号: {buy_count}个买入, {sell_count}个卖出")
 
 
 def main():
@@ -155,6 +242,11 @@ def main():
             print(f"  文件大小: {len(report.encode('utf-8'))} 字节")
         else:
             print("\n" + report)
+
+        # 保存信号到数据库
+        if args.save_to_db:
+            print("\n[6/6] 保存信号到数据库...")
+            save_signals_to_db(all_signals, db)
 
         print(f"\n分析完成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 100)

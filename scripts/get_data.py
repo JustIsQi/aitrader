@@ -125,6 +125,57 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # ==================== 数据获取函数 ====================
+def get_latest_date_from_db(symbol):
+    """从DuckDB获取指定标的最新数据日期，返回akshare格式(YYYYMMDD)的次日日期
+
+    Args:
+        symbol: 股票/ETF代码
+
+    Returns:
+        str: YYYYMMDD格式的日期字符串，如果无数据则返回None
+    """
+    try:
+        from database.db_manager import get_db
+        import pandas as pd
+        from datetime import timedelta
+
+        db = get_db()
+
+        # 判断是ETF还是股票
+        if is_etf(symbol):
+            latest_date = db.get_latest_date(symbol)
+        else:
+            latest_date = db.get_stock_latest_date(symbol)
+
+        if latest_date:
+            # 返回最新日期+1天
+            next_day = latest_date + timedelta(days=1)
+            return next_day.strftime('%Y%m%d')
+
+        return None
+    except Exception as e:
+        print(f'    [数据库查询] 获取{symbol}最新日期失败: {e}')
+        return None
+
+def format_date_for_akshare(date_str):
+    """将日期字符串转换为akshare需要的YYYYMMDD格式
+
+    Args:
+        date_str: 日期字符串，支持多种格式
+
+    Returns:
+        str: YYYYMMDD格式的日期字符串
+    """
+    if not date_str:
+        return None
+
+    import pandas as pd
+    # 尝试解析日期
+    date_obj = pd.to_datetime(date_str, errors='coerce')
+    if pd.isna(date_obj):
+        return None
+
+    return date_obj.strftime('%Y%m%d')
 def fetch_with_retry(func, *args, max_retries=5, wait_seconds=3, **kwargs):
     """
     带有代理切换功能的通用重试函数
@@ -167,33 +218,51 @@ def fetch_with_retry(func, *args, max_retries=5, wait_seconds=3, **kwargs):
     wait=wait_fixed(2),
     reraise=True
 )
-def fetch_stock_history(symbol):
-    """获取股票历史数据，配合代理切换使用"""
+def fetch_stock_history(symbol, start_date=None, end_date=None):
+    """获取股票历史数据，配合代理切换使用
+
+    Args:
+        symbol: 股票代码
+        start_date: 开始日期 (YYYYMMDD 格式)
+        end_date: 结束日期 (YYYYMMDD 格式)
+    """
     try:
-        return ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="hfq")
+        return ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="hfq",
+                                  start_date=start_date, end_date=end_date)
     except Exception as e:
         # 让外层的 fetch_with_retry 来处理代理切换
         raise
 
-def fetch_etf_history(symbol):
+def fetch_etf_history(symbol, start_date=None, end_date=None):
+    """获取ETF历史数据
+
+    Args:
+        symbol: ETF代码
+        start_date: 开始日期 (YYYYMMDD 格式)
+        end_date: 结束日期 (YYYYMMDD 格式)
+    """
     try:
-        return ak.fund_etf_hist_em(symbol=symbol, period="daily",  adjust="hfq")
+        return ak.fund_etf_hist_em(symbol=symbol, period="daily", adjust="hfq",
+                                    start_date=start_date, end_date=end_date)
     except Exception as e:
         raise
 
-def fetch_stock_history_with_proxy(symbol, func=fetch_stock_history):
+def fetch_stock_history_with_proxy(symbol, func=fetch_stock_history, start_date=None, end_date=None):
     """使用代理管理器获取股票/ETF历史数据
 
     Args:
         symbol: 股票或ETF代码
         func: 获取函数，默认为 fetch_stock_history，可传入 fetch_etf_history
+        start_date: 开始日期 (YYYYMMDD 格式)
+        end_date: 结束日期 (YYYYMMDD 格式)
     """
     proxy_info = proxy_manager.get_proxy_info()
     func_name = func.__name__.replace('fetch_', '').replace('_', ' ').title()
     print(f'  [代理 {proxy_info["index"]+1}/{proxy_info["total"]}] 正在获取 {symbol} ({func_name})...')
 
     try:
-        result = fetch_with_retry(func, symbol, max_retries=5, wait_seconds=2)
+        result = fetch_with_retry(func, symbol, start_date=start_date, end_date=end_date,
+                                  max_retries=5, wait_seconds=2)
         proxy_manager.mark_success()
         return result
     except Exception as e:
@@ -222,11 +291,12 @@ def is_etf(symbol):
     return False
 
 
-def download_symbol_data(symbol):
+def download_symbol_data(symbol, end_date=None):
     """下载单个股票/ETF数据并保存到文件
 
     Args:
         symbol: 股票代码，格式如 '600000.SH' 或 '159915.SZ'
+        end_date: 结束日期 (YYYYMMDD 格式)，None表示最新
 
     Returns:
         bool: 下载是否成功
@@ -238,15 +308,25 @@ def download_symbol_data(symbol):
         return True
 
     try:
+        # 从数据库获取最新日期的次日作为start_date
+        start_date = get_latest_date_from_db(symbol)
+
+        if start_date:
+            print(f'  [{symbol}] 从数据库最新日期+1开始下载: {start_date}')
+        else:
+            print(f'  [{symbol}] 无历史数据，全量下载')
+        
         # 判断是ETF还是股票
         if is_etf(symbol):
             # 去掉市场后缀获取数据
             code = symbol.split('.')[0]
-            df = fetch_stock_history_with_proxy(code, func=fetch_etf_history)
+            df = fetch_stock_history_with_proxy(code, func=fetch_etf_history,
+                                                 start_date=start_date, end_date=end_date)
         else:
             # 股票去掉市场后缀
             code = symbol.split('.')[0]
-            df = fetch_stock_history_with_proxy(code, func=fetch_stock_history)
+            df = fetch_stock_history_with_proxy(code, func=fetch_stock_history,
+                                                 start_date=start_date, end_date=end_date)
 
         if df is None or df.empty:
             print(f'  [{symbol}] 获取到的数据为空')

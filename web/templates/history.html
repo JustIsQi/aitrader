@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Signals - AITrader</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/history.css">
+</head>
+<body>
+    <header>
+        <h1>AITrader Historical Signals</h1>
+        <nav>
+            <a href="/">Dashboard</a>
+            <a href="/history" class="active">History</a>
+            <a href="/trading">Trading</a>
+        </nav>
+    </header>
+
+    <main>
+        <section class="history-section">
+            <h2>Historical Strategy Recommendations</h2>
+
+            <!-- Controls -->
+            <div class="controls">
+                <label for="date-range-select">Date Range:</label>
+                <select id="date-range-select">
+                    <option value="7">Last 7 days</option>
+                    <option value="14">Last 14 days</option>
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="60">Last 60 days</option>
+                    <option value="90">Last 90 days</option>
+                    <option value="180">Last 180 days</option>
+                    <option value="365">Last 365 days</option>
+                    <option value="all">All time</option>
+                </select>
+                <label for="start-date">Or from:</label>
+                <input type="date" id="start-date" class="date-input">
+                <label for="end-date">to:</label>
+                <input type="date" id="end-date" class="date-input">
+                <button id="refresh-btn" class="btn-secondary">Load</button>
+            </div>
+
+            <!-- Loading indicator -->
+            <div id="loading" class="loading">
+                <p>Loading historical signals...</p>
+            </div>
+
+            <!-- Signals grouped by date -->
+            <div id="signals-container">
+                <!-- Content will be loaded dynamically via JavaScript -->
+            </div>
+
+            <!-- Empty state -->
+            <div id="empty-state" class="empty-state" style="display: none;">
+                <p>No historical signals available</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/js/history.js"></script>
+</body>
+</html>

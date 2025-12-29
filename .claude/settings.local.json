@@ -15,7 +15,13 @@
       "Bash(echo:*)",
       "Bash(done:*)",
       "Bash(grep:*)",
-      "Bash(fi:*)"
+      "Bash(fi:*)",
+      "Bash(crontab:*)",
+      "Bash(/root/miniconda3/bin/python:*)",
+      "Bash(dos2unix:*)",
+      "Bash(curl:*)",
+      "Bash(chmod:*)",
+      "Bash(bash:*)"
     ]
   }
 }

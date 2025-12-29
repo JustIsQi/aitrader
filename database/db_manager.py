@@ -7,28 +7,53 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from loguru import logger
+import time
 
 
 class DuckDBManager:
     """DuckDB 数据库管理器"""
 
-    def __init__(self, db_path='/data/home/yy/data/duckdb/trading.db'):
+    def __init__(self, db_path='/data/home/yy/data/duckdb/trading.db', read_only=False, max_retries=3, retry_delay=2):
         """
         初始化数据库连接
 
         Args:
             db_path: 数据库文件路径
+            read_only: 是否以只读模式连接
+            max_retries: 写入连接的最大重试次数
+            retry_delay: 重试间隔(秒)
         """
         self.db_path = db_path
+        self.read_only = read_only
         # 确保目录存在
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-        # 创建连接
-        self.conn = duckdb.connect(db_path)
-        logger.info(f'DuckDB 数据库已连接: {db_path}')
+        # 创建连接，带重试机制
+        if read_only:
+            # 只读连接不需要重试
+            self.conn = duckdb.connect(db_path, read_only=True)
+            logger.info(f'DuckDB 数据库已连接: {db_path} (read_only=True)')
+        else:
+            # 读写连接需要获取锁，可能需要重试
+            for attempt in range(max_retries):
+                try:
+                    # DuckDB 不支持真正的并发写入
+                    # 使用默认配置，单写入者模式
+                    self.conn = duckdb.connect(db_path)
+                    logger.info(f'DuckDB 数据库已连接: {db_path} (read_only=False)')
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        logger.warning(f'数据库连接失败 (尝试 {attempt + 1}/{max_retries}): {e}')
+                        logger.info(f'{retry_delay}秒后重试...')
+                        time.sleep(retry_delay)
+                    else:
+                        logger.error(f'数据库连接失败，已达最大重试次数: {e}')
+                        raise
 
-        # 初始化表结构
-        self._init_tables()
+        # 初始化表结构 (只在非只读模式下)
+        if not read_only:
+            self._init_tables()
 
     def _init_tables(self):
         """初始化数据库表结构"""
@@ -137,6 +162,37 @@ class DuckDBManager:
                 market_value DOUBLE,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+        """)
+
+        # 创建交易信号表
+        self.conn.sql("""
+            CREATE SEQUENCE IF NOT EXISTS seq_trader START 1;
+        """)
+
+        self.conn.sql("""
+            CREATE TABLE IF NOT EXISTS trader (
+                id INTEGER PRIMARY KEY DEFAULT nextval('seq_trader'),
+                symbol VARCHAR(20) NOT NULL,
+                signal_type VARCHAR(10) NOT NULL,
+                strategies VARCHAR(500),
+                signal_date DATE NOT NULL,
+                price DOUBLE,
+                score DOUBLE,
+                rank INTEGER,
+                quantity INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(symbol, signal_date, signal_type)
+            );
+        """)
+
+        self.conn.sql("""
+            CREATE INDEX IF NOT EXISTS idx_trader_signal_date
+            ON trader(signal_date DESC);
+        """)
+
+        self.conn.sql("""
+            CREATE INDEX IF NOT EXISTS idx_trader_symbol_date
+            ON trader(symbol, signal_date DESC);
         """)
 
         logger.info('数据库表结构初始化完成')
@@ -498,6 +554,142 @@ class DuckDBManager:
         self.clear_transactions()
         logger.info('已清空所有交易数据')
 
+    # ==================== 交易信号操作 ====================
+
+    def insert_trader_signal(self, symbol: str, signal_type: str,
+                          strategies: list, signal_date: str,
+                          price: float = None, score: float = None,
+                          rank: int = None, quantity: int = None):
+        """
+        插入或更新交易信号
+
+        Args:
+            symbol: ETF代码
+            signal_type: 'buy' 或 'sell'
+            strategies: 策略名称列表
+            signal_date: 信号日期 (YYYY-MM-DD)
+            price: 当前价格
+            score: 信号评分（买入信号）
+            rank: 信号排名（买入信号）
+            quantity: 建议数量（买入信号）
+        """
+        from typing import List
+
+        strategies_str = ','.join(strategies) if strategies else None
+
+        self.conn.sql(f"""
+            INSERT INTO trader
+            (symbol, signal_type, strategies, signal_date, price, score, rank, quantity)
+            VALUES ('{symbol}', '{signal_type}', '{strategies_str or ''}',
+                    '{signal_date}', {price or 'NULL'}, {score or 'NULL'},
+                    {rank or 'NULL'}, {quantity or 'NULL'})
+            ON CONFLICT (symbol, signal_date, signal_type) DO UPDATE SET
+                strategies = excluded.strategies,
+                price = excluded.price,
+                score = excluded.score,
+                rank = excluded.rank,
+                quantity = excluded.quantity,
+                created_at = excluded.created_at
+        """)
+        logger.info(f'记录交易信号: {signal_type} {symbol} - {strategies_str}')
+
+    def get_latest_trader_signals(self, limit: int = 10) -> pd.DataFrame:
+        """
+        获取最新的交易信号
+
+        Args:
+            limit: 返回的最大信号数量
+
+        Returns:
+            包含最新信号的DataFrame
+        """
+        return self.conn.sql(f"""
+            SELECT * FROM trader
+            ORDER BY signal_date DESC, created_at DESC
+            LIMIT {limit}
+        """).df()
+
+    def get_trader_signals_by_date(self, signal_date: str) -> pd.DataFrame:
+        """
+        获取指定日期的交易信号
+
+        Args:
+            signal_date: 信号日期 (YYYY-MM-DD)
+
+        Returns:
+            包含指定日期信号的DataFrame
+        """
+        return self.conn.sql(f"""
+            SELECT * FROM trader
+            WHERE signal_date = '{signal_date}'
+            ORDER BY signal_type, symbol
+        """).df()
+
+    def get_trader_signals_by_symbol(self, symbol: str,
+                                     start_date: str = None,
+                                     end_date: str = None) -> pd.DataFrame:
+        """
+        获取指定标的的交易信号
+
+        Args:
+            symbol: ETF代码
+            start_date: 开始日期 (YYYY-MM-DD)
+            end_date: 结束日期 (YYYY-MM-DD)
+
+        Returns:
+            包含指定标的信号的DataFrame
+        """
+        query = f"SELECT * FROM trader WHERE symbol = '{symbol}'"
+
+        if start_date:
+            query += f" AND signal_date >= '{start_date}'"
+        if end_date:
+            query += f" AND signal_date <= '{end_date}'"
+
+        query += " ORDER BY signal_date DESC"
+
+        return self.conn.sql(query).df()
+
+    def calculate_profit_loss(self) -> dict:
+        """
+        计算盈亏统计
+
+        Returns:
+            包含盈亏指标的字典
+        """
+        # 已实现盈亏（来自已平仓交易）
+        realized_pl = self.conn.sql("""
+            SELECT
+                SUM(CASE WHEN buy_sell = 'sell'
+                    THEN quantity * price
+                    ELSE 0 END) as total_sold,
+                SUM(CASE WHEN buy_sell = 'buy'
+                    THEN quantity * price
+                    ELSE 0 END) as total_bought
+            FROM transactions
+        """).df()
+
+        # 未实现盈亏（来自当前持仓）
+        positions = self.get_positions()
+        if not positions.empty:
+            unrealized_pl = {
+                'total_unrealized_pl': ((positions['current_price'] - positions['avg_cost']) *
+                                       positions['quantity']).sum(),
+                'total_market_value': positions['market_value'].sum(),
+                'total_cost': (positions['avg_cost'] * positions['quantity']).sum()
+            }
+        else:
+            unrealized_pl = {
+                'total_unrealized_pl': 0,
+                'total_market_value': 0,
+                'total_cost': 0
+            }
+
+        return {
+            'realized_pl': realized_pl['total_sold'].iloc[0] - realized_pl['total_bought'].iloc[0],
+            **unrealized_pl
+        }
+
     def close(self):
         """关闭数据库连接"""
         self.conn.close()
@@ -511,16 +703,40 @@ class DuckDBManager:
             pass
 
 
-# 创建全局单例
+# 全局连接管理（单例模式）
 _db_instance = None
 
 
 def get_db(db_path='/data/home/yy/data/duckdb/trading.db') -> DuckDBManager:
-    """获取数据库单例"""
+    """
+    获取数据库单例实例
+
+    Args:
+        db_path: 数据库文件路径
+
+    Returns:
+        DuckDBManager 实例
+
+    Note:
+        由于 DuckDB 的限制，使用全局单例模式
+        所有连接共享同一个数据库实例
+    """
     global _db_instance
     if _db_instance is None:
         _db_instance = DuckDBManager(db_path)
     return _db_instance
+
+
+def close_all_connections():
+    """关闭数据库连接"""
+    global _db_instance
+    if _db_instance:
+        try:
+            _db_instance.close()
+        except:
+            pass
+        _db_instance = None
+        logger.info('数据库连接已关闭')
 
 
 if __name__ == '__main__':
