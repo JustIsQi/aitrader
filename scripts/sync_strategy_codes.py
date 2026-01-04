@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
 从 strategy/ 目录的所有策略文件中提取 ETF 和股票代码
-插入到 DuckDB 的 etf_codes 和 stock_codes 表
+插入到 PostgreSQL 的 etf_codes 和 stock_codes 表
 """
 import re
-import duckdb
+import sys
 from pathlib import Path
+
+# 添加项目根目录到 Python 路径
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 from loguru import logger
+from database.pg_manager import get_db
 
 
 def is_etf(symbol: str) -> bool:
@@ -14,7 +20,7 @@ def is_etf(symbol: str) -> bool:
 
     ETF 代码特征:
     - 上海 51xxxx, 56xxxx, 58xxxx (科创板ETF)
-    - 深圳 159xxx
+    - 深证 159xxx
     """
     code = symbol.split('.')[0]
     return code.startswith('51') or code.startswith('56') or code.startswith('58') or code.startswith('159')
@@ -54,10 +60,9 @@ def extract_codes_from_strategies(strategy_dir: Path) -> tuple:
 def sync_codes():
     """同步代码到数据库"""
     strategy_dir = Path('./strategies')
-    db_path = '/data/home/yy/data/duckdb/trading.db'
 
     logger.info('='*60)
-    logger.info('开始同步策略代码到 DuckDB')
+    logger.info('开始同步策略代码到 PostgreSQL')
     logger.info('='*60)
 
     # 1. 提取代码
@@ -69,29 +74,18 @@ def sync_codes():
     logger.info(f'  股票: {len(stock_codes)} 个')
 
     # 2. 连接数据库
-    conn = duckdb.connect(db_path)
-
-    # 获取当前最大的 ID 值
-    max_etf_id = conn.sql("SELECT COALESCE(MAX(id), 0) as max_id FROM etf_codes").df()['max_id'][0]
-    max_stock_id = conn.sql("SELECT COALESCE(MAX(id), 0) as max_id FROM stock_codes").df()['max_id'][0]
+    db = get_db()
 
     # 3. 插入 ETF 代码
     logger.info('\n插入 ETF 代码...')
     etf_inserted = 0
     etf_skipped = 0
-    current_etf_id = max_etf_id + 1
 
     for symbol in sorted(etf_codes):
-        # 检查是否已存在
-        exists = conn.sql(f"SELECT COUNT(*) as cnt FROM etf_codes WHERE symbol = '{symbol}'").df()['cnt'][0]
-        if exists > 0:
-            etf_skipped += 1
-            continue
-
         try:
-            conn.sql(f"INSERT INTO etf_codes (id, symbol) VALUES ({current_etf_id}, '{symbol}')")
+            # add_etf_code 内部会检查是否存在
+            db.add_etf_code(symbol)
             etf_inserted += 1
-            current_etf_id += 1
         except Exception as e:
             logger.error(f"插入 {symbol} 失败: {e}")
 
@@ -99,25 +93,18 @@ def sync_codes():
     logger.info('插入股票代码...')
     stock_inserted = 0
     stock_skipped = 0
-    current_stock_id = max_stock_id + 1
 
     for symbol in sorted(stock_codes):
-        # 检查是否已存在
-        exists = conn.sql(f"SELECT COUNT(*) as cnt FROM stock_codes WHERE symbol = '{symbol}'").df()['cnt'][0]
-        if exists > 0:
-            stock_skipped += 1
-            continue
-
         try:
-            conn.sql(f"INSERT INTO stock_codes (id, symbol) VALUES ({current_stock_id}, '{symbol}')")
+            # add_stock_code 内部会检查是否存在
+            db.add_stock_code(symbol)
             stock_inserted += 1
-            current_stock_id += 1
         except Exception as e:
             logger.error(f"插入 {symbol} 失败: {e}")
 
     # 5. 统计结果
-    etf_count = conn.sql("SELECT COUNT(*) as cnt FROM etf_codes").df()['cnt'][0]
-    stock_count = conn.sql("SELECT COUNT(*) as cnt FROM stock_codes").df()['cnt'][0]
+    etf_count = len(db.get_etf_codes())
+    stock_count = len(db.get_stock_codes())
 
     logger.info('\n' + '='*60)
     logger.info('同步完成！')
@@ -125,8 +112,6 @@ def sync_codes():
     logger.info(f'etf_codes: {etf_count} 条记录')
     logger.info(f'stock_codes: {stock_count} 条记录')
     logger.info('='*60)
-
-    conn.close()
 
 
 if __name__ == '__main__':

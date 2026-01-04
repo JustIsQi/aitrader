@@ -2,7 +2,7 @@
 Analytics API endpoints
 """
 from fastapi import APIRouter, HTTPException
-from database.db_manager import get_db
+from database.pg_manager import get_db
 from web.models import ProfitLossResponse
 import numpy as np
 import pandas as pd

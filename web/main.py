@@ -9,7 +9,7 @@ from pathlib import Path
 from loguru import logger
 import numpy as np
 
-from database.db_manager import get_db
+from database.pg_manager import get_db
 from web.routers import signals, trading, analytics
 import pandas as pd
 
@@ -60,14 +60,50 @@ async def dashboard(request: Request):
     """
     主仪表板页面
     """
+    # 获取当前持仓（移到前面，以便在信号处理中使用）
+    positions = db.get_positions()
+
+    # 构建持仓查找字典
+    positions_dict = {}
+    if not positions.empty:
+        for record in positions.to_dict('records'):
+            symbol = record['symbol']
+            quantity = record['quantity']
+            avg_cost = record['avg_cost']
+            current_price = record.get('current_price', avg_cost)
+
+            # 计算浮动盈亏
+            unrealized_pl = (current_price - avg_cost) * quantity
+            unrealized_pl_pct = ((current_price - avg_cost) / avg_cost * 100) if avg_cost > 0 else 0
+
+            position_data = {
+                'quantity': quantity,
+                'avg_cost': avg_cost,
+                'current_price': current_price,
+                'market_value': record.get('market_value'),
+                'unrealized_pl': unrealized_pl,
+                'unrealized_pl_pct': unrealized_pl_pct,
+                'updated_at': record.get('updated_at')
+            }
+
+            # 存储多个格式的symbol以支持匹配
+            # 原始格式 (如: 518880)
+            positions_dict[symbol] = position_data
+            # 带.SH后缀的格式 (如: 518880.SH)
+            positions_dict[f"{symbol}.SH"] = position_data
+            # 带.SZ后缀的格式 (如: 518880.SZ)
+            positions_dict[f"{symbol}.SZ"] = position_data
+
     # 获取最近5个交易日的信号，按日期分组
     # 首先获取所有信号的日期
-    dates_df = db.conn.sql("""
-        SELECT DISTINCT signal_date
-        FROM trader
-        ORDER BY signal_date DESC
-        LIMIT 5
-    """).df()
+    from database.models import Trader
+    from sqlalchemy import distinct
+
+    with db.get_session() as session:
+        query = session.query(distinct(Trader.signal_date)).order_by(
+            Trader.signal_date.desc()
+        ).limit(5)
+        dates_df = pd.read_sql(query.statement, session.bind)
 
     grouped_signals = {}
     if not dates_df.empty:
@@ -82,11 +118,11 @@ async def dashboard(request: Request):
             date_key = date_obj.strftime('%Y-%m-%d')
 
             # 获取该日期的信号
-            daily_signals_df = db.conn.sql(f"""
-                SELECT * FROM trader
-                WHERE signal_date = '{date_key}'
-                ORDER BY signal_type, symbol
-            """).df()
+            with db.get_session() as session:
+                query = session.query(Trader).filter(
+                    Trader.signal_date == date_key
+                ).order_by(Trader.signal_type, Trader.symbol)
+                daily_signals_df = pd.read_sql(query.statement, session.bind)
 
             if not daily_signals_df.empty:
                 daily_signals_df = clean_dataframes(daily_signals_df)
@@ -101,12 +137,15 @@ async def dashboard(request: Request):
                     if 'created_at' in cleaned_record and cleaned_record['created_at']:
                         if hasattr(cleaned_record['created_at'], 'strftime'):
                             cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+
+                    # 关联持仓信息
+                    symbol = cleaned_record.get('symbol')
+                    if symbol and symbol in positions_dict:
+                        cleaned_record['position'] = positions_dict[symbol]
+
                     signals_list.append(cleaned_record)
 
                 grouped_signals[date_key] = signals_list
-
-    # 获取当前持仓
-    positions = db.get_positions()
 
     # 获取最近交易记录
     transactions = db.get_transactions()[:20]

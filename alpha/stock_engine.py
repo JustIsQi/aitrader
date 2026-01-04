@@ -102,7 +102,6 @@ class Engine:
         df_close = self._get_factor_df('close')
         df_close = df_close.ffill()
         #df_close.dropna(inplace=True)
-        #df_close.to_csv('df_close.csv')
         bkt = bt.Backtest(s, df_close, name='策略', integer_positions=True,initial_capital=10000000.0 )
         return bkt
 
@@ -158,7 +157,6 @@ class Engine:
         #df_factor.dropna(inplace=True)
         df_factor.index = pd.to_datetime(df_factor.index)
         #print(df_factor)
-        #df_factor.to_csv(f"{factor_name.replace('<','_').replace('>','_').replace('=','_')}.csv")
         return df_factor
 
     def _load_data(self,task):

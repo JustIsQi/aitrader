@@ -13,7 +13,7 @@ import argparse
 import sys
 from datetime import datetime
 
-from database.db_manager import get_db
+from database.pg_manager import get_db
 from signals.multi_strategy_signals import MultiStrategySignalGenerator
 from signals.signal_reporter import SignalReporter
 

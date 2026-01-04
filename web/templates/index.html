@@ -46,6 +46,31 @@
                                         <p>Score: {{ "%.4f"|format(signal.score) }}</p>
                                         {% endif %}
                                     </div>
+
+                                    <!-- 持仓信息区域 -->
+                                    {% if signal.position is defined and signal.position %}
+                                    <div class="signal-position-info">
+                                        <div class="position-header">Current Position</div>
+                                        <div class="position-details">
+                                            <div class="position-row">
+                                                <span class="pos-label">Quantity:</span>
+                                                <span class="pos-value">{{ "%.0f"|format(signal.position.quantity) }}</span>
+                                            </div>
+                                            <div class="position-row">
+                                                <span class="pos-label">Market Value:</span>
+                                                <span class="pos-value">¥{{ "%.2f"|format(signal.position.market_value) if signal.position.market_value else '-' }}</span>
+                                            </div>
+                                            <div class="position-row">
+                                                <span class="pos-label">Unrealized P&L:</span>
+                                                <span class="pos-value {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                    ¥{{ "%.2f"|format(signal.position.unrealized_pl) }}
+                                                    ({{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
                                     <div class="signal-date">
                                         {{ signal.created_at }}
                                     </div>

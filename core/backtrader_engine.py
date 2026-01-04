@@ -5,7 +5,7 @@ from typing import List, Dict
 import backtrader as bt
 import numpy as np
 import pandas as pd
-
+from loguru import logger
 
 from core.backtrader_strategy import StrategyTemplate
 from core.backtrader_algos import *
@@ -46,6 +46,10 @@ class Task:
     period: str = 'RunDaily'
     period_days: int = None
 
+    # A股模式参数
+    ashare_mode: bool = False          # 是否启用A股模式
+    ashare_commission: str = 'v2'      # A股手续费方案 ('v1', 'v2', 'zero', 'fixed')
+
 
 @dataclass
 class StrategyConfig:
@@ -56,11 +60,33 @@ class StrategyConfig:
 
 
 class AlgoStrategy(StrategyTemplate):
-    #params = ('$P1',25)
+    """
+    算法策略类
 
-    def __init__(self, algo_list):
+    支持通过algo_list传递算法链进行策略执行
+    """
+
+    # params = (('ashare_mode', False),)  # A股模式参数(继承自StrategyTemplate)
+
+    def __init__(self, algo_list, ashare_mode=False, **kwargs):
+        """
+        初始化算法策略
+
+        Args:
+            algo_list: 算法列表
+            ashare_mode: 是否启用A股模式
+            **kwargs: 其他策略参数
+        """
         super(AlgoStrategy, self).__init__()
         self.algos = algo_list
+
+        # 设置A股模式参数
+        if ashare_mode:
+            self.p.ashare_mode = ashare_mode
+            # 传递其他A股相关参数
+            for key, value in kwargs.items():
+                if hasattr(self.p, key):
+                    setattr(self.p, key, value)
 
     def prenext(self):
         pass
@@ -259,11 +285,38 @@ class Engine:
 
 
     def run(self, task: Task, commissions=0.0):
+        """
+        运行策略回测
+
+        Args:
+            task: 策略任务配置
+            commissions: 佣金费率(仅非A股模式时使用)
+
+        Returns:
+            回测结果
+        """
         task.end_date = datetime.now().strftime('%Y%m%d')
-        self._prepare_run(task.symbols,task.start_date,task.end_date, commissions)
+
+        # 准备数据(无论A股还是ETF模式都需要)
+        self._prepare_run(task.symbols, task.start_date, task.end_date, 0.0)
+
+        # A股模式: 覆盖手续费方案
+        if task.ashare_mode:
+            from core.ashare_commission import setup_ashare_commission
+            setup_ashare_commission(self.cerebro, scheme_version=task.ashare_commission)
+            logger.info(f"A股模式已启用, 手续费方案: {task.ashare_commission}")
+        else:
+            # ETF模式: 使用传统佣金设置
+            self.cerebro.broker.setcommission(commissions)
+
         self.datafeed = DataFeed(task)
 
-        self.cerebro.addstrategy(AlgoStrategy, algo_list=self._get_algos(task))
+        # 添加策略,传递A股模式参数
+        self.cerebro.addstrategy(
+            AlgoStrategy,
+            algo_list=self._get_algos(task),
+            ashare_mode=task.ashare_mode
+        )
         self.results = self.cerebro.run()
 
         timereturn = self.results[0].analyzers.timereturn.get_analysis()

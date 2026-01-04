@@ -23,7 +23,15 @@
       "Bash(chmod:*)",
       "Bash(bash:*)",
       "Bash(sudo systemctl:*)",
-      "Bash(duckdb:*)"
+      "Bash(duckdb:*)",
+      "Bash(wc:*)",
+      "Bash(rm:*)",
+      "Bash(kill:*)",
+      "Bash(docker exec:*)",
+      "Bash(while ps aux)",
+      "Bash(pkill:*)",
+      "Bash(timeout:*)",
+      "Bash(/data/home/yy/code/aitrader/scripts/setup_update_cron.sh:*)"
     ]
   }
 }

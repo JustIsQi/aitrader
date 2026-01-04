@@ -281,7 +281,13 @@ if __name__ == '__main__':
     e = Engine()
     res = e.run(t)
     print(res.stats)
-    res.get_transactions().to_csv('bt_orders.csv')
+
+    # 保存交易记录到PostgreSQL
+    from database.pg_manager import get_db
+    db = get_db()
+    transactions_df = res.get_transactions()
+    db.save_backtest_transactions(transactions_df, strategy_name=t.name)
+
     # print(res.get_security_weights().iloc[-1].to_dict())
     # print(res.get_weights())
     import matplotlib.pyplot as plt

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 from datetime import date
 from pathlib import Path
-from database.db_manager import get_db
+from database.pg_manager import get_db
 from web.models import TradingRecord, TransactionResponse, PositionResponse
 import numpy as np
 import pandas as pd

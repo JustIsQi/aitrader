@@ -7,14 +7,59 @@ from collections import defaultdict
 
 
 class StrategyTemplate(bt.Strategy):
+    """
+    策略模板基类
 
+    支持A股交易约束:
+    - T+1结算: 当日买入次日才能卖出
+    - 涨跌停限制: ±10% (ST股±5%)
+    - 手数限制: 必须是100股的整数倍
+    """
 
+    # 定义参数
+    params = (
+        ('ashare_mode', False),       # 是否启用A股模式
+        ('lot_size', 100),            # A股手数
+        ('enable_t1', True),          # 启用T+1限制
+        ('enable_limit_check', True), # 启用涨跌停检查
+        ('enable_lot_rounding', True),# 启用手数调整
+    )
 
     def __init__(self):
         self.last_month = None
         self.trade_list = []  # 用于存储交易结果
         self.signals = defaultdict(list) # 用于存储策略发出主动调仓指令
         self.weights = defaultdict(str)
+
+        # A股交易约束组件
+        if self.p.ashare_mode:
+            from core.ashare_constraints import TPlusOneTracker, PriceLimitChecker, LotSizeRounder
+
+            # T+1跟踪器
+            if self.p.enable_t1:
+                self.t1_tracker = TPlusOneTracker()
+            else:
+                self.t1_tracker = None
+
+            # 涨跌停检查器
+            if self.p.enable_limit_check:
+                self.limit_checker = PriceLimitChecker()
+            else:
+                self.limit_checker = None
+
+            # 手数调整器
+            if self.p.enable_lot_rounding:
+                self.lot_rounder = LotSizeRounder(lot_size=self.p.lot_size)
+            else:
+                self.lot_rounder = None
+
+            logger.info("A股交易约束已启用: T+1={}, 涨跌停={}, 手数调整={}".format(
+                self.p.enable_t1, self.p.enable_limit_check, self.p.enable_lot_rounding
+            ))
+        else:
+            self.t1_tracker = None
+            self.limit_checker = None
+            self.lot_rounder = None
 
     def log(self, txt, dt=None):
         dt = dt or self.datas[0].datetime.date(0)
@@ -35,9 +80,22 @@ class StrategyTemplate(bt.Strategy):
                 self.log(f"买入执行, 价格: {order.executed.price:.2f}, 数量: {order.executed.size}, 成本: {order.executed.value:.2f}, 佣金: {order.executed.comm:.2f}")
                 self.buy_price = order.executed.price
                 self.buy_date = self.datas[0].datetime.date(0)
+
+                # A股模式: 记录买入日期用于T+1检查
+                if self.p.ashare_mode and self.t1_tracker:
+                    current_date = pd.Timestamp(self.datas[0].datetime.date(0))
+                    self.t1_tracker.record_buy(order.data._name, current_date)
+
             elif order.issell():
                 profit = order.executed.value - order.created.value
                 self.log(f"卖出执行, 价格: {order.executed.price:.2f}, 数量: {order.executed.size}, 收益: {profit:.2f}, 佣金: {order.executed.comm:.2f}")
+
+                # A股模式: 清仓时移除T+1记录
+                if self.p.ashare_mode and self.t1_tracker:
+                    # 检查是否完全清仓
+                    position = self.getposition(order.data)
+                    if position.size == 0:
+                        self.t1_tracker.remove_position(order.data._name)
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log(f"订单取消/保证金不足/拒绝")
@@ -130,13 +188,21 @@ class StrategyTemplate(bt.Strategy):
             weights[data] = 0.98/len(selected)
         return weights
 
-    def rebalance(self,weights):
+    def rebalance(self, weights):
+        """
+        根据新权重调整仓位
 
-        """根据新权重调整仓位"""
+        A股模式下会应用以下约束:
+        1. T+1限制: 当日买入次日才能卖出
+        2. 涨跌停检查: 不在涨跌停价位下单
+        3. 手数调整: 买卖数量必须是100的整数倍
+
+        Args:
+            weights: {data: weight} 目标权重字典
+        """
         total_value = self.broker.getvalue()
-        #print(weights)
         to_buy = {}
-
+        current_date = pd.Timestamp(self.datas[0].datetime.date(0))
 
         for i, data in enumerate(self.datas):
             if data in weights.keys():
@@ -151,15 +217,58 @@ class StrategyTemplate(bt.Strategy):
             # 计算需要交易的数量
             size_diff = (target_value - current_value) / data.close[0]
 
-            # 执行订单
-            if size_diff > 0:
+            # 处理卖出订单
+            if size_diff < 0:
+                sell_size = abs(size_diff)
+
+                # A股约束1: T+1检查
+                if self.p.ashare_mode and self.t1_tracker:
+                    if not self.t1_tracker.can_sell(data._name, current_date, sell_size):
+                        logger.debug(f"跳过卖出 {data._name}: T+1限制")
+                        continue
+
+                # A股约束2: 手数调整
+                if self.p.ashare_mode and self.lot_rounder:
+                    sell_size = self.lot_rounder.round_to_lot(sell_size)
+                    if sell_size == 0:
+                        logger.debug(f"跳过卖出 {data._name}: 调整后为0股")
+                        continue
+
+                # A股约束3: 涨跌停检查
+                if self.p.ashare_mode and self.limit_checker:
+                    prev_close = data.close[-1] if len(data) > 1 else data.close[0]
+                    is_hit, _ = self.limit_checker.is_limit_hit(
+                        data._name, data.close[0], prev_close, current_date
+                    )
+                    if is_hit:
+                        logger.warning(f"跳过卖出 {data._name}: 当前价格触及涨跌停")
+                        continue
+
+                self.sell(data=data, size=sell_size)
+
+            # 收集买入订单(稍后统一执行)
+            elif size_diff > 0:
                 to_buy[data] = size_diff
 
-            elif size_diff < 0:
-                self.sell(data=data, size=abs(size_diff))
-
-        # self.buy(data=data, size=size_diff)
+        # 执行买入订单
         for data, size in to_buy.items():
+            # A股约束: 手数调整
+            if self.p.ashare_mode and self.lot_rounder:
+                size = self.lot_rounder.round_to_lot(size)
+                if size == 0:
+                    logger.debug(f"跳过买入 {data._name}: 调整后为0股")
+                    continue
+
+            # A股约束: 涨跌停检查
+            if self.p.ashare_mode and self.limit_checker:
+                prev_close = data.close[-1] if len(data) > 1 else data.close[0]
+                is_hit, _ = self.limit_checker.is_limit_hit(
+                    data._name, data.close[0], prev_close, current_date
+                )
+                if is_hit:
+                    logger.warning(f"跳过买入 {data._name}: 当前价格触及涨跌停")
+                    continue
+
             self.buy(data=data, size=size)
 
     def log(self, txt, dt=None):

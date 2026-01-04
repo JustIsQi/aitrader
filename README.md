@@ -4,9 +4,10 @@
 
 - [项目概述](#项目概述)
 - [目录结构](#目录结构)
-- [DuckDB 数据库集成](#duckdb-数据库集成)
+- [PostgreSQL 数据库集成](#postgresql-数据库集成)
 - [快速开始](#快速开始)
 - [核心模块](#核心模块)
+- [A股智能选股模块](#a股智能选股模块)
 - [多策略信号系统](#多策略信号系统)
 - [策略配置](#策略配置)
 - [API 参考](#api-参考)
@@ -49,10 +50,12 @@ aitrader/
 │   ├── backtrader_strategy.py  # 基础策略类
 │   ├── backtrader_algos.py     # 交易算法
 │   └── backtrader_inds.py      # 技术指标
-├── database/               # 数据库管理 (DuckDB)
-│   ├── db_manager.py          # DuckDB 数据库管理器
-│   ├── factor_cache.py        # 因子缓存
-│   └── import_to_duckdb.py    # 数据导入工具
+├── database/               # 数据库管理 (PostgreSQL)
+│   ├── pg_manager.py          # PostgreSQL 数据库管理器
+│   ├── models/                # ORM 模型定义
+│   │   ├── base.py            # 数据库连接配置
+│   │   └── models.py          # 所有数据表模型
+│   └── factor_cache.py        # 因子缓存
 ├── signals/                # 信号生成与报告
 │   ├── multi_strategy_signals.py   # 多策略信号生成器
 │   ├── signal_reporter.py          # 报告生成器
@@ -77,7 +80,8 @@ aitrader/
 ├── scripts/                # 工具脚本
 │   ├── auto_update_etf_data.py # 自动更新 ETF 数据
 │   ├── get_data.py             # 数据下载
-│   └── setup_duckdb.sh         # DuckDB 初始化
+│   ├── init_postgres_db.py     # PostgreSQL 数据库初始化
+│   └── sync_strategy_codes.py  # 同步策略代码
 ├── tests/                  # 测试模块
 ├── data/                   # 数据存储
 │   └── akshare_data/          # AKShare 数据
@@ -86,7 +90,7 @@ aitrader/
 
 ### 核心特性
 
-- **DuckDB 数据库**: 高性能 OLAP 数据库，查询速度提升 10-20 倍
+- **PostgreSQL 数据库**: 企业级数据库，支持高并发和ACID事务
 - **双引擎支持**: 基于 `bt` 和 `backtrader` 两种回测框架
 - **灵活的因子系统**: 支持自定义因子表达式和 Alpha158 因子库
 - **多种选股策略**: 条件筛选、TopK 排序、多因子组合
@@ -95,213 +99,11 @@ aitrader/
 
 ---
 
-## DuckDB 数据库集成
+## 数据管理
 
-### 为什么选择 DuckDB？
+本项目使用 PostgreSQL 数据库存储所有历史数据、交易记录和信号。
 
-- ✅ **高性能**: 列式存储，分析查询速度比 CSV 快 10-20 倍
-- ✅ **零侵入**: 对现有代码透明，自动回退到 CSV
-- ✅ **易用性**: Python 原生支持，SQL 兼容
-- ✅ **持久化**: 磁盘存储，重启不丢失数据
-- ✅ **双保险**: CSV + DuckDB 双存储保障
-
-### 数据库架构
-
-```
-/data/home/yy/data/duckdb/trading.db
-├── etf_history      -- ETF 历史行情数据
-├── etf_codes        -- ETF 代码清单
-├── stock_history    -- 股票历史行情数据
-├── stock_codes      -- 股票代码清单
-├── transactions     -- 交易记录
-└── positions        -- 当前持仓
-```
-
-### 表结构
-
-#### etf_history（ETF 历史行情）
-```sql
-CREATE SEQUENCE seq_etf_history START 1;
-
-CREATE TABLE etf_history (
-    id INTEGER PRIMARY KEY DEFAULT nextval('seq_etf_history'),
-    symbol VARCHAR(20) NOT NULL,
-    date DATE NOT NULL,
-    open DOUBLE,
-    high DOUBLE,
-    low DOUBLE,
-    close DOUBLE,
-    volume BIGINT,
-    amount DOUBLE,
-    amplitude DOUBLE,              -- 振幅
-    change_pct DOUBLE,             -- 涨跌幅（百分比）
-    change_amount DOUBLE,          -- 涨跌额（绝对值）
-    turnover_rate DOUBLE,          -- 换手率
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(symbol, date)
-);
-
--- 索引
-CREATE INDEX idx_etf_history_symbol_date ON etf_history(symbol, date DESC);
-CREATE INDEX idx_etf_history_date ON etf_history(date DESC);
-```
-
-#### stock_history（股票历史行情）
-```sql
-CREATE SEQUENCE seq_stock_history START 1;
-
-CREATE TABLE stock_history (
-    id INTEGER PRIMARY KEY DEFAULT nextval('seq_stock_history'),
-    symbol VARCHAR(20) NOT NULL,
-    date DATE NOT NULL,
-    open DOUBLE,
-    high DOUBLE,
-    low DOUBLE,
-    close DOUBLE,
-    volume BIGINT,
-    amount DOUBLE,
-    amplitude DOUBLE,              -- 振幅
-    change_pct DOUBLE,             -- 涨跌幅（百分比）
-    change_amount DOUBLE,          -- 涨跌额（绝对值）
-    turnover_rate DOUBLE,          -- 换手率
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(symbol, date)
-);
-
--- 索引
-CREATE INDEX idx_stock_history_symbol_date ON stock_history(symbol, date DESC);
-CREATE INDEX idx_stock_history_date ON stock_history(date DESC);
-```
-
-**字段说明**:
-- `id`: 主键，自增
-- `symbol`: ETF/股票代码（如 '510300.SH'）
-- `date`: 交易日期
-- `open/high/low/close`: 开盘价/最高价/最低价/收盘价
-- `volume`: 成交量
-- `amount`: 成交额
-- `amplitude`: 振幅
-- `change_pct`: 涨跌幅（百分比）
-- `change_amount`: 涨跌额（绝对值）
-- `turnover_rate`: 换手率
-- `created_at`: 记录创建时间
-
-#### transactions（交易记录）
-```sql
-CREATE SEQUENCE seq_transactions START 1;
-
-CREATE TABLE transactions (
-    id INTEGER PRIMARY KEY DEFAULT nextval('seq_transactions'),
-    symbol VARCHAR(20) NOT NULL,
-    buy_sell VARCHAR(10) NOT NULL,
-    quantity DOUBLE NOT NULL,
-    price DOUBLE NOT NULL,
-    trade_date DATE NOT NULL,
-    strategy_name VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 索引
-CREATE INDEX idx_transactions_symbol_date ON transactions(symbol, trade_date DESC);
-```
-
-**字段说明**:
-- `symbol`: 交易标的代码
-- `buy_sell`: 交易类型（'buy' 或 'sell'）
-- `quantity`: 交易数量
-- `price`: 交易价格
-- `trade_date`: 交易日期
-- `strategy_name`: 策略名称（可选）
-
-#### positions（持仓管理）
-```sql
-CREATE TABLE positions (
-    symbol VARCHAR(20) PRIMARY KEY,
-    quantity DOUBLE NOT NULL,
-    avg_cost DOUBLE NOT NULL,
-    current_price DOUBLE,
-    market_value DOUBLE,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-**字段说明**:
-- `symbol`: 持仓标的代码（主键）
-- `quantity`: 持仓数量
-- `avg_cost`: 平均成本
-- `current_price`: 当前价格（可选）
-- `market_value`: 市值（可选）
-- `updated_at`: 更新时间
-
-#### etf_codes（ETF 代码清单）
-```sql
-CREATE TABLE etf_codes (
-    id INTEGER PRIMARY KEY,
-    symbol VARCHAR(20) NOT NULL UNIQUE,
-    name VARCHAR,
-    list_date DATE,
-    fund_type VARCHAR,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-**字段说明**:
-- `id`: 主键，自增
-- `symbol`: ETF 代码（唯一，如 '510300.SH'）
-- `name`: ETF 名称（可选）
-- `list_date`: 上市日期（可选）
-- `fund_type`: 基金类型（可选）
-- `created_at`: 记录创建时间
-- `updated_at`: 记录更新时间
-
-**用途**:
-- 维护所有策略中使用的 ETF 代码清单
-- 通过 `scripts/sync_strategy_codes.py` 自动从策略文件中提取并同步
-- 用于批量更新数据时遍历所有需要更新的 ETF
-
-#### stock_codes（股票代码清单）
-```sql
-CREATE TABLE stock_codes (
-    id INTEGER PRIMARY KEY,
-    symbol VARCHAR(20) NOT NULL UNIQUE,
-    name VARCHAR,
-    list_date DATE,
-    industry VARCHAR,
-    market VARCHAR,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-**字段说明**:
-- `id`: 主键，自增
-- `symbol`: 股票代码（唯一，如 '000001.SZ'）
-- `name`: 股票名称（可选）
-- `list_date`: 上市日期（可选）
-- `industry`: 所属行业（可选）
-- `market`: 交易市场（可选，如 '主板', '创业板'）
-- `created_at`: 记录创建时间
-- `updated_at`: 记录更新时间
-
-**用途**:
-- 维护所有策略中使用的股票代码清单
-- 通过 `scripts/sync_strategy_codes.py` 自动从策略文件中提取并同步
-- 用于批量更新数据时遍历所有需要更新的股票
-
-### 配置选项
-
-**auto_update_etf_data.py:**
-```python
-ENABLE_DUCKDB = True  # 是否写入 DuckDB
-DUCKDB_PATH = '/data/home/yy/data/duckdb/trading.db'
-```
-
-**datafeed/csv_dataloader.py:**
-```python
-ENABLE_DUCKDB = True  # 是否从 DuckDB 读取
-DUCKDB_PATH = '/data/home/yy/data/duckdb/trading.db'
-```
+**完整的数据架构、更新流程和维护指南请参阅 [数据管理指南](DATA.md)**。
 
 ---
 
@@ -315,56 +117,13 @@ pip install -r requirements.txt
 
 主要依赖：
 - backtrader - 回测框架
-- duckdb - 数据库
 - pandas - 数据处理
+- numpy - 数值计算
 - ffn - 金融分析
 - loguru - 日志
+- fastapi - Web 框架
 
-### 初始化数据库
-
-**方式一：一键启动**
-```bash
-./setup_duckdb.sh
-```
-
-**方式二：手动步骤**
-```bash
-# 1. 创建数据库目录
-mkdir -p /data/home/yy/data/duckdb
-
-# 2. 导入历史数据
-python import_to_duckdb.py
-
-# 3. 测试数据库
-python test_duckdb.py
-```
-
-### 日常使用
-
-#### 更新数据
-
-```bash
-# 自动更新（同时更新 CSV 和 DuckDB）
-python auto_update_etf_data.py
-```
-
-#### 测试数据库
-
-```bash
-python test_duckdb.py
-```
-
-#### 查看数据库统计
-
-```python
-from database.db_manager import get_db
-
-db = get_db()
-stats = db.get_statistics()
-print(f"ETF 数量: {stats['total_symbols']}")
-print(f"总记录数: {stats['total_records']}")
-print(f"数据范围: {stats['earliest_date']} ~ {stats['latest_date']}")
-```
+> **提示**: 数据库初始化和配置请参阅 [数据管理指南](DATA.md)
 
 ---
 
@@ -393,14 +152,14 @@ df = fetch_etf_history('510300')
 ```python
 from datafeed.csv_dataloader import CsvDataLoader
 
-# 自动优先使用 DuckDB，失败则回退到 CSV
+# 自动优先使用 PostgreSQL，失败则回退到 CSV
 loader = CsvDataLoader()
 dfs = loader.read_dfs(['510300.SH', '513100.SH'])
 ```
 
 **特性**:
-- ✅ 优先从 DuckDB 读取（高性能）
-- ✅ DuckDB 失败自动回退到 CSV
+- ✅ 优先从 PostgreSQL 读取（高性能）
+- ✅ PostgreSQL 失败自动回退到 CSV
 - ✅ 对上层代码完全透明
 
 ### 3. 数据库管理器
@@ -482,6 +241,219 @@ class Task:
 | 均线金叉 | `ma(close,5)>ma(close,20)` | 5 日均线 > 20 日均线 |
 | 布林带 | `bbands_up(close,20,2)` | 布林带上轨 |
 | ATR | `ta_atr(high,low,close,14)` | 14 日 ATR |
+
+---
+
+## A股智能选股模块
+
+### 简介
+
+基于现有的ETF轮动系统,新增A股智能选股和交易策略功能,严格模拟A股市场交易规则。
+
+### 核心特性
+
+- ✅ **T+1交易规则**: 当日买入次日才能卖出
+- ✅ **涨跌停限制**: 普通股±10%, ST股±5%, 科创板±20%
+- ✅ **手数限制**: 自动调整到100股整数倍
+- ✅ **真实手续费**: 佣金0.02% + 印花税0.05%(卖出) + 过户费0.001%
+- ✅ **向后兼容**: 不影响现有ETF策略,可独立启用
+
+### 快速使用
+
+#### 启用A股模式
+
+只需在策略配置中添加两个参数:
+
+```python
+from core.backtrader_engine import Task, Engine
+
+t = Task()
+t.name = 'A股策略'
+t.symbols = ['000001.SZ', '600000.SH', '600036.SH']
+t.start_date = '20200101'
+t.end_date = '20231231'
+
+# 启用A股模式
+t.ashare_mode = True              # 开启A股交易约束
+t.ashare_commission = 'v2'        # 使用V2手续费方案(2023年后,推荐)
+
+# 配置策略逻辑
+t.select_buy = ['roc(close,20) > 0.05', 'volume > ma(volume,20)']
+t.buy_at_least_count = 2
+t.select_sell = ['roc(close,20) < 0']
+t.period = 'RunWeekly'
+t.weight = 'WeightEqually'
+
+# 运行回测
+e = Engine()
+e.run(t)
+e.stats()
+```
+
+#### 运行示例脚本
+
+```bash
+# A股动量策略
+python examples/ashare_strategy_example.py ashare_momentum
+
+# A股多因子策略
+python examples/ashare_strategy_example.py ashare_multifactor
+```
+
+### A股交易规则详解
+
+#### 1. T+1结算规则
+
+**规则**: 当日买入的股票,只能在下一个交易日或之后卖出。
+
+**实现**: 系统自动跟踪每只股票的买入日期,并在卖出时检查持仓天数。
+
+**示例**:
+```
+2024-01-15 买入 000001.SZ
+2024-01-15 当日尝试卖出 -> ❌ 被拒绝 (T+1限制)
+2024-01-16 次日尝试卖出 -> ✅ 允许
+```
+
+#### 2. 涨跌停限制
+
+**规则**:
+- 普通股票: ±10%
+- ST股票: ±5%
+- 科创板/创业板: ±20%
+- 北京交易所: ±30%
+
+**限制**:
+- ❌ 涨停价买入被禁止
+- ❌ 跌停价卖出被禁止
+
+#### 3. 手数限制
+
+**规则**: 买卖数量必须是100股的整数倍(1手=100股)。
+
+系统自动调整订单数量到最近的100股倍数。
+
+**示例**:
+```
+目标金额: 10000元, 股价: 155元
+计算股数: 64股
+调整后: 0股 (不足1手,取消交易)
+```
+
+#### 4. 手续费结构
+
+**V2方案 (2023年8月后,推荐)**:
+
+| 项目 | 买入 | 卖出 | 备注 |
+|-----|------|------|------|
+| 佣金 | 0.02% | 0.02% | 最低5元 |
+| 印花税 | 0% | 0.05% | 仅卖出 |
+| 过户费 | 0.001% | 0.001% | 双向收取 |
+
+**示例计算**:
+
+买入1000股 @ 10元:
+```
+成交金额: 10000元
+佣金: max(10000 × 0.02%, 5元) = 5元
+印花税: 0元
+过户费: 10000 × 0.001% = 0.1元
+总费用: 5.1元 (0.051%)
+```
+
+### 核心模块
+
+#### 1. A股约束模块
+
+**文件**: [core/ashare_constraints.py](core/ashare_constraints.py)
+
+提供三个核心类:
+
+- **TPlusOneTracker**: T+1交易限制跟踪
+- **PriceLimitChecker**: 涨跌停检测
+- **LotSizeRounder**: 手数调整
+
+#### 2. A股手续费模块
+
+**文件**: [core/ashare_commission.py](core/ashare_commission.py)
+
+提供四种手续费方案:
+
+- **V1**: 2015-2023年费率
+- **V2**: 2023年8月后费率(推荐)
+- **Zero**: 零手续费(测试/对比)
+- **Fixed**: 固定费率(自定义)
+
+#### 3. 策略模板集成
+
+**文件**: [core/backtrader_strategy.py](core/backtrader_strategy.py)
+
+策略模板已完全集成A股约束,在`rebalance`方法中自动应用所有规则。
+
+### 测试验证
+
+运行完整测试套件:
+
+```bash
+python tests/test_ashare_constraints.py
+```
+
+测试覆盖:
+- ✅ T+1结算: 26个测试用例
+- ✅ 涨跌停检测
+- ✅ 手数调整
+- ✅ 手续费计算
+- ✅ 订单合规性验证
+
+所有测试通过 ✅
+
+### 对比: A股模式 vs ETF模式
+
+| 特性 | ETF模式 | A股模式 |
+|-----|---------|---------|
+| T+1限制 | ❌ 无 | ✅ 有 |
+| 涨跌停限制 | ❌ 无 | ✅ 有 |
+| 手数限制 | ❌ 无 | ✅ 100股/手 |
+| 手续费 | 简化费率 | 真实费率 |
+| 适用标的 | ETF | A股股票 |
+
+### 详细文档
+
+- **完整实施计划**: [PLAN.md](PLAN.md)
+- **使用指南**: [GUIDE.md](GUIDE.md)
+- **测试文件**: [tests/test_ashare_constraints.py](tests/test_ashare_constraints.py)
+- **示例脚本**: [examples/ashare_strategy_example.py](examples/ashare_strategy_example.py)
+
+---
+
+## 基本面数据系统
+
+支持全市场 A 股基本面数据获取、存储和因子计算功能，提供 PE、PB、市值等估值因子。
+
+**核心特性**:
+- ✅ **最新快照**: 每日更新全市场 5700+ 只 A 股的实时估值数据
+- ✅ **快速更新**: 约 10-15 秒完成全市场数据更新
+- ✅ **估值因子**: 支持 PE、PB、市值等常用估值指标
+- ⚠️ **数据限制**: 只提供最新快照，不包含历史估值数据（受限于免费数据源）
+
+**数据更新**:
+```bash
+# 更新基本面数据
+python scripts/unified_update.py --stage fundamental
+```
+
+**策略使用**:
+```python
+# 价值选股策略示例
+t.select_buy = [
+    'pe < 20',          # PE < 20
+    'pb < 2',           # PB < 2
+    'total_mv > 100'    # 市值 > 100亿
+]
+t.order_by_signal = 'pe_score(pe) + pb_score(pb)'  # 低估值优先
+```
+
+**详细使用方法请参阅 [数据管理指南 - 基本面数据系统](DATA.md#6-基本面数据系统)**。
 
 ---
 
@@ -582,7 +554,7 @@ python run_multi_strategy_signals.py --verbose
 #### 2. 因子计算
 - 收集所有策略的因子表达式
 - 去重后批量计算
-- 使用 DuckDB 作为数据源，CSV 作为后备
+- 使用 PostgreSQL 作为数据源，CSV 作为后备
 - 缓存结果供所有策略复用
 
 #### 3. 信号生成
@@ -652,7 +624,7 @@ python run_multi_strategy_signals.py --verbose
 
 1. **数据依赖**: 首次运行会自动下载缺失的标的数据
 2. **网络要求**: 需要连接 akshare 数据源
-3. **数据库**: 使用 DuckDB 存储历史数据和持仓信息
+3. **数据库**: 使用 PostgreSQL 存储历史数据和持仓信息
 4. **风险提示**: 策略信号仅供参考，实际投资需谨慎
 
 ### 故障排查
@@ -775,7 +747,7 @@ print(transactions)
 
 ## API 参考
 
-### db_manager.DuckDBManager
+### db_manager.PostgreSQLManager
 
 数据库管理器类，提供完整的 CRUD 操作。
 
@@ -785,7 +757,7 @@ print(transactions)
 from db_manager import get_db
 
 # 获取单例
-db = get_db('/data/home/yy/data/duckdb/trading.db')
+db = get_db('PostgreSQL数据库')
 ```
 
 #### 主要方法
@@ -877,7 +849,7 @@ stats = db.get_statistics()
 
 #### CsvDataLoader
 
-数据加载器类，支持从 CSV 或 DuckDB 读取数据。
+数据加载器类，支持从 CSV 或 PostgreSQL 读取数据。
 
 ```python
 from datafeed.csv_dataloader import CsvDataLoader
@@ -903,7 +875,7 @@ df = loader.read_df(
 
 ## 性能对比
 
-| 操作 | CSV 文件 | DuckDB | 提升 |
+| 操作 | CSV 文件 | PostgreSQL | 提升 |
 |------|---------|--------|------|
 | 读取单个 ETF | ~50ms | ~10ms | 5x |
 | 读取多个 ETF | ~500ms | ~50ms | 10x |
@@ -927,21 +899,21 @@ df = loader.read_df(
 
 | 文件 | 说明 |
 |------|------|
-| [db_manager.py](db_manager.py) | DuckDB 数据库管理器 |
-| [datafeed/csv_dataloader.py](datafeed/csv_dataloader.py) | 数据加载器（支持 DuckDB） |
+| [db_manager.py](db_manager.py) | PostgreSQL 数据库管理器 |
+| [datafeed/csv_dataloader.py](datafeed/csv_dataloader.py) | 数据加载器（支持 PostgreSQL） |
 | [datafeed/factor_expr.py](datafeed/factor_expr.py) | 因子计算引擎 |
 | [get_data.py](get_data.py) | Akshare 数据下载 |
 | [auto_update_etf_data.py](auto_update_etf_data.py) | 自动更新脚本 |
-| [import_to_duckdb.py](import_to_duckdb.py) | 历史数据导入脚本 |
+| [import_to_postgresql.py](import_to_postgresql.py) | 历史数据导入脚本 |
 
 ### 工具脚本
 
 | 文件 | 说明 |
 |------|------|
-| [test_duckdb.py](test_duckdb.py) | 测试数据库功能 |
-| [trading_with_duckdb.py](trading_with_duckdb.py) | 交易决策示例 |
+| [test_postgresql.py](test_postgresql.py) | 测试数据库功能 |
+| [trading_with_postgresql.py](trading_with_postgresql.py) | 交易决策示例 |
 | [daily_signal.py](daily_signal.py) | 每日信号生成 |
-| [setup_duckdb.sh](setup_duckdb.sh) | 一键启动脚本 |
+| [setup_postgresql.sh](setup_postgresql.sh) | 一键启动脚本 |
 
 ---
 
@@ -956,13 +928,13 @@ AITrader 提供了 FastAPI Web 应用，支持:
 - 💾 **交易记录管理**: 完整的交易历史跟踪
 - 🔍 **API 接口**: RESTful API 支持集成
 
-### DuckDB 并发访问说明
+### PostgreSQL 并发访问说明
 
-**重要**: DuckDB 采用单写入者模式，系统已优化为:
+**重要**: PostgreSQL 支持高并发访问，系统已优化为:
 
-- **Web 服务**: 使用只读连接查询数据，写操作有重试机制
+- **Web 服务**: 使用连接池，支持多并发请求
 - **定时任务**: 每日 18:00 自动运行，支持自动重试（最多3次，间隔2秒）
-- **手动操作**: 如需手动生成信号，建议直接运行，会自动重试；如多次失败可先停止 web 服务
+- **手动操作**: 如需手动生成信号，建议直接运行，会自动重试
 
 ### 前置条件
 
@@ -972,7 +944,7 @@ pip install -r requirements.txt
 
 # 主要依赖包括:
 # - fastapi, uvicorn (Web 服务)
-# - duckdb (数据库)
+# - postgresql (数据库)
 # - pandas, numpy (数据处理)
 ```
 
@@ -1046,45 +1018,9 @@ Dashboard 主页 (`/`) 左侧显示最近5个交易日的推荐策略：
 - 🟢 **绿色**: 买入信号
 - 🔴 **红色**: 卖出信号
 
-#### 生产模式（systemd）
-
-1. **创建服务文件**:
-```bash
-sudo cp aitrader-web.service.example /etc/systemd/system/aitrader-web.service
-```
-
-2. **启动服务**:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable aitrader-web  # 开机自启
-sudo systemctl start aitrader-web  # 立即启动
-```
-
-3. **查看状态**:
-```bash
-sudo systemctl status aitrader-web
-sudo journalctl -u aitrader-web -f  # 查看日志
-```
-
 ### 设置定时任务
 
-#### 自动配置
-
-```bash
-cd /data/home/yy/code/aitrader/scripts
-chmod +x setup_signal_cron.sh
-./setup_signal_cron.sh
-```
-
-#### 手动配置
-
-```bash
-# 编辑 crontab
-crontab -e
-
-# 添加以下行（每个交易日 18:00 生成信号并保存到数据库）
-0 18 * * 1-5 cd /data/home/yy/code/aitrader && python run_multi_strategy_signals.py --save-to-db >> /data/home/yy/code/aitrader/logs/signal_generation.log 2>&1
-```
+详见 [数据管理指南 - 定时任务配置](DATA.md#3-定时任务配置)。
 
 ### API 接口
 
@@ -1172,7 +1108,7 @@ sudo systemctl restart nginx
 #### 日志文件
 
 - **Cron 定时任务**: `/data/home/yy/code/aitrader/logs/signal_generation.log`
-- **Web 服务**: `journalctl -u aitrader-web`
+- **Web 服务**: 终端输出（开发模式）或配置的日志文件
 
 #### 常用命令
 
@@ -1183,14 +1119,8 @@ crontab -l
 # 查看定时任务日志
 tail -f /data/home/yy/code/aitrader/logs/signal_generation.log
 
-# 查看 Web 服务状态
-sudo systemctl status aitrader-web
-
-# 重启 Web 服务
-sudo systemctl restart aitrader-web
-
 # 备份数据库
-cp /data/home/yy/data/duckdb/trading.db /data/home/yy/data/duckdb/trading.db.backup.$(date +%Y%m%d)
+cp PostgreSQL数据库 PostgreSQL数据库.backup.$(date +%Y%m%d)
 ```
 
 ### 故障排除
@@ -1214,9 +1144,6 @@ ls -la /data/home/yy/code/aitrader/logs/
 # 检查端口占用
 sudo lsof -i :8000
 
-# 查看服务日志
-sudo journalctl -u aitrader-web -n 50
-
 # 手动测试
 cd /data/home/yy/code/aitrader
 python -m uvicorn web.main:app --host 0.0.0.0 --port 8000
@@ -1226,10 +1153,10 @@ python -m uvicorn web.main:app --host 0.0.0.0 --port 8000
 
 ```bash
 # 验证数据库文件
-ls -la /data/home/yy/data/duckdb/trading.db
+ls -la PostgreSQL数据库
 
 # 测试连接
-python -c "from database.db_manager import get_db; db = get_db(); print(db.get_statistics())"
+python -c "from database.pg_manager import get_db; db = get_db(); print(db.get_statistics())"
 
 # Web 服务运行时手动生成信号
 python run_multi_strategy_signals.py --save-to-db  # 会自动重试
@@ -1258,7 +1185,7 @@ python run_multi_strategy_signals.py --save-to-db  # 会自动重试
 │         └──────────┬──────────────┘                    │
 │                    ▼                                   │
 │         ┌────────────────────┐                        │
-│         │   DuckDB 数据库    │                        │
+│         │   PostgreSQL 数据库    │                        │
 │         │  (trading.db)      │                        │
 │         └────────────────────┘                        │
 │                                                         │
@@ -1273,13 +1200,13 @@ python run_multi_strategy_signals.py --save-to-db  # 会自动重试
 
 ## 故障排除
 
-### Q: DuckDB 读取失败，回退到 CSV？
+### Q: PostgreSQL 读取失败，回退到 CSV？
 
-**A**: 正常情况。DuckDB 中没有该标的的数据时会自动回退到 CSV。
+**A**: 正常情况。PostgreSQL 中没有该标的的数据时会自动回退到 CSV。
 
 解决方法：
 ```bash
-python import_to_duckdb.py  # 导入缺失的数据
+python import_to_postgresql.py  # 导入缺失的数据
 ```
 
 ### Q: 数据库文件损坏？
@@ -1288,21 +1215,21 @@ python import_to_duckdb.py  # 导入缺失的数据
 
 ```bash
 # 删除旧数据库
-rm /data/home/yy/data/duckdb/trading.db
+rm PostgreSQL数据库
 
 # 重新导入
-python import_to_duckdb.py
+python import_to_postgresql.py
 ```
 
 ### Q: 查询速度慢？
 
-**A**: 检查是否启用了 DuckDB。
+**A**: 检查是否启用了 PostgreSQL。
 
 ```python
 from datafeed.csv_dataloader import CsvDataLoader
 
 loader = CsvDataLoader()
-print(loader.use_duckdb)  # 应该为 True
+print(loader.use_postgresql)  # 应该为 True
 ```
 
 ---
@@ -1312,7 +1239,7 @@ print(loader.use_duckdb)  # 应该为 True
 - **项目名称**: AITrader v3.5
 - **更新日期**: 2025-12-26
 - **Python 版本**: 3.x
-- **主要依赖**: backtrader, bt, duckdb, pandas, numpy, ffn
+- **主要依赖**: backtrader, bt, postgresql, pandas, numpy, ffn
 
 ---
 

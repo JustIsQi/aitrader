@@ -8,7 +8,7 @@ from datetime import datetime
 import pandas as pd
 from loguru import logger
 
-from database.db_manager import DuckDBManager
+from database.pg_manager import get_db
 from signals.strategy_parser import StrategyParser, ParsedStrategy, StrategyType
 from database.factor_cache import FactorCache
 
@@ -48,14 +48,11 @@ class StrategySignals:
 class MultiStrategySignalGenerator:
     """多策略信号生成器"""
 
-    def __init__(self, db_path: str = '/data/home/yy/data/duckdb/trading.db'):
+    def __init__(self):
         """
         初始化信号生成器
-
-        Args:
-            db_path: 数据库路径
         """
-        self.db = DuckDBManager(db_path)
+        self.db = get_db()
         self.parser = StrategyParser('strategies')
         self.target_date = datetime.now().strftime('%Y%m%d')
 

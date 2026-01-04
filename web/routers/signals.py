@@ -3,7 +3,7 @@ Signals API endpoints
 """
 from fastapi import APIRouter, HTTPException
 from typing import List
-from database.db_manager import get_db
+from database.pg_manager import get_db
 from web.models import SignalResponse
 import numpy as np
 import pandas as pd

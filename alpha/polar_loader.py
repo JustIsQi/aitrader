@@ -192,7 +192,6 @@ class PolarDataloader:
         df_col.index = pd.to_datetime(df_col.index)
         # 或者更简洁的写法（直接筛选数字类型）：
         #df_col = df_col.round(3)
-        #df_col.to_csv('close.csv')
         return df_col
 
 

@@ -220,6 +220,72 @@ section h3 {
     text-align: right;
 }
 
+/* Signal Position Info */
+.signal-position-info {
+    margin-top: 1rem;
+    padding: 0.875rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.signal-position-info .position-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.9);
+    margin-bottom: 0.625rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.signal-position-info .position-header::before {
+    content: "💼";
+    font-size: 1rem;
+}
+
+.signal-position-info .position-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 6px;
+    padding: 0.75rem;
+}
+
+.signal-position-info .position-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.875rem;
+    padding: 0.25rem 0;
+}
+
+.signal-position-info .pos-label {
+    color: #666;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.signal-position-info .pos-value {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #2c3e50;
+}
+
+.signal-position-info .pos-value.positive {
+    color: #27ae60;
+}
+
+.signal-position-info .pos-value.negative {
+    color: #e74c3c;
+}
+
 /* Trading Form */
 .trading-form {
     background-color: #f9f9f9;
