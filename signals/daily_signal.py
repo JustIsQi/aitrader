@@ -7,7 +7,7 @@
 3. 分析买卖建议
 """
 from db_manager import get_db
-from datafeed.csv_dataloader import CsvDataLoader
+from datafeed.db_dataloader import DbDataLoader
 from backtrader_engine import Task, DataFeed
 from datetime import datetime
 import pandas as pd

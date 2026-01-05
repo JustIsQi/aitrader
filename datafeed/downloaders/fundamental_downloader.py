@@ -168,8 +168,8 @@ class FundamentalDownloader:
         """
         try:
             # 使用历史行情接口获取最新数据
-            # 使用最近7天的数据,避免节假日问题
-            end_date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+            # 使用最近10天的数据,包含今天
+            end_date = datetime.now().strftime('%Y%m%d')
             start_date = (datetime.now() - timedelta(days=10)).strftime('%Y%m%d')
 
             df = ak.stock_zh_a_hist(

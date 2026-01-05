@@ -97,9 +97,9 @@ class EtfDownloader:
             # 从数据库获取最新日期
             latest_date = self.db.get_latest_date(symbol)
 
-            # 使用昨天的日期,避免节假日获取不到数据
+            # 使用今天的日期,akshare会自动判断交易日
             from datetime import timedelta
-            end_date = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+            end_date = datetime.now().strftime('%Y%m%d')
 
             if latest_date:
                 # 增量更新

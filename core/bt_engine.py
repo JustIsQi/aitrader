@@ -73,11 +73,11 @@ class StrategyConfig:
 
 
 import importlib
-from datafeed.csv_dataloader import CsvDataLoader
+from datafeed.db_dataloader import DbDataLoader
 from datafeed.factor_expr import FactorExpr
 class DataFeed:
     def __init__(self, task: Task):
-        dfs = CsvDataLoader().read_dfs(symbols=task.symbols,start_date=task.start_date, end_date=task.end_date)
+        dfs = DbDataLoader().read_dfs(symbols=task.symbols,start_date=task.start_date, end_date=task.end_date)
 
         fields = list(set(task.select_buy + task.select_sell))
         if task.order_by_signal:
@@ -225,7 +225,7 @@ class Engine:
 
         bkts = [bkt]
         for bench in [task.benchmark]:
-            df = CsvDataLoader().read_df([bench])
+            df = DbDataLoader().read_df([bench])
             df.set_index('date',inplace=True)
             df.index = pd.to_datetime(df.index)
             data = df.pivot_table(values='close', index=df.index, columns='symbol')

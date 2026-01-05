@@ -143,6 +143,35 @@ class PostgreSQLManager:
 
             return pd.read_sql(query.statement, session.bind)
 
+    def batch_get_etf_history(self, symbols: List[str], start_date: date = None,
+                             end_date: date = None) -> pd.DataFrame:
+        """
+        批量获取多个ETF的历史数据（性能优化）
+
+        一次查询返回所有ETF数据，而不是每个ETF单独查询
+
+        Args:
+            symbols: ETF代码列表
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            DataFrame: 包含所有ETF的历史数据
+        """
+        with self.get_session() as session:
+            query = session.query(EtfHistory).filter(
+                EtfHistory.symbol.in_(symbols)
+            )
+
+            if start_date:
+                query = query.filter(EtfHistory.date >= start_date)
+            if end_date:
+                query = query.filter(EtfHistory.date <= end_date)
+
+            query = query.order_by(EtfHistory.symbol.asc(), EtfHistory.date.asc())
+
+            return pd.read_sql(query.statement, session.bind)
+
     def get_latest_date(self, symbol: str) -> Optional[datetime]:
         """
         获取指定 ETF 的最新数据日期
@@ -250,6 +279,35 @@ class PostgreSQLManager:
                 query = query.filter(StockHistory.date <= end_date)
 
             query = query.order_by(StockHistory.date.asc())
+
+            return pd.read_sql(query.statement, session.bind)
+
+    def batch_get_stock_history(self, symbols: List[str], start_date: date = None,
+                               end_date: date = None) -> pd.DataFrame:
+        """
+        批量获取多个股票的历史数据（性能优化）
+
+        一次查询返回所有股票数据，而不是每个股票单独查询
+
+        Args:
+            symbols: 股票代码列表
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            DataFrame: 包含所有股票的历史数据
+        """
+        with self.get_session() as session:
+            query = session.query(StockHistory).filter(
+                StockHistory.symbol.in_(symbols)
+            )
+
+            if start_date:
+                query = query.filter(StockHistory.date >= start_date)
+            if end_date:
+                query = query.filter(StockHistory.date <= end_date)
+
+            query = query.order_by(StockHistory.symbol.asc(), StockHistory.date.asc())
 
             return pd.read_sql(query.statement, session.bind)
 
@@ -385,6 +443,128 @@ class PostgreSQLManager:
         self.clear_transactions()
         logger.info('已清空所有交易数据')
 
+    def recalculate_positions(self) -> dict:
+        """
+        从 transactions 表重新计算所有持仓
+
+        计算规则:
+        - 买入: quantity 增加,使用加权平均计算 avg_cost
+        - 卖出: quantity 减少,avg_cost 不变
+        - 最终 quantity 为 0 的记录将被删除
+
+        Returns:
+            dict: {
+                'updated_count': int,      # 更新的持仓数量
+                'deleted_count': int,      # 删除的持仓数量
+                'details': List[dict]      # 每个symbol的详细信息
+            }
+        """
+        try:
+            with self.get_session() as session:
+                # 1. 读取所有交易记录，按 symbol 和 trade_date 排序
+                transactions = session.query(Transaction).order_by(
+                    Transaction.symbol,
+                    Transaction.trade_date.asc(),
+                    Transaction.id.asc()
+                ).all()
+
+                if not transactions:
+                    logger.info('没有交易记录，跳过重新计算')
+                    return {'updated_count': 0, 'deleted_count': 0, 'details': []}
+
+                # 2. 按 symbol 分组计算
+                positions_dict = {}  # {symbol: {'quantity': float, 'avg_cost': float, 'current_price': float}}
+
+                for txn in transactions:
+                    symbol = txn.symbol
+
+                    # 初始化该 symbol 的持仓
+                    if symbol not in positions_dict:
+                        positions_dict[symbol] = {
+                            'quantity': 0.0,
+                            'avg_cost': 0.0,
+                            'current_price': txn.price
+                        }
+
+                    pos = positions_dict[symbol]
+
+                    if txn.buy_sell == 'buy':
+                        # 买入：加权平均计算成本
+                        total_quantity = pos['quantity'] + txn.quantity
+                        if total_quantity > 0:
+                            total_cost = (pos['avg_cost'] * pos['quantity'] +
+                                         txn.price * txn.quantity)
+                            pos['avg_cost'] = total_cost / total_quantity
+                            pos['quantity'] = total_quantity
+                        pos['current_price'] = txn.price
+
+                    elif txn.buy_sell == 'sell':
+                        # 卖出：减少数量，avg_cost 不变
+                        pos['quantity'] = max(0, pos['quantity'] - txn.quantity)
+                        pos['current_price'] = txn.price
+
+                # 3. 更新 positions 表
+                updated_count = 0
+                deleted_count = 0
+                details = []
+
+                for symbol, pos_data in positions_dict.items():
+                    if pos_data['quantity'] > 0:
+                        # 更新或创建持仓
+                        position = session.query(Position).filter(
+                            Position.symbol == symbol
+                        ).first()
+
+                        market_value = pos_data['quantity'] * pos_data['current_price']
+
+                        if position:
+                            position.quantity = pos_data['quantity']
+                            position.avg_cost = pos_data['avg_cost']
+                            position.current_price = pos_data['current_price']
+                            position.market_value = market_value
+                        else:
+                            new_position = Position(
+                                symbol=symbol,
+                                quantity=pos_data['quantity'],
+                                avg_cost=pos_data['avg_cost'],
+                                current_price=pos_data['current_price'],
+                                market_value=market_value
+                            )
+                            session.add(new_position)
+
+                        updated_count += 1
+                        details.append({
+                            'symbol': symbol,
+                            'quantity': pos_data['quantity'],
+                            'avg_cost': pos_data['avg_cost'],
+                            'action': 'updated'
+                        })
+
+                    else:
+                        # 删除持仓（quantity = 0）
+                        session.query(Position).filter(
+                            Position.symbol == symbol
+                        ).delete()
+                        deleted_count += 1
+                        details.append({
+                            'symbol': symbol,
+                            'quantity': 0,
+                            'avg_cost': 0,
+                            'action': 'deleted'
+                        })
+
+                logger.info(f'重新计算持仓完成: 更新 {updated_count} 个, 删除 {deleted_count} 个')
+
+                return {
+                    'updated_count': updated_count,
+                    'deleted_count': deleted_count,
+                    'details': details
+                }
+
+        except Exception as e:
+            logger.error(f'重新计算持仓失败: {e}')
+            raise
+
     # ==================== 信号操作 ====================
 
     def insert_trader_signal(self, symbol: str, signal_type: str,
@@ -404,6 +584,21 @@ class PostgreSQLManager:
             rank: 信号排名
             quantity: 建议数量
         """
+        import numpy as np
+
+        # Convert numpy types to native Python types
+        def convert_value(value):
+            if isinstance(value, np.floating):
+                return float(value)
+            elif isinstance(value, np.integer):
+                return int(value)
+            return value
+
+        price = convert_value(price)
+        score = convert_value(score)
+        rank = convert_value(rank)
+        quantity = convert_value(quantity)
+
         with self.get_session() as session:
             strategies_str = ','.join(strategies) if strategies else None
 
@@ -892,6 +1087,41 @@ class PostgreSQLManager:
         with self.get_session() as session:
             result = session.query(StockCode.symbol).order_by(StockCode.symbol).all()
             return [r[0] for r in result]
+
+    def search_codes(self, search: str = None, limit: int = 100) -> List[str]:
+        """
+        搜索 ETF 和股票代码
+
+        Args:
+            search: 搜索关键词（模糊匹配 symbol）
+            limit: 最大返回数量（默认100）
+
+        Returns:
+            List[str]: 匹配的代码列表（合并 ETF 和股票）
+        """
+        with self.get_session() as session:
+            codes = []
+
+            # 搜索 ETF 代码
+            etf_query = session.query(EtfCode.symbol)
+            if search:
+                etf_query = etf_query.filter(EtfCode.symbol.ilike(f'%{search}%'))
+            etf_query = etf_query.order_by(EtfCode.symbol).limit(limit)
+
+            codes.extend([r[0] for r in etf_query.all()])
+
+            # 搜索股票代码
+            stock_query = session.query(StockCode.symbol)
+            if search:
+                stock_query = stock_query.filter(StockCode.symbol.ilike(f'%{search}%'))
+            stock_query = stock_query.order_by(StockCode.symbol).limit(limit)
+
+            codes.extend([r[0] for r in stock_query.all()])
+
+            # 去重并排序
+            codes = sorted(list(set(codes)))
+
+            return codes[:limit]
 
     def add_etf_code(self, symbol: str):
         """

@@ -11,16 +11,17 @@ from signals.multi_strategy_signals import StrategySignals, BuySignal, SellSigna
 class SignalReporter:
     """信号报告生成器"""
 
-    def __init__(self, max_positions: int = 5, initial_capital: float = 5000):
+    POSITION_DIVISOR = 10  # 固定仓位除数，用于计算每仓位金额
+
+    def __init__(self, initial_capital: float = 20000):
         """
         初始化报告生成器
 
         Args:
-            max_positions: 最大持仓数
             initial_capital: 初始资金
         """
-        self.max_positions = max_positions
-        self.cash_per_position = initial_capital / max_positions
+        self.initial_capital = initial_capital
+        self.cash_per_position = initial_capital / self.POSITION_DIVISOR
 
     def generate_full_report(self,
                             all_signals: Dict[str, StrategySignals],
@@ -326,16 +327,11 @@ class SignalReporter:
             reverse=True
         )
 
-        # 计算可用仓位
-        current_holdings = len(holding_symbols) - len(priority_sells)
-        available_slots = self.max_positions - current_holdings
-
         # 优先级2: 建议买入
-        if available_slots > 0 and sorted_buys:
-            lines.append(f"\n【建议买入】 (可用仓位: {available_slots})")
-            top_buys = sorted_buys[:available_slots]
+        if sorted_buys:
+            lines.append(f"\n【建议买入】 ({len(sorted_buys)}个信号)")
 
-            for rank, (symbol, avg_score) in enumerate(top_buys, 1):
+            for rank, (symbol, avg_score) in enumerate(sorted_buys, 1):
                 strategies = buy_counts[symbol]
                 price = buy_prices[symbol]
 
@@ -347,10 +343,7 @@ class SignalReporter:
                     lines.append(f"     策略: {', '.join(strategies[:2])}{'...' if len(strategies) > 2 else ''}")
                     lines.append(f"     建议: 买入{quantity}股 @ {price:.3f}元, 投入{investment:.2f}元")
         else:
-            if available_slots <= 0:
-                lines.append(f"\n【无法买入】仓位已满 (当前持仓{len(holding_symbols)}, 最大{self.max_positions})")
-            else:
-                lines.append("\n【无买入建议】")
+            lines.append("\n【无买入建议】")
 
         lines.append("\n" + "=" * 100)
         lines.append("注意: 以上建议仅供参考，实际操作请结合市场情况和个人判断")

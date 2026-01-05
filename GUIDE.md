@@ -243,12 +243,55 @@ t.cash = 1000000                        # 初始资金100万
 
 #### 基本面因子 (Phase 2实现)
 
+##### 原始数据字段
+
 | 因子 | 说明 | 示例 |
 |-----|------|------|
 | `pe` | 市盈率 | `pe < 50` |
 | `pb` | 市净率 | `pb < 3` |
 | `roe` | 净资产收益率 | `roe > 0.08` |
 | `turnover_rate` | 换手率 | `turnover_rate > 2` |
+
+##### 基本面因子函数 (19个)
+
+**估值因子** (4个):
+| 函数 | 说明 | 示例 |
+|-----|------|------|
+| `pe_score(pe)` | PE评分(倒数,PE越低分越高) | `pe_score(pe) > 0.05` |
+| `pb_score(pb)` | PB评分(倒数,PB越低分越高) | `pb_score(pb) > 0.3` |
+| `ps_score(ps)` | PS评分(倒数,PS越低分越高) | `ps_score(ps) > 0.1` |
+| `value_score(pe,pb,ps)` | 综合估值评分 | `value_score(pe,pb,ps)` |
+
+**质量因子** (4个):
+| 函数 | 说明 | 示例 |
+|-----|------|------|
+| `roe_score(roe)` | ROE评分 | `roe_score(roe) > 0.12` |
+| `roa_score(roa)` | ROA评分 | `roa_score(roa) > 0.05` |
+| `profit_margin_score(margin)` | 利润率评分 | `profit_margin_score(profit_margin) > 0.1` |
+| `operating_margin_score(margin)` | 营业利润率评分 | `operating_margin_score(operating_margin) > 0.15` |
+
+**市值因子** (4个):
+| 函数 | 说明 | 示例 |
+|-----|------|------|
+| `total_mv_filter(mv,min,max)` | 总市值过滤 | `total_mv_filter(total_mv,50,500)` |
+| `circ_mv_filter(mv,min,max)` | 流通市值过滤 | `circ_mv_filter(circ_mv,0,200)` |
+| `log_market_cap(mv)` | 对数市值 | `log_market_cap(total_mv)` |
+| `market_cap_category(mv)` | 市值分类 | `market_cap_category(total_mv)` |
+
+**综合因子** (3个):
+| 函数 | 说明 | 示例 |
+|-----|------|------|
+| `quality_score(pe,pb,roe)` | 综合质量评分 | `quality_score(pe,pb,roe)` |
+| `fundamental_rank_score(**factors)` | 多因子排名评分 | `fundamental_rank_score(pe=pe,roe=roe)` |
+| `growth_score(pe,pb,roe)` | 成长评分(GARP) | `growth_score(pe,pb,roe)` |
+
+**工具函数** (2个):
+| 函数 | 说明 | 示例 |
+|-----|------|------|
+| `normalize_score(series,method)` | 标准化因子得分 | `normalize_score(roc,'zscore')` |
+| `winsorize(series,limits)` | 去极值处理 | `winsorize(pe,0.05)` |
+
+> **注意**: 所有基本面因子函数同时支持小写和大写调用,例如 `pe_score(pe)` 和 `PE_SCORE(PE)` 都可以。
 
 ---
 
@@ -680,6 +723,380 @@ CREATE TABLE stock_fundamental_daily (
 
     UNIQUE(symbol, date)
 );
+```
+
+---
+
+## 股票池管理指南
+
+### 股票池筛选器
+
+StockUniverse 类提供灵活的股票池筛选功能，支持多种筛选条件。
+
+#### 基本使用
+
+```python
+from core.stock_universe import StockUniverse
+
+# 创建筛选器实例
+universe = StockUniverse()
+
+# 获取所有可交易股票
+stocks = universe.get_all_stocks()
+print(f"可交易股票: {len(stocks)} 只")
+```
+
+---
+
+### 筛选条件说明
+
+#### 1. 基础过滤
+
+```python
+# 获取所有股票（包括ST）
+all_stocks = universe.get_all_stocks(exclude_st=False)
+
+# 排除ST股票
+stocks = universe.get_all_stocks(exclude_st=True)
+
+# 排除ST和停牌
+stocks = universe.get_all_stocks(
+    exclude_st=True,
+    exclude_suspend=True
+)
+
+# 排除新上市股票（上市不满60天）
+stocks = universe.get_all_stocks(
+    exclude_st=True,
+    exclude_new_ipo_days=60
+)
+```
+
+#### 2. 市值筛选
+
+```python
+# 大盘股（市值>100亿）
+large_caps = universe.get_stock_pool(filters={
+    'min_market_cap': 100
+})
+
+# 中盘股（50-200亿）
+mid_caps = universe.get_stock_pool(filters={
+    'min_market_cap': 50,
+    'max_market_cap': 200
+})
+
+# 小盘股（<50亿）
+small_caps = universe.get_stock_pool(filters={
+    'max_market_cap': 50
+})
+```
+
+**市值分类参考**:
+- 小盘股: < 50亿
+- 中盘股: 50-200亿
+- 大盘股: > 200亿
+
+#### 3. 基本面筛选
+
+```python
+# 低PE股票（PE<20）
+low_pe = universe.get_stock_pool(filters={
+    'max_pe': 20
+})
+
+# 高ROE股票（ROE>15%）
+high_roe = universe.get_stock_pool(filters={
+    'min_roe': 0.15
+})
+
+# 综合基本面筛选
+quality = universe.get_stock_pool(filters={
+    'min_market_cap': 50,
+    'max_pe': 30,
+    'max_pb': 3,
+    'min_roe': 0.10
+})
+```
+
+**支持的基本面参数**:
+- `min_pe`, `max_pe`: 市盈率范围
+- `min_pb`, `max_pb`: 市净率范围
+- `min_roe`, `max_roe`: ROE范围
+- `min_roa`: 最小ROA
+
+#### 4. 行业筛选
+
+```python
+# 金融行业
+financial = universe.get_stock_pool(filters={
+    'sectors': ['金融']
+})
+
+# 银行+证券
+banks = universe.get_stock_pool(filters={
+    'industries': ['银行', '证券']
+})
+
+# 多板块
+multi_sector = universe.get_stock_pool(filters={
+    'sectors': ['金融', '科技', '消费']
+})
+```
+
+---
+
+### 综合筛选示例
+
+#### 示例1: 价值选股策略
+
+```python
+universe = StockUniverse()
+
+# 低估值 + 高质量
+value_stocks = universe.get_stock_pool(filters={
+    'min_market_cap': 50,      # 市值>50亿
+    'max_pe': 20,              # PE<20
+    'max_pb': 2,               # PB<2
+    'min_roe': 0.12,           # ROE>12%
+    'exclude_st': True         # 排除ST
+})
+```
+
+#### 示例2: 大盘蓝筹策略
+
+```python
+# 大盘金融股
+blue_chips = universe.get_stock_pool(filters={
+    'min_market_cap': 200,     # 市值>200亿
+    'sectors': ['金融'],       # 金融板块
+    'exclude_st': True,
+    'exclude_suspend': True
+})
+```
+
+#### 示例3: GARP策略
+
+```python
+# 合理价格成长股
+garp_stocks = universe.get_stock_pool(filters={
+    'min_market_cap': 50,
+    'max_pe': 30,              # 合理估值
+    'min_roe': 0.15,           # 高成长性
+    'exclude_st': True
+})
+```
+
+---
+
+### 在策略中使用
+
+#### 示例1: 动态股票池
+
+```python
+from core.backtrader_engine import Task, Engine
+from core.stock_universe import StockUniverse
+
+t = Task()
+t.name = 'A股价值选股'
+t.ashare_mode = True
+
+# 动态生成股票池
+universe = StockUniverse()
+t.symbols = universe.get_stock_pool(filters={
+    'min_market_cap': 50,
+    'max_pe': 20,
+    'min_roe': 0.12,
+    'exclude_st': True
+})
+
+# 配置策略
+t.select_buy = ['roc(close,20) > 0.03']
+t.order_by_signal = 'quality_score(pe, pb, roe)'
+t.order_by_topK = 20
+
+# 运行回测
+e = Engine()
+e.run(t)
+```
+
+#### 示例2: 多因子策略
+
+```python
+t = Task()
+t.name = 'A股多因子策略'
+
+# 质量筛选
+universe = StockUniverse()
+t.symbols = universe.get_stock_pool(filters={
+    'min_market_cap': 100,
+    'max_pe': 30,
+    'min_roe': 0.10
+})
+
+# 多因子买入条件
+t.select_buy = [
+    'roc(close,20) > 0.03',
+    'close > ma(close,60)',
+    'volume > ma(volume,20)*1.2'
+]
+t.buy_at_least_count = 2
+
+# 综合评分排序
+t.order_by_signal = '''
+    quality_score(pe, pb, roe) * 0.4 +
+    roc(close,20) * 0.3 +
+    trend_score(close,25) * 0.3
+'''
+t.order_by_topK = 10
+```
+
+---
+
+### 统计分析
+
+```python
+# 获取股票池统计信息
+universe = StockUniverse()
+stocks = universe.get_stock_pool(filters={
+    'min_market_cap': 100
+})
+
+stats = universe.get_universe_stats(stocks[:100])
+
+print(f"股票数量: {stats['total_count']}")
+print(f"板块分布: {stats['sectors']}")
+print(f"行业分布: {stats['industries']}")
+print(f"平均市值: {stats['market_cap']['avg']:.2f}亿")
+print(f"平均PE: {stats['fundamental']['avg_pe']:.2f}")
+```
+
+---
+
+### 常见问题
+
+#### Q: 如何获取所有A股？
+```python
+universe = StockUniverse()
+all_stocks = universe.get_all_stocks()
+```
+
+#### Q: 如何排除ST股票？
+```python
+stocks = universe.get_all_stocks(exclude_st=True)
+# 或
+stocks = universe.get_stock_pool(filters={'exclude_st': True})
+```
+
+#### Q: 如何筛选大盘股？
+```python
+large_caps = universe.get_stock_pool(filters={
+    'min_market_cap': 100  # 100亿以上
+})
+```
+
+#### Q: 如何筛选低估值股票？
+```python
+value_stocks = universe.get_stock_pool(filters={
+    'max_pe': 15,
+    'max_pb': 2
+})
+```
+
+#### Q: 如何筛选特定行业？
+```python
+# 板块筛选
+financial = universe.get_stock_pool(filters={
+    'sectors': ['金融']
+})
+
+# 行业筛选
+banks = universe.get_stock_pool(filters={
+    'industries': ['银行']
+})
+```
+
+---
+
+### API参考
+
+#### StockUniverse 类
+
+```python
+class StockUniverse:
+    def __init__(self, db=None)
+        """初始化股票池管理器"""
+
+    def get_all_stocks(self, exclude_st=True, exclude_suspend=True,
+                      exclude_new_ipo_days=None) -> List[str]
+        """获取所有可交易股票"""
+
+    def filter_by_market_cap(self, symbols, min_mv=None, max_mv=None) -> List[str]
+        """按市值筛选"""
+
+    def filter_by_fundamental(self, symbols, min_pe=None, max_pe=None,
+                             min_pb=None, max_pb=None,
+                             min_roe=None, max_roe=None,
+                             min_roa=None) -> List[str]
+        """按基本面指标筛选"""
+
+    def filter_by_industry(self, symbols, industries=None, sectors=None) -> List[str]
+        """按行业筛选"""
+
+    def filter_by_liquidity(self, symbols, min_amount=None) -> List[str]
+        """按流动性筛选"""
+
+    def get_stock_pool(self, date=None, filters=None) -> List[str]
+        """综合筛选股票池"""
+
+    def get_universe_stats(self, symbols) -> Dict[str, Any]
+        """获取股票池统计信息"""
+```
+
+---
+
+### 使用示例
+
+#### 示例1: 基本筛选
+```python
+from core.stock_universe import StockUniverse
+
+universe = StockUniverse()
+stocks = universe.get_all_stocks()
+print(f"可交易股票: {len(stocks)} 只")
+```
+
+#### 示例2: 质量筛选
+```python
+quality_stocks = universe.get_stock_pool(filters={
+    'min_market_cap': 50,
+    'max_pe': 30,
+    'min_roe': 0.10,
+    'exclude_st': True
+})
+```
+
+#### 示例3: 在策略中使用
+```python
+from core.backtrader_engine import Task
+from core.stock_universe import StockUniverse
+
+t = Task()
+t.name = 'A股价值选股'
+
+# 动态生成股票池
+universe = StockUniverse()
+t.symbols = universe.get_stock_pool(filters={
+    'min_market_cap': 50,
+    'max_pe': 20,
+    'min_roe': 0.12,
+    'exclude_st': True
+})
+
+# 配置策略
+t.select_buy = ['roc(close,20) > 0.03']
+t.order_by_signal = 'quality_score(pe, pb, roe)'
+t.order_by_topK = 20
 ```
 
 ---
@@ -1244,11 +1661,21 @@ print(detail)
   - ✅ 股票元数据表(stock_metadata)
   - ✅ 每日基本面数据表(stock_fundamental_daily)
   - ✅ 基本面数据获取脚本(fetch_fundamental_data.py)
-  - ✅ 基本面因子库(factor_fundamental.py)
+  - ✅ 基本面因子库(factor_fundamental.py) - 19个因子函数
+  - ✅ 因子表达式引擎注册(factor_expr.py)
   - ✅ 定时任务配置(setup_fundamental_cron.sh)
   - ✅ 支持PE、PB、ROE等估值和质量因子
   - ✅ 全市场5700+只A股覆盖
   - ✅ 1年历史数据保留
+  - ✅ 基本面因子与技术因子无缝集成
+
+- **v3.0** (2026-01-05): Phase 3股票池管理系统完成
+  - ✅ 股票池筛选器(core/stock_universe.py) - StockUniverse类
+  - ✅ 统一数据更新脚本(scripts/unified_update.py)
+  - ✅ 定时任务配置(crontab自动更新)
+  - ✅ 支持市值、基本面、行业等多维度筛选
+  - ✅ 股票池统计分析功能
+  - ✅ 完整测试覆盖
 
 ---
 

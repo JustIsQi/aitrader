@@ -222,3 +222,55 @@ async def get_strategies():
         return sorted(strategies)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/recalculate-positions", response_model=dict)
+async def recalculate_positions():
+    """
+    重新计算所有持仓
+
+    从 transactions 表读取所有交易记录，重新计算 positions 表。
+    适用于手动修改了 transactions 表后同步持仓数据。
+
+    Returns:
+        dict: {
+            'status': 'success',
+            'message': str,
+            'updated_count': int,
+            'deleted_count': int,
+            'details': List[dict]
+        }
+    """
+    try:
+        db = get_db()
+        result = db.recalculate_positions()
+
+        return {
+            'status': 'success',
+            'message': f'重新计算完成: 更新 {result["updated_count"]} 个持仓, 删除 {result["deleted_count"]} 个',
+            'updated_count': result['updated_count'],
+            'deleted_count': result['deleted_count'],
+            'details': result['details']
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/codes")
+async def get_trading_codes(search: str = None, limit: int = 100):
+    """
+    获取 ETF 和股票代码列表（支持搜索）
+
+    Args:
+        search: 搜索关键词（可选）
+        limit: 最大返回数量（默认100）
+
+    Returns:
+        List[str]: 代码列表
+    """
+    try:
+        db = get_db()
+        codes = db.search_codes(search=search, limit=limit)
+        return codes
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

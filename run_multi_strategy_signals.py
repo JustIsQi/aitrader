@@ -7,7 +7,6 @@
     python run_multi_strategy_signals.py                              # 运行所有策略
     python run_multi_strategy_signals.py --date 20251225             # 指定日期
     python run_multi_strategy_signals.py --output report.txt         # 输出到文件
-    python run_multi_strategy_signals.py --max-positions 10          # 最大持仓数
 """
 import argparse
 import sys
@@ -28,7 +27,6 @@ def parse_arguments():
   %(prog)s                              # 运行所有策略
   %(prog)s --date 20251225             # 指定分析日期
   %(prog)s --output report.txt         # 输出到文件
-  %(prog)s --max-positions 10          # 设置最大持仓数
         '''
     )
 
@@ -40,17 +38,10 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        '--max-positions',
-        type=int,
-        default=5,
-        help='最大持仓数 (默认: 5)'
-    )
-
-    parser.add_argument(
         '--initial-capital',
         type=float,
-        default=5000,
-        help='初始资金 (默认: 5000)'
+        default=20000,
+        help='初始资金 (默认: 20000)'
     )
 
     parser.add_argument(
@@ -180,7 +171,6 @@ def main():
         print(f"分析日期: {args.date}")
     else:
         print(f"分析日期: 最新可用日期")
-    print(f"最大持仓数: {args.max_positions}")
     print(f"初始资金: {args.initial_capital:.0f}元")
     print("=" * 100)
 
@@ -189,7 +179,7 @@ def main():
         from loguru import logger
 
         logger.disable("database.db_manager")
-        logger.disable("datafeed.csv_dataloader")
+        logger.disable("datafeed.db_dataloader")
 
         print("\n[1/5] 初始化数据库连接...")
         db = get_db()
@@ -228,7 +218,6 @@ def main():
         # 生成报告
         print("\n[5/5] 生成分析报告...")
         reporter = SignalReporter(
-            max_positions=args.max_positions,
             initial_capital=args.initial_capital
         )
 

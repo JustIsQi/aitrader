@@ -2,6 +2,7 @@
 from datafeed import mytt
 from datafeed import factor_extends
 from datafeed import factor_qlib
+from datafeed import factor_fundamental
 
 import numpy as np
 import pandas as pd
@@ -26,6 +27,13 @@ class FactorExpr:
         for method_name in dir(factor_qlib):
             if not method_name.startswith('_'):
                 method = getattr(factor_qlib, method_name)
+                context[method_name] = method
+                context[method_name.upper()] = method
+
+        # Register fundamental factors
+        for method_name in dir(factor_fundamental):
+            if not method_name.startswith('_'):
+                method = getattr(factor_fundamental, method_name)
                 context[method_name] = method
                 context[method_name.upper()] = method
 
@@ -119,8 +127,8 @@ class FactorExpr:
 
 
 if __name__ == '__main__':
-    from datafeed.csv_dataloader import CsvDataLoader
-    dfs = CsvDataLoader().read_dfs(symbols=['510300.SH', '159915.SZ'])
+    from datafeed.db_dataloader import DbDataLoader
+    dfs = DbDataLoader().read_dfs(symbols=['510300.SH', '159915.SZ'])
 
     expr = ['MACD(close,12,26,9)','SAR(high,low)']  # ['RSRS(high,low,18)','RSRS_right_zscore(high,low,18,600)']
     all = FactorExpr().calc_formulas(dfs,expr)

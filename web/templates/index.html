@@ -95,7 +95,10 @@
                     <form id="tradingForm">
                         <div class="form-group">
                             <label for="symbol">Symbol:</label>
-                            <input type="text" id="symbol" name="symbol" required placeholder="e.g., 513100.SH">
+                            <input type="text" id="symbol" name="symbol" list="symbolList" required placeholder="e.g., 513100.SH" autocomplete="off">
+                            <datalist id="symbolList">
+                                <!-- 动态加载选项 -->
+                            </datalist>
                         </div>
                         <div class="form-group">
                             <label for="buy_sell">Type:</label>
@@ -128,7 +131,10 @@
 
                 <!-- Current Positions -->
                 <div class="positions-section">
-                    <h3>Current Positions</h3>
+                    <div class="section-header">
+                        <h3>Current Positions</h3>
+                        <button id="recalculateBtn" class="btn-secondary">重新计算持仓</button>
+                    </div>
                     <table class="data-table">
                         <thead>
                             <tr>

@@ -7,6 +7,8 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import pandas as pd
 from loguru import logger
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
 
 from database.pg_manager import get_db
 from signals.strategy_parser import StrategyParser, ParsedStrategy, StrategyType
@@ -107,20 +109,52 @@ class MultiStrategySignalGenerator:
         factor_cache = FactorCache(all_symbols, '20200101', self.target_date)
         factor_cache.calculate_factors(all_factor_exprs)
 
-        # 生成每个策略的信号
-        print(f"  生成各策略信号...")
+        # 生成每个策略的信号（并发执行）
+        print(f"  生成各策略信号（并发执行）...")
         all_signals = {}
 
-        for idx, strategy in enumerate(strategies, 1):
-            if strategy.task is None:
-                continue
+        # 过滤出有效的策略
+        valid_strategies = [s for s in strategies if s.task is not None]
 
-            signals = self._generate_strategy_signals(
-                strategy,
-                current_positions,
-                factor_cache
-            )
-            all_signals[strategy.task.name] = signals
+        if not valid_strategies:
+            logger.warning("没有有效的策略")
+            return {}
+
+        # 使用线程池并发执行策略信号生成
+        max_workers = min(os.cpu_count() or 4, len(valid_strategies))
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任务
+            futures = {
+                executor.submit(
+                    self._generate_strategy_signals,
+                    strategy,
+                    current_positions,
+                    factor_cache
+                ): strategy
+                for strategy in valid_strategies
+            }
+
+            # 收集结果
+            completed_count = 0
+            for future in as_completed(futures):
+                strategy = futures[future]
+                try:
+                    signals = future.result()
+                    all_signals[strategy.task.name] = signals
+                    completed_count += 1
+                    print(f"  ✓ [{completed_count}/{len(valid_strategies)}] {strategy.task.name}")
+                except Exception as e:
+                    logger.error(f"策略 {strategy.task.name} 执行失败: {e}")
+                    # 为失败的策略创建空信号
+                    all_signals[strategy.task.name] = StrategySignals(
+                        strategy_name=strategy.task.name,
+                        buy_signals=[],
+                        sell_signals=[],
+                        hold_recommendations=[],
+                        symbols_analyzed=strategy.task.symbols,
+                        analysis_date=self.target_date
+                    )
 
         print(f"  ✓ 完成 {len(all_signals)} 个策略")
 

@@ -31,7 +31,8 @@
       "Bash(while ps aux)",
       "Bash(pkill:*)",
       "Bash(timeout:*)",
-      "Bash(/data/home/yy/code/aitrader/scripts/setup_update_cron.sh:*)"
+      "Bash(/data/home/yy/code/aitrader/scripts/setup_update_cron.sh:*)",
+      "Bash(PYTHONPATH=/data/home/yy/code/aitrader python:*)"
     ]
   }
 }

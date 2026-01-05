@@ -6,8 +6,8 @@ from loguru import logger
 from config import DATA_DIR
 
 
-class CsvDataLoader:
-    """PostgreSQL-only data loader (CSV removed)"""
+class DbDataLoader:
+    """数据库批量查询数据加载器（支持PostgreSQL）"""
 
     def __init__(self, auto_download=True):
         """
@@ -17,7 +17,7 @@ class CsvDataLoader:
         self.auto_download = auto_download
         from database.pg_manager import get_db
         self.db = get_db()
-        logger.info('CsvDataLoader: 使用 PostgreSQL 作为数据源')
+        logger.info('DbDataLoader: 使用 PostgreSQL 作为数据源')
 
     def _download_to_postgres(self, symbol):
         """下载数据并直接写入 PostgreSQL"""
@@ -141,22 +141,73 @@ class CsvDataLoader:
             return None
 
     def read_dfs(self, symbols: list[str], start_date='20100101', end_date=datetime.now().strftime('%Y%m%d')):
-        """读取多个标的的数据"""
+        """读取多个标的的数据（批量查询优化版本）"""
+        from scripts.get_data import is_etf
+
+        # 转换日期格式
+        start_date_fmt = start_date[:4] + '-' + start_date[4:6] + '-' + start_date[6:]
+        end_date_fmt = end_date[:4] + '-' + end_date[4:6] + '-' + end_date[6:]
+
+        # 分离ETF和股票
+        etf_symbols = [s for s in symbols if is_etf(s)]
+        stock_symbols = [s for s in symbols if not is_etf(s)]
+
         dfs = {}
 
-        for s in symbols:
-            df = self._read_postgres(s, start_date, end_date)
-            if df is not None:
-                dfs[s] = df
-            else:
-                logger.error(f'无法获取 {s} 的数据')
+        # 批量查询ETF（一次查询获取所有ETF）
+        if etf_symbols:
+            try:
+                df_all = self.db.batch_get_etf_history(etf_symbols, start_date_fmt, end_date_fmt)
+                if not df_all.empty:
+                    for symbol in etf_symbols:
+                        df_symbol = df_all[df_all['symbol'] == symbol].copy()
+                        if not df_symbol.empty:
+                            df_symbol['date'] = pd.to_datetime(df_symbol['date']).dt.strftime('%Y%m%d')
+                            df_symbol['symbol'] = symbol
+                            df_symbol.dropna(inplace=True)
+                            dfs[symbol] = df_symbol
+                        else:
+                            logger.warning(f'ETF {symbol} 无数据')
+                else:
+                    logger.warning(f'批量查询ETF未返回数据')
+            except Exception as e:
+                logger.error(f'批量查询ETF失败: {e}，回退到单个查询')
+                # 回退到单个查询
+                for s in etf_symbols:
+                    df = self._read_postgres(s, start_date, end_date)
+                    if df is not None:
+                        dfs[s] = df
+
+        # 批量查询股票（一次查询获取所有股票）
+        if stock_symbols:
+            try:
+                df_all = self.db.batch_get_stock_history(stock_symbols, start_date_fmt, end_date_fmt)
+                if not df_all.empty:
+                    for symbol in stock_symbols:
+                        df_symbol = df_all[df_all['symbol'] == symbol].copy()
+                        if not df_symbol.empty:
+                            df_symbol['date'] = pd.to_datetime(df_symbol['date']).dt.strftime('%Y%m%d')
+                            df_symbol['symbol'] = symbol
+                            df_symbol.dropna(inplace=True)
+                            dfs[symbol] = df_symbol
+                        else:
+                            logger.warning(f'股票 {symbol} 无数据')
+                else:
+                    logger.warning(f'批量查询股票未返回数据')
+            except Exception as e:
+                logger.error(f'批量查询股票失败: {e}，回退到单个查询')
+                # 回退到单个查询
+                for s in stock_symbols:
+                    df = self._read_postgres(s, start_date, end_date)
+                    if df is not None:
+                        dfs[s] = df
 
         if not dfs:
             missing_symbols = [s for s in symbols if s not in dfs]
             raise ValueError(f"没有可用的数据。以下标的数据缺失: {missing_symbols}。已尝试自动下载但仍失败，请检查网络连接或代理设置。")
 
         # 按日期过滤
-        for s in dfs.keys():
+        for s in list(dfs.keys()):  # 使用list()避免修改字典大小
             df = dfs[s]
             df = df[df['date'] >= start_date]
             df = df[df['date'] <= end_date]
@@ -165,6 +216,10 @@ class CsvDataLoader:
         return dfs
 
 
+# 向后兼容：保留 CsvDataLoader 别名
+CsvDataLoader = DbDataLoader
+
+
 if __name__ == '__main__':
-    df = CsvDataLoader().read_dfs(symbols=['510300.SH', '159915.SZ'])
+    df = DbDataLoader().read_dfs(symbols=['510300.SH', '159915.SZ'])
     print(df)

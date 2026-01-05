@@ -4,7 +4,7 @@
 """
 import pandas as pd
 from typing import List, Dict
-from datafeed.csv_dataloader import CsvDataLoader
+from datafeed.db_dataloader import DbDataLoader
 from datafeed.factor_expr import FactorExpr
 
 
@@ -46,7 +46,7 @@ class FactorCache:
             unique_exprs.append('close')
 
         # 临时禁用详细日志和调试输出
-        logger.disable("datafeed.csv_dataloader")
+        logger.disable("datafeed.db_dataloader")
 
         # 捕获标准输出,抑制因子计算的调试信息
         old_stdout = sys.stdout
@@ -54,7 +54,7 @@ class FactorCache:
 
         try:
             # 加载数据
-            loader = CsvDataLoader()
+            loader = DbDataLoader()
             dfs = loader.read_dfs(
                 symbols=self.symbols,
                 start_date=self.start_date,
@@ -75,7 +75,7 @@ class FactorCache:
         finally:
             # 恢复标准输出
             sys.stdout = old_stdout
-            logger.enable("datafeed.csv_dataloader")
+            logger.enable("datafeed.db_dataloader")
 
         # 缓存每个因子 (pivot 为 date × symbol 格式)
         for expr in unique_exprs:

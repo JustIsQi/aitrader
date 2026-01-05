@@ -101,11 +101,11 @@ class AlgoStrategy(StrategyTemplate):
 
 
 
-from datafeed.csv_dataloader import CsvDataLoader
+from datafeed.db_dataloader import DbDataLoader
 from datafeed.factor_expr import FactorExpr
 class DataFeed:
     def __init__(self, task: Task):
-        dfs = CsvDataLoader().read_dfs(symbols=task.symbols,start_date=task.start_date, end_date=task.end_date)
+        dfs = DbDataLoader().read_dfs(symbols=task.symbols,start_date=task.start_date, end_date=task.end_date)
 
         fields = list(set(task.select_buy + task.select_sell))
         if task.order_by_signal:
@@ -241,7 +241,7 @@ class Engine:
 
     def _prepare_run(self, symbols, start_date, end_date, commissions=0.0):
 
-        dfs = CsvDataLoader().read_dfs(symbols)
+        dfs = DbDataLoader().read_dfs(symbols)
         self.cerebro.broker.setcommission(commissions)
 
         start_date = '20100101'
@@ -395,7 +395,7 @@ class Engine:
         #equity.calc_stats().display()
         datas = [equity]
         for bench in [task.benchmark]:
-            df = CsvDataLoader().read_df([bench],start_date=task.start_date, end_date=task.end_date)
+            df = DbDataLoader().read_df([bench],start_date=task.start_date, end_date=task.end_date)
             df.set_index('date',inplace=True)
             df.index = pd.to_datetime(df.index)
             data = df.pivot_table(values='close', index=df.index, columns='symbol')
