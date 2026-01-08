@@ -103,19 +103,36 @@ class AlgoStrategy(StrategyTemplate):
 
 from datafeed.db_dataloader import DbDataLoader
 from datafeed.factor_expr import FactorExpr
+import time
+
 class DataFeed:
     def __init__(self, task: Task):
-        dfs = DbDataLoader().read_dfs(symbols=task.symbols,start_date=task.start_date, end_date=task.end_date)
+        datafeed_start = time.time()
+        logger.info(f"  [{task.name}] DataFeed: 开始加载数据 (标的数: {len(task.symbols)})...")
+        logger.debug(f"  [{task.name}] DataFeed: 日期范围 {task.start_date} ~ {task.end_date}")
+
+        dfs = DbDataLoader(auto_download=False).read_dfs(symbols=task.symbols,start_date=task.start_date, end_date=task.end_date)
+        logger.info(f"  [{task.name}] DataFeed: 原始数据加载完成, 耗时 {time.time() - datafeed_start:.2f}秒")
 
         fields = list(set(task.select_buy + task.select_sell))
         if task.order_by_signal:
             fields += [task.order_by_signal]
         names = fields
+
+        logger.debug(f"  [{task.name}] DataFeed: 计算技术指标: {', '.join(fields)}")
+        calc_start = time.time()
         df_all = FactorExpr().calc_formulas(dfs,fields)
+        logger.info(f"  [{task.name}] DataFeed: 技术指标计算完成, 耗时 {time.time() - calc_start:.2f}秒, 数据量: {len(df_all)}行")
         self.df_all = df_all
+
+        total_elapsed = time.time() - datafeed_start
+        logger.info(f"  [{task.name}] DataFeed: 数据准备总完成, 总耗时 {total_elapsed:.2f}秒")
 
 
     def get_factor_df(self, col):
+        if col not in self.df_all.columns:
+            logger.warning(f'Column {col} not found in computed factors')
+            return None
         df_factor = self.df_all.pivot_table(values=col, index=self.df_all.index, columns='symbol')
         if col == 'close':
             df_factor = df_factor.ffill()
@@ -169,12 +186,12 @@ class Engine:
 
     def _get_algos(self, task: Task):
 
-        bt_algos = importlib.import_module('backtrader_algos')
+        from core import backtrader_algos
 
         if task.period == 'RunEveryNPeriods':
             algo_period = bt.algos.RunEveryNPeriods(n=task.period_days, run_on_last_date=True)
         else:
-            algo_period = getattr(bt_algos,task.period)()
+            algo_period = getattr(backtrader_algos,task.period)()
 
         algo_select_where = None
         # 信号规则
@@ -241,7 +258,7 @@ class Engine:
 
     def _prepare_run(self, symbols, start_date, end_date, commissions=0.0):
 
-        dfs = DbDataLoader().read_dfs(symbols)
+        dfs = DbDataLoader(auto_download=False).read_dfs(symbols)
         self.cerebro.broker.setcommission(commissions)
 
         start_date = '20100101'
@@ -295,7 +312,11 @@ class Engine:
         Returns:
             回测结果
         """
+        import time
+        run_start = time.time()
         task.end_date = datetime.now().strftime('%Y%m%d')
+
+        logger.debug(f"  [{task.name}] Engine.run(): 初始化回测引擎...")
 
         # 准备数据(无论A股还是ETF模式都需要)
         self._prepare_run(task.symbols, task.start_date, task.end_date, 0.0)
@@ -304,20 +325,28 @@ class Engine:
         if task.ashare_mode:
             from core.ashare_commission import setup_ashare_commission
             setup_ashare_commission(self.cerebro, scheme_version=task.ashare_commission)
-            logger.info(f"A股模式已启用, 手续费方案: {task.ashare_commission}")
+            logger.debug(f"  [{task.name}] A股模式已启用, 手续费方案: {task.ashare_commission}")
         else:
             # ETF模式: 使用传统佣金设置
             self.cerebro.broker.setcommission(commissions)
 
+        # DataFeed初始化(包含数据加载和指标计算)
         self.datafeed = DataFeed(task)
 
         # 添加策略,传递A股模式参数
+        logger.debug(f"  [{task.name}] 添加策略算法...")
         self.cerebro.addstrategy(
             AlgoStrategy,
             algo_list=self._get_algos(task),
             ashare_mode=task.ashare_mode
         )
+
+        # 运行回测
+        logger.info(f"  [{task.name}] 开始执行Backtrader回测...")
+        backtest_start = time.time()
         self.results = self.cerebro.run()
+        backtest_elapsed = time.time() - backtest_start
+        logger.info(f"  [{task.name}] Backtrader回测完成, 耗时 {backtest_elapsed:.2f}秒")
 
         timereturn = self.results[0].analyzers.timereturn.get_analysis()
         returns_series = pd.Series(timereturn)
@@ -395,7 +424,11 @@ class Engine:
         #equity.calc_stats().display()
         datas = [equity]
         for bench in [task.benchmark]:
-            df = DbDataLoader().read_df([bench],start_date=task.start_date, end_date=task.end_date)
+            dfs = DbDataLoader().read_dfs([bench],start_date=task.start_date, end_date=task.end_date)
+            df = dfs.get(bench, pd.DataFrame())
+            if df.empty:
+                logger.warning(f"基准 {bench} 数据为空，跳过")
+                continue
             df.set_index('date',inplace=True)
             df.index = pd.to_datetime(df.index)
             data = df.pivot_table(values='close', index=df.index, columns='symbol')

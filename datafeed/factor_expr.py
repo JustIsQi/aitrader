@@ -54,9 +54,11 @@ class FactorExpr:
         #self.update_base_factors()
 
     def update_base_factors(self, df: pd.DataFrame):
-        for c in ['open', 'high', 'low', 'close', 'volume']:
-            data = df[c]
-            self.context[c.upper()] = data
+        # Register all numeric columns from DataFrame to evaluation context
+        # This includes: open, high, low, close, volume, turnover_rate, pe, roe, etc.
+        for col in df.columns:
+            if col != 'symbol' and pd.api.types.is_numeric_dtype(df[col]):
+                self.context[col.upper()] = df[col]
 
 
     def calc_formula(self, df: pd.DataFrame, expr: str):
@@ -65,7 +67,25 @@ class FactorExpr:
             context = self.context
             self.update_base_factors(df)
 
-            result = eval(expr.upper(), context)
+            # Convert expression to uppercase and handle logical operators
+            expr_upper = expr.upper()
+
+            # For expressions with AND/OR, we need to wrap comparisons in parentheses
+            # This is a simple heuristic that works for common cases like "A > 0 AND B < 10"
+            import re
+
+            # Replace ' AND ' with ') & (' and add opening/closing parentheses
+            # First, wrap the whole expression in parentheses
+            if ' AND ' in expr_upper or ' OR ' in expr_upper:
+                # Split by AND/OR and wrap each comparison
+                # This is a simplified approach - for production, use a proper parser
+                # For now, just replace the operators
+                expr_upper = expr_upper.replace(' AND ', ') & (')
+                expr_upper = expr_upper.replace(' OR ', ') | (')
+                # Add opening parenthesis at start and closing at end
+                expr_upper = '(' + expr_upper + ')'
+
+            result = eval(expr_upper, context)
 
 
             if isinstance(result, tuple):

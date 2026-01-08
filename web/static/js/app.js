@@ -10,6 +10,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize recalculate positions button
     initRecalculateButton();
 
+    // Initialize module toggles (ETF/A-share)
+    initModuleToggles();
+
+    // Initialize backtest section toggles
+    initBacktestToggles();
+
+    // Initialize backtest buttons
+    initBacktestButtons();
+
+    // Initialize modal handlers
+    initModalHandlers();
+
     // Initialize trading form
     const tradingForm = document.getElementById('tradingForm');
     if (tradingForm) {
@@ -289,4 +301,198 @@ function initRecalculateButton() {
             }
         });
     }
+}
+
+// ========== Module-level expand/collapse ==========
+
+function initModuleToggles() {
+    const etfHeader = document.getElementById('etf-module-header');
+    const ashareWeeklyHeader = document.getElementById('ashare-weekly-module-header');
+    const ashareMonthlyHeader = document.getElementById('ashare-monthly-module-header');
+
+    if (etfHeader) {
+        etfHeader.addEventListener('click', function() {
+            const container = document.getElementById('etf-signals-container');
+            container.classList.toggle('collapsed');
+            _toggleIcon(this);
+        });
+    }
+
+    if (ashareWeeklyHeader) {
+        ashareWeeklyHeader.addEventListener('click', function() {
+            const container = document.getElementById('ashare-weekly-signals-container');
+            container.classList.toggle('collapsed');
+            _toggleIcon(this);
+        });
+    }
+
+    if (ashareMonthlyHeader) {
+        ashareMonthlyHeader.addEventListener('click', function() {
+            const container = document.getElementById('ashare-monthly-signals-container');
+            container.classList.toggle('collapsed');
+            _toggleIcon(this);
+        });
+    }
+}
+
+function _toggleIcon(header) {
+    const icon = header.querySelector('.expand-icon');
+    if (header.nextElementSibling.classList.contains('collapsed')) {
+        icon.innerHTML = '&#9652;';  // Up arrow
+    } else {
+        icon.innerHTML = '&#9662;';  // Down arrow
+    }
+}
+
+// ========== Backtest section expand/collapse ==========
+
+function initBacktestToggles() {
+    const backtestHeaders = document.querySelectorAll('.backtest-header');
+
+    backtestHeaders.forEach(header => {
+        header.addEventListener('click', function() {
+            const content = this.nextElementSibling;
+            content.classList.toggle('collapsed');
+
+            const icon = this.querySelector('.expand-icon-small');
+            if (content.classList.contains('collapsed')) {
+                icon.innerHTML = '&#9652;';
+            } else {
+                icon.innerHTML = '&#9662;';
+            }
+        });
+    });
+}
+
+// ========== Backtest modal ==========
+
+function initBacktestButtons() {
+    const buttons = document.querySelectorAll('.btn-view-backtest');
+
+    buttons.forEach(button => {
+        button.addEventListener('click', function() {
+            const backtestId = this.getAttribute('data-backtest-id');
+            loadBacktestDetail(backtestId);
+        });
+    });
+}
+
+async function loadBacktestDetail(backtestId) {
+    const modal = document.getElementById('backtest-modal');
+    const modalBody = document.getElementById('backtest-modal-body');
+
+    try {
+        // Show loading
+        modalBody.innerHTML = '<p style="text-align: center; padding: 20px;">Loading backtest data...</p>';
+        modal.style.display = 'block';
+
+        // Fetch backtest data
+        const response = await fetch(`/api/signals/ashare/backtest/${backtestId}`);
+        if (!response.ok) throw new Error('Failed to load backtest');
+
+        const backtest = await response.json();
+
+        // Render backtest details
+        modalBody.innerHTML = renderBacktestDetail(backtest);
+
+    } catch (error) {
+        modalBody.innerHTML = `<p class="error" style="color: red; text-align: center;">Error loading backtest: ${error.message}</p>`;
+    }
+}
+
+function renderBacktestDetail(backtest) {
+    // Format trades
+    const tradesHtml = backtest.trade_list && backtest.trade_list.length > 0
+        ? backtest.trade_list.slice(0, 20).map(trade => `
+            <tr>
+                <td>${trade.date || ''}</td>
+                <td>${trade.symbol || ''}</td>
+                <td>${trade.type || ''}</td>
+                <td>${trade.price ? trade.price.toFixed(2) : '-'}</td>
+                <td>${trade.quantity || '-'}</td>
+            </tr>
+        `).join('')
+        : '<tr><td colspan="5">No trades data available</td></tr>';
+
+    return `
+        <div class="backtest-detail">
+            <h4>${backtest.strategy_name || 'Unknown Strategy'}</h4>
+            ${backtest.strategy_version ? `<p class="backtest-version">Version: ${backtest.strategy_version}</p>` : ''}
+
+            <div class="backtest-period">
+                Period: ${backtest.start_date} to ${backtest.end_date}
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Total Return</div>
+                    <div class="metric-value ${backtest.total_return >= 0 ? 'positive' : 'negative'}">
+                        ${backtest.total_return ? backtest.total_return.toFixed(2) : '0.00'}%
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Annual Return</div>
+                    <div class="metric-value">
+                        ${backtest.annual_return ? backtest.annual_return.toFixed(2) : '0.00'}%
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Sharpe Ratio</div>
+                    <div class="metric-value">
+                        ${backtest.sharpe_ratio ? backtest.sharpe_ratio.toFixed(2) : '0.00'}
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Max Drawdown</div>
+                    <div class="metric-value negative">
+                        ${backtest.max_drawdown ? backtest.max_drawdown.toFixed(2) : '0.00'}%
+                    </div>
+                </div>
+            </div>
+
+            ${backtest.win_rate !== null ? `
+            <div class="metric-card" style="text-align: center; margin-bottom: 15px;">
+                <div class="metric-label">Win Rate</div>
+                <div class="metric-value">${backtest.win_rate.toFixed(1)}%</div>
+            </div>
+            ` : ''}
+
+            <div class="backtest-trades">
+                <h5>Recent Trades (Top 20)</h5>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f5f5f5;">
+                            <th style="padding: 8px; border: 1px solid #ddd;">Date</th>
+                            <th style="padding: 8px; border: 1px solid #ddd;">Symbol</th>
+                            <th style="padding: 8px; border: 1px solid #ddd;">Type</th>
+                            <th style="padding: 8px; border: 1px solid #ddd;">Price</th>
+                            <th style="padding: 8px; border: 1px solid #ddd;">Quantity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tradesHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function initModalHandlers() {
+    const modal = document.getElementById('backtest-modal');
+    if (!modal) return;
+
+    const closeBtn = modal.querySelector('.close-modal');
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+    }
+
+    window.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
 }

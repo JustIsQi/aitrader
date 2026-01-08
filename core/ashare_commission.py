@@ -31,13 +31,14 @@ class AShareCommissionScheme(bt.CommInfoBase):
         ('min_commission', 5.0),        # 最低佣金5元
     )
 
-    def _getcommission(self, size: float, price: float) -> float:
+    def _getcommission(self, size: float, price: float, pseudoexec: bool = False) -> float:
         """
         计算总手续费
 
         Args:
             size: 成交数量(股数,正数为买入,负数为卖出)
             price: 成交价格
+            pseudoexec: 是否为模拟执行(Backtrader内部参数)
 
         Returns:
             float: 总手续费
@@ -85,13 +86,14 @@ class AShareCommissionSchemeV2(bt.CommInfoBase):
         ('min_commission', 5.0),        # 最低佣金5元
     )
 
-    def _getcommission(self, size: float, price: float) -> float:
+    def _getcommission(self, size: float, price: float, pseudoexec: bool = False) -> float:
         """
         计算总手续费(2023年后新费率)
 
         Args:
             size: 成交数量
             price: 成交价格
+            pseudoexec: 是否为模拟执行(Backtrader内部参数)
 
         Returns:
             float: 总手续费
@@ -121,7 +123,7 @@ class ZeroCommission(bt.CommInfoBase):
 
     params = ()
 
-    def _getcommission(self, size: float, price: float) -> float:
+    def _getcommission(self, size: float, price: float, pseudoexec: bool = False) -> float:
         """零手续费"""
         return 0.0
 
@@ -137,13 +139,14 @@ class FixedCommission(bt.CommInfoBase):
         ('commission_rate', 0.0003),  # 固定费率0.03%
     )
 
-    def _getcommission(self, size: float, price: float) -> float:
+    def _getcommission(self, size: float, price: float, pseudoexec: bool = False) -> float:
         """
         计算固定费率手续费
 
         Args:
             size: 成交数量
             price: 成交价格
+            pseudoexec: 是否为模拟执行(Backtrader内部参数)
 
         Returns:
             float: 手续费
@@ -185,7 +188,9 @@ def setup_ashare_commission(cerebro: bt.Cerebro, scheme_version: str = 'v2',
     else:
         raise ValueError(f"未知的手续费方案版本: {scheme_version}")
 
-    cerebro.broker.setcommission(commission=comm_scheme)
+    # 设置手续费方案
+    # 注意: Backtrader的setcommission需要传入comminfo实例,不是commission参数
+    cerebro.broker.addcommissioninfo(comm_scheme)
     logger.info("A股手续费方案已设置")
 
 

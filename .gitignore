@@ -1,4 +1,6 @@
 *.csv.env
+*.log
+*.tmp
 
 # DuckDB旧文件（保留备份，不提交到git）
 # *.duckdb

@@ -14,7 +14,9 @@ from database.models.models import (
     Position,
     FactorCache,
     EtfCode,
-    StockCode
+    StockCode,
+    StrategyBacktest,
+    SignalBacktestAssociation
 )
 
 __all__ = [
@@ -31,4 +33,6 @@ __all__ = [
     'FactorCache',
     'EtfCode',
     'StockCode',
+    'StrategyBacktest',
+    'SignalBacktestAssociation',
 ]

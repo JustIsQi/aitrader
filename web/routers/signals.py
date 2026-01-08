@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 from database.pg_manager import get_db
 from web.models import SignalResponse
+from loguru import logger
 import numpy as np
 import pandas as pd
 
@@ -209,4 +210,166 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
 
         return {"dates": dates_list}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/etf/latest")
+async def get_latest_etf_signals(limit: int = 50):
+    """
+    获取最新的ETF信号（单独获取）
+
+    Returns:
+        ETF signals grouped by date
+    """
+    try:
+        db = get_db()
+        with db.get_session() as session:
+            # Query ETF signals using asset_type column
+            from database.models.models import Trader
+
+            # ETF信号：使用asset_type字段过滤
+            query = session.query(Trader).filter(
+                Trader.asset_type == 'etf'
+            ).order_by(Trader.signal_date.desc(), Trader.created_at.desc()).limit(limit)
+
+            signals_df = pd.read_sql(query.statement, session.bind)
+
+        if signals_df.empty:
+            return {"dates": []}
+
+        # Clean and group by date
+        signals_df = clean_dataframe(signals_df)
+        signals_list = []
+        for record in signals_df.to_dict('records'):
+            cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
+            if 'signal_date' in cleaned_record and cleaned_record['signal_date']:
+                cleaned_record['signal_date'] = cleaned_record['signal_date'].strftime('%Y-%m-%d')
+            if 'created_at' in cleaned_record and cleaned_record['created_at']:
+                cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+            signals_list.append(cleaned_record)
+
+        # Group by date
+        grouped = {}
+        for signal in signals_list:
+            date_key = signal['signal_date']
+            if date_key not in grouped:
+                grouped[date_key] = []
+            grouped[date_key].append(signal)
+
+        dates_list = [{"date": date, "signals": signals}
+                      for date, signals in grouped.items()]
+
+        return {"dates": dates_list}
+
+    except Exception as e:
+        logger.error(f"Error fetching ETF signals: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ashare/latest")
+async def get_latest_ashare_signals(limit: int = 50):
+    """
+    获取最新的A股信号（单独获取），按周频和月频分组
+
+    Returns:
+        A-share signals split into weekly and monthly groups, each grouped by date
+    """
+    try:
+        db = get_db()
+        with db.get_session() as session:
+            # Query A-share signals using asset_type column
+            from database.models.models import Trader
+
+            # A股信号：使用asset_type字段过滤
+            query = session.query(Trader).filter(
+                Trader.asset_type == 'ashare'
+            ).order_by(Trader.signal_date.desc(), Trader.created_at.desc()).limit(limit)
+
+            signals_df = pd.read_sql(query.statement, session.bind)
+
+        if signals_df.empty:
+            return {"weekly": [], "monthly": []}
+
+        signals_df = clean_dataframe(signals_df)
+
+        # Enrich with backtest information and split by frequency
+        weekly_signals = []
+        monthly_signals = []
+
+        for record in signals_df.to_dict('records'):
+            cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
+
+            # Format dates
+            if 'signal_date' in cleaned_record and cleaned_record['signal_date']:
+                cleaned_record['signal_date'] = cleaned_record['signal_date'].strftime('%Y-%m-%d')
+            if 'created_at' in cleaned_record and cleaned_record['created_at']:
+                cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+
+            # Get associated backtest
+            backtest_info = db.get_signal_backtest(record['id'])
+            cleaned_record['backtest'] = backtest_info
+
+            # Split by strategy frequency (周频/月频)
+            strategies = cleaned_record.get('strategies', '')
+            if '周频' in strategies:
+                weekly_signals.append(cleaned_record)
+            elif '月频' in strategies:
+                monthly_signals.append(cleaned_record)
+            else:
+                # Fallback: if no frequency indicator, treat as weekly
+                weekly_signals.append(cleaned_record)
+
+        # Group weekly signals by date
+        weekly_grouped = {}
+        for signal in weekly_signals:
+            date_key = signal['signal_date']
+            if date_key not in weekly_grouped:
+                weekly_grouped[date_key] = []
+            weekly_grouped[date_key].append(signal)
+
+        weekly_dates_list = [{"date": date, "signals": signals}
+                             for date, signals in weekly_grouped.items()]
+
+        # Group monthly signals by date
+        monthly_grouped = {}
+        for signal in monthly_signals:
+            date_key = signal['signal_date']
+            if date_key not in monthly_grouped:
+                monthly_grouped[date_key] = []
+            monthly_grouped[date_key].append(signal)
+
+        monthly_dates_list = [{"date": date, "signals": signals}
+                              for date, signals in monthly_grouped.items()]
+
+        return {
+            "weekly": weekly_dates_list,
+            "monthly": monthly_dates_list
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching A-share signals: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ashare/backtest/{backtest_id}")
+async def get_backtest_detail(backtest_id: int):
+    """
+    获取回测详情
+
+    Returns:
+        Complete backtest report with equity curve and trades
+    """
+    try:
+        db = get_db()
+        backtest = db.get_backtest_by_id(backtest_id)
+
+        if not backtest:
+            raise HTTPException(status_code=404, detail="Backtest not found")
+
+        return backtest
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching backtest detail: {e}")
         raise HTTPException(status_code=500, detail=str(e))

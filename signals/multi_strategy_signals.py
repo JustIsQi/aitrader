@@ -50,23 +50,33 @@ class StrategySignals:
 class MultiStrategySignalGenerator:
     """多策略信号生成器"""
 
-    def __init__(self):
+    def __init__(self, enable_smart_filter=True, filter_config=None, version_filter=None):
         """
         初始化信号生成器
+
+        Args:
+            enable_smart_filter: 是否启用智能选股筛选 (默认True)
+            filter_config: 筛选配置对象 (默认使用balanced模式)
+            version_filter: 策略版本过滤 ('weekly', 'monthly' 或 None表示所有)
         """
         self.db = get_db()
         self.parser = StrategyParser('strategies')
         self.target_date = datetime.now().strftime('%Y%m%d')
+        self.enable_smart_filter = enable_smart_filter
+        self.filter_config = filter_config
+        self.version_filter = version_filter
 
     def generate_signals(self,
                         current_positions: pd.DataFrame = None,
-                        target_date: str = None) -> Dict[str, StrategySignals]:
+                        target_date: str = None,
+                        version_filter: str = None) -> Dict[str, StrategySignals]:
         """
         生成所有策略的信号
 
         Args:
             current_positions: 当前持仓 DataFrame
             target_date: 目标日期 (YYYYMMDD)
+            version_filter: 策略版本过滤 ('weekly', 'monthly' 或 None表示所有)
 
         Returns:
             策略信号字典 {strategy_name: StrategySignals}
@@ -74,15 +84,50 @@ class MultiStrategySignalGenerator:
         if target_date:
             self.target_date = target_date
 
+        # 优先使用传入的version_filter，否则使用初始化时的设置
+        if version_filter is None:
+            version_filter = self.version_filter
+
         # 获取当前持仓
         if current_positions is None:
             current_positions = self.db.get_positions()
 
-        # 解析所有策略
-        strategies = self.parser.parse_all_strategies()
+        # 使用 StrategyLoader 加载A股策略（而不是StrategyParser）
+        from core.strategy_loader import StrategyLoader
+        from core.backtrader_engine import Task
+
+        loader = StrategyLoader()
+
+        # 加载策略（可按版本过滤）
+        if version_filter:
+            strategy_tuples = loader.load_ashare_strategies_by_version(version_filter)
+            logger.info(f"加载 {version_filter} 策略: {len(strategy_tuples)} 个")
+        else:
+            strategy_tuples = loader.load_ashare_strategies()
+            logger.info(f"加载所有策略: {len(strategy_tuples)} 个")
+
+        # 将策略元组转换为 ParsedStrategy 格式
+        strategies = []
+        for display_name, module_name, func_name, version in strategy_tuples:
+            # 动态导入模块并调用函数获取Task
+            try:
+                module = __import__(module_name, fromlist=[func_name])
+                strategy_func = getattr(module, func_name)
+                task = strategy_func()
+
+                # 创建一个简单的包装对象来模拟 ParsedStrategy
+                class SimpleStrategy:
+                    def __init__(self, task, filename):
+                        self.task = task
+                        self.filename = filename
+
+                strategies.append(SimpleStrategy(task, module_name.split('.')[-1]))
+            except Exception as e:
+                logger.warning(f"加载策略 {display_name} 失败: {e}")
+                continue
 
         if not strategies:
-            logger.warning("没有可用的策略")
+            logger.warning("没有可用的A股策略")
             return {}
 
         # 收集所有唯一标的和因子表达式
@@ -100,8 +145,39 @@ class MultiStrategySignalGenerator:
             if strategy.task.order_by_signal:
                 all_factor_exprs.append(strategy.task.order_by_signal)
 
-        all_symbols = list(all_symbols)
+        initial_symbols = list(all_symbols)
         all_factor_exprs = list(set(all_factor_exprs))  # 去重
+
+        # ========== 智能选股预筛选 ==========
+        if self.enable_smart_filter:
+            from core.smart_stock_filter import SmartStockFilter, FilterPresets
+
+            # 使用提供的配置或默认balanced配置
+            config = self.filter_config if self.filter_config else FilterPresets.balanced()
+
+            logger.info(f"🚀 启用智能选股筛选 (preset={'custom' if self.filter_config else 'balanced'})")
+            smart_filter = SmartStockFilter(config)
+
+            # 执行筛选
+            filtered_symbols = smart_filter.filter_stocks(initial_symbols=initial_symbols)
+
+            # 更新策略的股票池为筛选后的结果
+            for strategy in strategies:
+                if strategy.task is None:
+                    continue
+                # 取交集: 策略股票池 ∩ 筛选结果
+                original_count = len(strategy.task.symbols)
+                strategy.task.symbols = list(
+                    set(strategy.task.symbols) & set(filtered_symbols)
+                )
+                logger.debug(f"  策略 {strategy.task.name}: {original_count} -> {len(strategy.task.symbols)} 只股票")
+
+            # 使用筛选后的股票池
+            all_symbols = filtered_symbols
+        else:
+            logger.info("⚠️  智能选股筛选已禁用，使用完整股票池")
+            all_symbols = initial_symbols
+        # ========== 智能选股结束 ==========
 
         print(f"  ✓ {len(strategies)} 个策略, {len(all_symbols)} 个标的, {len(all_factor_exprs)} 个因子")
 

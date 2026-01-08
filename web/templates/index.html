@@ -17,13 +17,19 @@
     </header>
 
     <main>
-        <div class="dashboard-grid">
-            <!-- Left Module: Latest 5 Trading Days Recommendations -->
-            <section class="signals-panel">
-                <h2>Latest 5 Trading Days</h2>
-                <div id="dashboard-signals-container">
-                    {% if signals_by_date %}
-                        {% for date_group in signals_by_date %}
+        <div class="dashboard-grid-two-column">
+            <!-- Left Column: Trading Signals -->
+            <div class="signals-column">
+            <!-- ETF Signals Module -->
+            <section class="signals-panel etf-panel">
+                <div class="module-header" id="etf-module-header">
+                    <span class="module-title">ETF Trading Signals</span>
+                    <span class="expand-icon">&#9662;</span>
+                </div>
+
+                <div id="etf-signals-container" class="signals-container">
+                    {% if etf_signals_by_date %}
+                        {% for date_group in etf_signals_by_date %}
                         <div class="date-group">
                             <div class="date-header">
                                 <div class="date-header-content">
@@ -47,7 +53,6 @@
                                         {% endif %}
                                     </div>
 
-                                    <!-- 持仓信息区域 -->
                                     {% if signal.position is defined and signal.position %}
                                     <div class="signal-position-info">
                                         <div class="position-header">Current Position</div>
@@ -80,12 +85,245 @@
                         </div>
                         {% endfor %}
                     {% else %}
-                        <p class="no-data">No signals available</p>
+                        <p class="no-data">No ETF signals available</p>
                     {% endif %}
                 </div>
             </section>
 
-            <!-- Right Module: Trading Records -->
+            <!-- A-Share Weekly Signals Module -->
+            <section class="signals-panel ashare-panel">
+                <div class="module-header" id="ashare-weekly-module-header">
+                    <span class="module-title">A-Share Weekly Strategies (A股周频策略)</span>
+                    <span class="expand-icon">&#9662;</span>
+                </div>
+
+                <div id="ashare-weekly-signals-container" class="signals-container">
+                    {% if ashare_weekly_signals %}
+                        {% for date_group in ashare_weekly_signals %}
+                        <div class="date-group">
+                            <div class="date-header">
+                                <div class="date-header-content">
+                                    <div class="date-title">{{ date_group.date }}</div>
+                                    <div class="date-count">{{ date_group.signals|length }} signals</div>
+                                </div>
+                                <div class="expand-icon">&#9662;</div>
+                            </div>
+                            <div class="signals-list">
+                                {% for signal in date_group.signals %}
+                                <div class="signal-card-with-backtest {{ 'buy' if signal.signal_type == 'buy' else 'sell' }}">
+
+                                    <!-- Signal Info -->
+                                    <div class="signal-header">
+                                        <span class="symbol">{{ signal.symbol }}</span>
+                                        <span class="signal-type">{{ signal.signal_type.upper() }}</span>
+                                    </div>
+
+                                    <!-- Backtest Report (Expandable) -->
+                                    {% if signal.backtest %}
+                                    <div class="backtest-section">
+                                        <div class="backtest-header">
+                                            <span class="backtest-title">Backtest: {{ signal.backtest.strategy_name }}</span>
+                                            <span class="expand-icon-small">&#9662;</span>
+                                        </div>
+                                        <div class="backtest-content collapsed">
+                                            <div class="backtest-metrics">
+                                                <div class="metric">
+                                                    <span class="metric-label">Total Return:</span>
+                                                    <span class="metric-value {{ 'positive' if signal.backtest.total_return >= 0 else 'negative' }}">
+                                                        {{ "%.2f"|format(signal.backtest.total_return) }}%
+                                                    </span>
+                                                </div>
+                                                <div class="metric">
+                                                    <span class="metric-label">Annual Return:</span>
+                                                    <span class="metric-value">
+                                                        {{ "%.2f"|format(signal.backtest.annual_return) }}%
+                                                    </span>
+                                                </div>
+                                                <div class="metric">
+                                                    <span class="metric-label">Sharpe Ratio:</span>
+                                                    <span class="metric-value">
+                                                        {{ "%.2f"|format(signal.backtest.sharpe_ratio) }}
+                                                    </span>
+                                                </div>
+                                                <div class="metric">
+                                                    <span class="metric-label">Max Drawdown:</span>
+                                                    <span class="metric-value negative">
+                                                        {{ "%.2f"|format(signal.backtest.max_drawdown) }}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button class="btn-view-backtest" data-backtest-id="{{ signal.backtest.id }}">
+                                                View Full Report
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                    <!-- Signal Details -->
+                                    <div class="signal-details">
+                                        <p>Price: {{ signal.price }}</p>
+                                        <p>Strategies: {{ signal.strategies }}</p>
+                                        {% if signal.score is not none %}
+                                        <p>Score: {{ "%.4f"|format(signal.score) }}</p>
+                                        {% endif %}
+                                    </div>
+
+                                    {% if signal.position is defined and signal.position %}
+                                    <div class="signal-position-info">
+                                        <div class="position-header">Current Position</div>
+                                        <div class="position-details">
+                                            <div class="position-row">
+                                                <span class="pos-label">Quantity:</span>
+                                                <span class="pos-value">{{ "%.0f"|format(signal.position.quantity) }}</span>
+                                            </div>
+                                            <div class="position-row">
+                                                <span class="pos-label">Market Value:</span>
+                                                <span class="pos-value">¥{{ "%.2f"|format(signal.position.market_value) if signal.position.market_value else '-' }}</span>
+                                            </div>
+                                            <div class="position-row">
+                                                <span class="pos-label">Unrealized P&L:</span>
+                                                <span class="pos-value {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                    ¥{{ "%.2f"|format(signal.position.unrealized_pl) }}
+                                                    ({{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                    <div class="signal-date">
+                                        {{ signal.created_at }}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="no-data">No A-share weekly signals available</p>
+                    {% endif %}
+                </div>
+            </section>
+
+            <!-- A-Share Monthly Signals Module -->
+            <section class="signals-panel ashare-panel">
+                <div class="module-header" id="ashare-monthly-module-header">
+                    <span class="module-title">A-Share Monthly Strategies (A股月频策略)</span>
+                    <span class="expand-icon">&#9662;</span>
+                </div>
+
+                <div id="ashare-monthly-signals-container" class="signals-container">
+                    {% if ashare_monthly_signals %}
+                        {% for date_group in ashare_monthly_signals %}
+                        <div class="date-group">
+                            <div class="date-header">
+                                <div class="date-header-content">
+                                    <div class="date-title">{{ date_group.date }}</div>
+                                    <div class="date-count">{{ date_group.signals|length }} signals</div>
+                                </div>
+                                <div class="expand-icon">&#9662;</div>
+                            </div>
+                            <div class="signals-list">
+                                {% for signal in date_group.signals %}
+                                <div class="signal-card-with-backtest {{ 'buy' if signal.signal_type == 'buy' else 'sell' }}">
+
+                                    <!-- Signal Info -->
+                                    <div class="signal-header">
+                                        <span class="symbol">{{ signal.symbol }}</span>
+                                        <span class="signal-type">{{ signal.signal_type.upper() }}</span>
+                                    </div>
+
+                                    <!-- Backtest Report (Expandable) -->
+                                    {% if signal.backtest %}
+                                    <div class="backtest-section">
+                                        <div class="backtest-header">
+                                            <span class="backtest-title">Backtest: {{ signal.backtest.strategy_name }}</span>
+                                            <span class="expand-icon-small">&#9662;</span>
+                                        </div>
+                                        <div class="backtest-content collapsed">
+                                            <div class="backtest-metrics">
+                                                <div class="metric">
+                                                    <span class="metric-label">Total Return:</span>
+                                                    <span class="metric-value {{ 'positive' if signal.backtest.total_return >= 0 else 'negative' }}">
+                                                        {{ "%.2f"|format(signal.backtest.total_return) }}%
+                                                    </span>
+                                                </div>
+                                                <div class="metric">
+                                                    <span class="metric-label">Annual Return:</span>
+                                                    <span class="metric-value">
+                                                        {{ "%.2f"|format(signal.backtest.annual_return) }}%
+                                                    </span>
+                                                </div>
+                                                <div class="metric">
+                                                    <span class="metric-label">Sharpe Ratio:</span>
+                                                    <span class="metric-value">
+                                                        {{ "%.2f"|format(signal.backtest.sharpe_ratio) }}
+                                                    </span>
+                                                </div>
+                                                <div class="metric">
+                                                    <span class="metric-label">Max Drawdown:</span>
+                                                    <span class="metric-value negative">
+                                                        {{ "%.2f"|format(signal.backtest.max_drawdown) }}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button class="btn-view-backtest" data-backtest-id="{{ signal.backtest.id }}">
+                                                View Full Report
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                    <!-- Signal Details -->
+                                    <div class="signal-details">
+                                        <p>Price: {{ signal.price }}</p>
+                                        <p>Strategies: {{ signal.strategies }}</p>
+                                        {% if signal.score is not none %}
+                                        <p>Score: {{ "%.4f"|format(signal.score) }}</p>
+                                        {% endif %}
+                                    </div>
+
+                                    {% if signal.position is defined and signal.position %}
+                                    <div class="signal-position-info">
+                                        <div class="position-header">Current Position</div>
+                                        <div class="position-details">
+                                            <div class="position-row">
+                                                <span class="pos-label">Quantity:</span>
+                                                <span class="pos-value">{{ "%.0f"|format(signal.position.quantity) }}</span>
+                                            </div>
+                                            <div class="position-row">
+                                                <span class="pos-label">Market Value:</span>
+                                                <span class="pos-value">¥{{ "%.2f"|format(signal.position.market_value) if signal.position.market_value else '-' }}</span>
+                                            </div>
+                                            <div class="position-row">
+                                                <span class="pos-label">Unrealized P&L:</span>
+                                                <span class="pos-value {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                    ¥{{ "%.2f"|format(signal.position.unrealized_pl) }}
+                                                    ({{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+
+                                    <div class="signal-date">
+                                        {{ signal.created_at }}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="no-data">No A-share monthly signals available</p>
+                    {% endif %}
+                </div>
+            </section>
+            </div>
+
+            <!-- Right Column: Trading Records, Positions, P&L -->
+            <div class="trading-column">
+            <!-- Trading Records Module -->
             <section class="trading-panel">
                 <h2>Trading Records</h2>
 
@@ -173,8 +411,22 @@
                     </div>
                 </div>
             </section>
+            </div>
         </div>
     </main>
+
+    <!-- Backtest Detail Modal -->
+    <div id="backtest-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Backtest Report</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body" id="backtest-modal-body">
+                <!-- Content loaded dynamically -->
+            </div>
+        </div>
+    </div>
 
     <script>
         // 确保在加载完 DOM 后执行

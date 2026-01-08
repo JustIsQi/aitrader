@@ -2,7 +2,7 @@
 SQLAlchemy ORM Models for AITrader PostgreSQL Database
 All models mirror the existing DuckDB schema
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, Text, UniqueConstraint, Index
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, Text, UniqueConstraint, Index, ForeignKey, JSON
 from sqlalchemy.sql import func
 from database.models.base import Base
 
@@ -114,12 +114,14 @@ class Trader(Base):
     score = Column(Float)
     rank = Column(Integer)
     quantity = Column(Integer)
+    asset_type = Column(String(20), nullable=False)  # 'etf' or 'ashare'
     created_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint('symbol', 'signal_date', 'signal_type', name='uix_trader_signal'),
         Index('idx_trader_signal_date', 'signal_date'),
         Index('idx_trader_symbol_date', 'symbol', 'signal_date'),
+        Index('idx_trader_asset_type', 'asset_type'),
     )
 
 
@@ -184,3 +186,67 @@ class StockCode(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, unique=True)
+
+
+class StrategyBacktest(Base):
+    """策略回测结果表"""
+    __tablename__ = 'strategy_backtests'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    strategy_name = Column(String(100), nullable=False)
+    strategy_version = Column(String(50))  # e.g., 'weekly', 'monthly'
+    asset_type = Column(String(20), nullable=False)  # 'etf' or 'ashare'
+
+    # Backtest configuration
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    initial_capital = Column(Float, default=1000000)
+
+    # Performance metrics
+    total_return = Column(Float)
+    annual_return = Column(Float)
+    sharpe_ratio = Column(Float)
+    max_drawdown = Column(Float)
+    win_rate = Column(Float)
+    profit_factor = Column(Float)
+
+    # Trading statistics
+    total_trades = Column(Integer)
+    avg_hold_days = Column(Float)
+    turnover_rate = Column(Float)
+
+    # Benchmark comparison
+    benchmark_return = Column(Float)
+    excess_return = Column(Float)
+
+    # Detailed results (JSON for flexibility)
+    equity_curve = Column(JSON)  # Array of {date, value}
+    monthly_returns = Column(JSON)
+    trade_list = Column(JSON)  # Array of trade objects
+
+    # Metadata
+    backtest_date = Column(DateTime, server_default=func.now())
+    status = Column(String(20), default='completed')  # 'completed', 'failed', 'running'
+    error_message = Column(Text)
+
+    __table_args__ = (
+        UniqueConstraint('strategy_name', 'strategy_version', 'start_date', 'end_date',
+                        name='uix_backtest_strategy_period'),
+        Index('idx_backtests_strategy', 'strategy_name', 'asset_type'),
+        Index('idx_backtests_date', 'backtest_date'),
+    )
+
+
+class SignalBacktestAssociation(Base):
+    """信号与回测的关联表"""
+    __tablename__ = 'signal_backtest_associations'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trader_id = Column(Integer, ForeignKey('trader.id'), nullable=False)
+    backtest_id = Column(Integer, ForeignKey('strategy_backtests.id'), nullable=False)
+    strategy_name = Column(String(100))  # Denormalized for faster queries
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('trader_id', 'backtest_id', name='uix_signal_backtest'),
+    )

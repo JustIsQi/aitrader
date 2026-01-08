@@ -23,7 +23,7 @@
 | **Phase 1** | 基础设施建设 | 5-7天 | 1天 | ✅ **已完成** |
 | **Phase 2** | 基本面数据系统 | 3-5天 | 1天 | ✅ **已完成** |
 | **Phase 3** | 股票池管理 | 2-3天 | 2天 | ✅ **已完成** |
-| **Phase 4** | 策略实现 | 5-7天 | - | ⏳ 待开始 |
+| **Phase 4** | 策略实现 | 5-7天 | 1天 | ✅ **已完成** |
 | **Phase 5** | 回测与验证 | 3-5天 | - | ⏳ 待开始 |
 | **Phase 6** | 信号生成集成 | 2-3天 | - | ⏳ 待开始 |
 | **Phase 7** | 测试与优化 | 3-5天 | - | ⏳ 待开始 |
@@ -1238,61 +1238,112 @@ class StockUniverse:
 
 ---
 
-### Phase 4: 策略实现 (预计5-7天)
+### Phase 4: 策略实现 (✅ 已完成)
 
-#### Step 4.1: 多因子策略
+#### 完成时间
+2026-01-06
+
+#### 完成内容
+
+##### 1. 多因子智能选股策略 ✨
 **文件**: `strategies/stocks_多因子智能选股策略.py`
 
-**结构**:
+**策略版本**:
+- 周频版本: `multi_factor_strategy_weekly()`
+- 月频版本: `multi_factor_strategy_monthly()`
+- 保守版本: `multi_factor_strategy_conservative()`
+
+**策略特点**:
+- 动态因子权重（技术40% + 质量30% + 估值20% + 流动性10%）
+- 综合选股条件（至少满足3/7个条件）
+- 行业中性化
+- 新股过滤（排除上市252天内）
+- 流动性过滤（换手率>2%）
+
+**选股条件**:
 ```python
-from core.backtrader_engine import Task
+买入条件（至少满足3个）:
+- roc(close,20) > 0.03          # 正动量
+- trend_score(close,25) > 0      # 趋势向上
+- volume > ma(volume,20)*1.2     # 放量
+- close > ma(close,60)           # 长期趋势
+- pe > 0 and pe < 80             # 合理估值
+- roe > 0.08                     # 盈利能力
+- turnover_rate > 2              # 流动性
 
-def multi_factor_strategy():
-    t = Task()
-    t.name = 'A股多因子智能选股'
-    t.period = 'RunWeekly'
-    t.weight = 'WeightEqually'
-    t.ashare_mode = True  # 启用A股模式
-
-    # 动态加载股票池
-    from core.stock_universe import StockUniverse
-    universe = StockUniverse()
-    t.symbols = universe.filter_universe(
-        filters={'min_market_cap': 50e8, 'exclude_st': True}
-    )
-
-    # 买入条件
-    t.select_buy = [
-        'roc(close,20) > 0.03',
-        'volume > ma(volume,20)*1.2',
-        'roe > 0.08',
-        'pe < 50'
-    ]
-    t.buy_at_least_count = 3
-
-    # 卖出条件
-    t.select_sell = [
-        'roc(close,20) < -0.05',
-        'close < ma(close,20)*0.95'
-    ]
-    t.sell_at_least_count = 1
-
-    # 排序因子
-    t.order_by_signal = '''
-        roc(close,20)*0.4 +
-        trend_score(close,25)*0.3 +
-        roe_score(roe)*0.2 +
-        pe_score(pe)*0.1
-    '''
-    t.order_by_topK = 20
-
-    return t
+卖出条件（满足任一）:
+- roc(close,20) < -0.05          # 动量转负
+- close < ma(close,20)*0.95      # 跌破均线
+- turnover_rate < 0.5            # 流动性枯竭
 ```
 
-#### Step 4.2: 动量轮动策略
+**组合管理**:
+- 周频: 持仓20只股票
+- 月频: 持仓30只股票
+- 保守版: 持仓15只股票
+- 等权重配置
+
+##### 2. 动量轮动选股策略 ✨
 **文件**: `strategies/stocks_动量轮动选股策略.py`
 
-**结构**: 类似Step 4.1,但逻辑为纯动量轮动
+**策略版本**:
+- 周频版本: `momentum_strategy_weekly()`
+- 月频版本: `momentum_strategy_monthly()`
+- 激进版本: `momentum_strategy_aggressive()`
+
+**策略特点**:
+- 纯动量驱动（激进型）
+- 强势筛选（6个条件全部满足）
+- 多层止损机制
+- 避免涨停追高
+
+**选股条件**:
+```python
+周频买入条件（全部满足）:
+- roc(close,20) > 0.08           # 强动量>8%
+- roc(close,5) > -0.03           # 短期未大幅回调
+- volume > ma(volume,20)         # 量能支撑
+- close > ma(close,20)           # 上升趋势
+- turnover_rate > 1.5            # 流动性充足
+- close < ref(close,1)*1.095     # 未涨停
+
+卖出条件（满足任一）:
+- roc(close,20) < 0              # 动量转负
+- close/ref(close,1) < 0.92      # 大跌-8%止损
+- close < ma(close,20)*0.95      # 跌破均线
+- volume < ma(volume,20)*0.3     # 缩量
+- roc(close,5) < -0.10           # 短期暴跌
+```
+
+**组合管理**:
+- 周频: 持仓15只股票
+- 月频: 持仓20只股票
+- 激进版: 持仓10只股票
+- 等权重配置
+
+##### 3. 策略回测脚本 ✨
+**文件**: `scripts/run_stock_backtests.py`
+
+**功能**:
+- 单个策略运行
+- 批量运行所有策略
+- 策略对比报告
+- 命令行参数支持
+
+**使用方式**:
+```bash
+# 运行所有策略
+python scripts/run_stock_backtests.py --all
+
+# 运行指定策略
+python scripts/run_stock_backtests.py --strategy multi_factor --period weekly --plot
+
+# 运行所有多因子策略
+python scripts/run_stock_backtests.py --multi-factor-all
+
+# 运行所有动量策略
+python scripts/run_stock_backtests.py --momentum-all
+```
 
 ---
 

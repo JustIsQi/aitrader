@@ -115,39 +115,27 @@ class FundamentalDownloader:
 
     def fetch_stock_fundamental(self, symbol: str, code: str) -> Optional[Dict]:
         """
-        获取单只股票的基本面数据
+        获取单只股票的基本面数据（仅PE和PB）
 
         Args:
             symbol: 格式化后的代码 (如 000001.SZ)
             code: 原始代码 (如 000001)
 
         Returns:
-            包含基本面数据的字典
+            包含基本面数据的字典（仅PE、PB）
         """
         try:
-            # 1. 获取实时行情数据 (PE、PB、市值等)
+            # 获取实时行情数据 (仅PE、PB)
             hist_data = self._fetch_hist_data(code)
             if hist_data is None:
                 return None
 
-            # 2. 获取财务数据 (ROE、ROA 等)
-            financial_data = self._fetch_financial_data(code)
-
-            # 3. 合并数据
+            # 只返回PE和PB数据
             fundamental = {
                 'date': self.today,
                 'symbol': symbol,
                 'pe_ratio': hist_data.get('pe_ratio'),
                 'pb_ratio': hist_data.get('pb_ratio'),
-                'ps_ratio': hist_data.get('ps_ratio'),
-                'total_mv': hist_data.get('total_mv'),
-                'circ_mv': hist_data.get('circ_mv'),
-                'roe': financial_data.get('roe'),
-                'roa': financial_data.get('roa'),
-                'profit_margin': financial_data.get('profit_margin'),
-                'operating_margin': financial_data.get('operating_margin'),
-                'debt_ratio': financial_data.get('debt_ratio'),
-                'current_ratio': financial_data.get('current_ratio'),
             }
 
             return fundamental
@@ -158,13 +146,13 @@ class FundamentalDownloader:
 
     def _fetch_hist_data(self, code: str) -> Optional[Dict]:
         """
-        获取历史行情中的估值和市值数据
+        获取历史行情中的估值数据（仅PE和PB）
 
         Args:
             code: 原始代码
 
         Returns:
-            包含 PE/PB/市值等数据的字典
+            包含 PE/PB 数据的字典
         """
         try:
             # 使用历史行情接口获取最新数据
@@ -189,9 +177,6 @@ class FundamentalDownloader:
             return {
                 'pe_ratio': latest.get('市盈率-动态', None),
                 'pb_ratio': latest.get('市净率', None),
-                'ps_ratio': None,  # AkShare 历史数据中没有 PS
-                'total_mv': latest.get('总市值', None),
-                'circ_mv': latest.get('流通市值', None),
             }
 
         except Exception as e:
@@ -324,24 +309,12 @@ class FundamentalDownloader:
 
             for _, row in stock_list.iterrows():
                 try:
-                    # 获取市值数据(单位转换:元 -> 亿)
-                    total_mv = self._safe_float(row.get('总市值'))
-                    circ_mv = self._safe_float(row.get('流通市值'))
-
+                    # 只获取PE和PB数据
                     fundamental = {
                         'date': today,
                         'symbol': row['symbol'],
                         'pe_ratio': self._safe_float(row.get('市盈率-动态')),
                         'pb_ratio': self._safe_float(row.get('市净率')),
-                        'ps_ratio': 0.0,  # 实时行情中没有PS,使用0占位
-                        'total_mv': total_mv / 100000000 if total_mv else None,  # 转换为亿
-                        'circ_mv': circ_mv / 100000000 if circ_mv else None,  # 转换为亿
-                        'roe': 0.0,  # 实时行情中没有ROE,使用0占位
-                        'roa': 0.0,
-                        'profit_margin': 0.0,
-                        'operating_margin': 0.0,
-                        'debt_ratio': 0.0,
-                        'current_ratio': 0.0,
                     }
 
                     fundamental_list.append(fundamental)
@@ -425,13 +398,22 @@ class FundamentalDownloader:
 
     def _batch_insert(self, fundamental_list: List[Dict]):
         """
-        批量插入基本面数据
+        批量插入基本面数据（仅PE和PB）
 
         Args:
             fundamental_list: 基本面数据列表
         """
         try:
             df = pd.DataFrame(fundamental_list)
+
+            # 添加其他必需字段，设为None（因为只下载PE和PB）
+            required_columns = [
+                'ps_ratio', 'roe', 'roa', 'profit_margin', 'operating_margin',
+                'debt_ratio', 'current_ratio', 'total_mv', 'circ_mv'
+            ]
+            for col in required_columns:
+                if col not in df.columns:
+                    df[col] = None
 
             # 确保数值列是正确的数据类型
             numeric_columns = [
@@ -444,11 +426,9 @@ class FundamentalDownloader:
                 if col in df.columns:
                     # 转换为数值类型,无法转换的变为NaN
                     df[col] = pd.to_numeric(df[col], errors='coerce')
-                    # 将NaN替换为0.0(避免PostgreSQL类型错误)
-                    df[col] = df[col].fillna(0.0)
 
             self.db.batch_upsert_fundamental(df)
-            logger.debug(f'批量插入 {len(df)} 条基本面数据')
+            logger.debug(f'批量插入 {len(df)} 条基本面数据（仅PE和PB有效）')
         except Exception as e:
             logger.error(f'批量插入失败: {e}')
 

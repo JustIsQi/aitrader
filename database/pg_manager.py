@@ -3,6 +3,8 @@ PostgreSQL 数据库管理器
 使用 SQLAlchemy ORM 替代 DuckDB
 """
 import pandas as pd
+import time
+import uuid
 from datetime import datetime, date
 from typing import Optional, List
 from contextlib import contextmanager
@@ -14,9 +16,32 @@ from sqlalchemy.exc import IntegrityError
 
 from database.models import (
     EtfHistory, StockHistory, StockMetadata, StockFundamentalDaily,
-    Trader, Transaction, Position, FactorCache, EtfCode, StockCode
+    Trader, Transaction, Position, FactorCache, EtfCode, StockCode,
+    StrategyBacktest, SignalBacktestAssociation
 )
 from database.models.base import SessionLocal, engine
+
+
+# ==================== Performance Monitoring ====================
+
+@contextmanager
+def query_timer(query_name: str):
+    """
+    Context manager to time query execution
+
+    Usage:
+        with query_timer("batch_stock_500"):
+            # execute query
+    """
+    start = time.time()
+    try:
+        yield
+    finally:
+        elapsed = time.time() - start
+        if elapsed > 1.0:
+            logger.warning(f'🐌 慢查询 [{query_name}]: {elapsed:.2f}秒')
+        else:
+            logger.debug(f'⚡ 查询 [{query_name}]: {elapsed:.3f}秒')
 
 
 class PostgreSQLManager:
@@ -96,21 +121,24 @@ class PostgreSQLManager:
             df['symbol'] = symbol
             df['date'] = pd.to_datetime(df['date']).dt.date
 
+            # 使用唯一的临时表名避免并发冲突
+            temp_table_name = f'temp_etf_insert_{uuid.uuid4().hex[:8]}'
+
             with self.get_session() as session:
                 # 使用临时表和 ON CONFLICT DO NOTHING
-                df.to_sql('temp_etf_insert', self.engine, if_exists='replace', index=False)
+                df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
 
-                session.execute(text("""
+                session.execute(text(f"""
                     INSERT INTO etf_history
                     (symbol, date, open, high, low, close, volume, amount,
                      amplitude, change_pct, change_amount, turnover_rate)
                     SELECT symbol, date, open, high, low, close, volume, amount,
                            amplitude, change_pct, change_amount, turnover_rate
-                    FROM temp_etf_insert
+                    FROM {temp_table_name}
                     ON CONFLICT (symbol, date) DO NOTHING
                 """))
 
-                session.execute(text("DROP TABLE temp_etf_insert"))
+                session.execute(text(f"DROP TABLE {temp_table_name}"))
 
                 logger.info(f'成功追加 {len(df)} 条ETF数据')
                 return True
@@ -146,7 +174,7 @@ class PostgreSQLManager:
     def batch_get_etf_history(self, symbols: List[str], start_date: date = None,
                              end_date: date = None) -> pd.DataFrame:
         """
-        批量获取多个ETF的历史数据（性能优化）
+        批量获取多个ETF的历史数据（性能优化 + 性能监控）
 
         一次查询返回所有ETF数据，而不是每个ETF单独查询
 
@@ -158,19 +186,21 @@ class PostgreSQLManager:
         Returns:
             DataFrame: 包含所有ETF的历史数据
         """
-        with self.get_session() as session:
-            query = session.query(EtfHistory).filter(
-                EtfHistory.symbol.in_(symbols)
-            )
+        query_name = f"batch_etf_{len(symbols)}_symbols"
+        with query_timer(query_name):
+            with self.get_session() as session:
+                query = session.query(EtfHistory).filter(
+                    EtfHistory.symbol.in_(symbols)
+                )
 
-            if start_date:
-                query = query.filter(EtfHistory.date >= start_date)
-            if end_date:
-                query = query.filter(EtfHistory.date <= end_date)
+                if start_date:
+                    query = query.filter(EtfHistory.date >= start_date)
+                if end_date:
+                    query = query.filter(EtfHistory.date <= end_date)
 
-            query = query.order_by(EtfHistory.symbol.asc(), EtfHistory.date.asc())
+                query = query.order_by(EtfHistory.symbol.asc(), EtfHistory.date.asc())
 
-            return pd.read_sql(query.statement, session.bind)
+                return pd.read_sql(query.statement, session.bind)
 
     def get_latest_date(self, symbol: str) -> Optional[datetime]:
         """
@@ -257,6 +287,258 @@ class PostgreSQLManager:
             logger.error(f'追加股票数据失败: {e}')
             return False
 
+    def batch_append_stock_history(self, df: pd.DataFrame) -> int:
+        """
+        批量追加多个股票的历史数据（优化版）
+
+        一次性插入多个股票的数据，减少数据库操作次数
+
+        Args:
+            df: 包含多个股票数据的 DataFrame，必须有 symbol 列
+
+        Returns:
+            int: 实际插入的记录数
+        """
+        try:
+            df = df.copy()
+            df['date'] = pd.to_datetime(df['date']).dt.date
+
+            # 使用唯一的临时表名避免并发冲突
+            temp_table_name = f'temp_stock_batch_{uuid.uuid4().hex[:8]}'
+
+            with self.get_session() as session:
+                # 创建临时表
+                df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
+
+                # 先检查有多少记录是重复的
+                duplicate_check = session.execute(text(f"""
+                    SELECT COUNT(*) FROM {temp_table_name} t
+                    INNER JOIN stock_history s ON t.symbol = s.symbol AND t.date = s.date
+                """))
+                duplicate_count = duplicate_check.scalar() or 0
+
+                # 批量插入，忽略重复记录
+                result = session.execute(text(f"""
+                    INSERT INTO stock_history
+                    (symbol, date, open, high, low, close, volume, amount,
+                     amplitude, change_pct, change_amount, turnover_rate)
+                    SELECT symbol, date, open, high, low, close, volume, amount,
+                           amplitude, change_pct, change_amount, turnover_rate
+                    FROM {temp_table_name}
+                    ON CONFLICT (symbol, date) DO NOTHING
+                """))
+
+                # 删除临时表
+                session.execute(text(f"DROP TABLE {temp_table_name}"))
+
+                # 计算实际插入的记录数（总记录数 - 重复记录数）
+                inserted_count = len(df) - duplicate_count
+
+                logger.info(f'批量追加股票数据: {inserted_count} 条新增, {duplicate_count} 条重复 ({len(df)} 个股票)')
+                return inserted_count
+
+        except Exception as e:
+            logger.error(f'批量追加股票数据失败: {e}')
+            return 0
+
+    def batch_append_etf_history(self, df: pd.DataFrame) -> int:
+        """
+        批量追加多个ETF的历史数据（优化版）
+
+        一次性插入多个ETF的数据，减少数据库操作次数
+
+        Args:
+            df: 包含多个ETF数据的 DataFrame，必须有 symbol 列
+
+        Returns:
+            int: 实际插入的记录数
+        """
+        try:
+            df = df.copy()
+            df['date'] = pd.to_datetime(df['date']).dt.date
+
+            # 使用唯一的临时表名避免并发冲突
+            temp_table_name = f'temp_etf_batch_{uuid.uuid4().hex[:8]}'
+
+            with self.get_session() as session:
+                # 创建临时表
+                df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
+
+                # 先检查有多少记录是重复的
+                duplicate_check = session.execute(text(f"""
+                    SELECT COUNT(*) FROM {temp_table_name} t
+                    INNER JOIN etf_history e ON t.symbol = e.symbol AND t.date = e.date
+                """))
+                duplicate_count = duplicate_check.scalar() or 0
+
+                # 批量插入，忽略重复记录
+                result = session.execute(text(f"""
+                    INSERT INTO etf_history
+                    (symbol, date, open, high, low, close, volume, amount,
+                     amplitude, change_pct, change_amount, turnover_rate)
+                    SELECT symbol, date, open, high, low, close, volume, amount,
+                           amplitude, change_pct, change_amount, turnover_rate
+                    FROM {temp_table_name}
+                    ON CONFLICT (symbol, date) DO NOTHING
+                """))
+
+                # 删除临时表
+                session.execute(text(f"DROP TABLE {temp_table_name}"))
+
+                # 计算实际插入的记录数（总记录数 - 重复记录数）
+                inserted_count = len(df) - duplicate_count
+
+                logger.info(f'批量追加ETF数据: {inserted_count} 条新增, {duplicate_count} 条重复 ({len(df)} 个ETF)')
+                return inserted_count
+
+        except Exception as e:
+            logger.error(f'批量追加ETF数据失败: {e}')
+            return 0
+
+    def get_stock_completeness_info(self, symbols: List[str], target_start: str) -> dict:
+        """
+        批量检查股票数据的完整性（优化版）
+
+        一次查询获取所有股票的完整性信息，避免逐个查询
+
+        Args:
+            symbols: 股票代码列表
+            target_start: 目标起始日期 (YYYYMMDD)
+
+        Returns:
+            dict: {symbol: {'needs_download': bool, 'latest_date': date, 'record_count': int}}
+        """
+        try:
+            target_start_dt = datetime.strptime(target_start, '%Y%m%d')
+
+            with self.get_session() as session:
+                # 一次查询获取所有股票的统计信息
+                results = session.query(
+                    StockHistory.symbol,
+                    sql_func.max(StockHistory.date).label('latest_date'),
+                    sql_func.count(StockHistory.id).label('record_count')
+                ).filter(
+                    StockHistory.symbol.in_(symbols)
+                ).group_by(StockHistory.symbol).all()
+
+                completeness_map = {}
+
+                # 计算期望的记录数（考虑周末和节假日，约为70%）
+                days_since_target = (datetime.now() - target_start_dt).days
+                expected_records = int(days_since_target * 0.7)
+
+                for symbol, latest_date, record_count in results:
+                    # 确保 latest_date 是 datetime 类型（可能是 date 或 datetime）
+                    if latest_date is not None and isinstance(latest_date, date):
+                        latest_date_dt = datetime.combine(latest_date, datetime.min.time())
+                    else:
+                        latest_date_dt = latest_date
+
+                    # 判断是否需要下载：
+                    # 1. 最新日期早于目标起始日期
+                    # 2. 记录数少于期望值（考虑周末和节假日）
+                    needs_download = (
+                        latest_date is None or
+                        latest_date_dt < target_start_dt or
+                        record_count < expected_records
+                    )
+
+                    completeness_map[symbol] = {
+                        'needs_download': needs_download,
+                        'latest_date': latest_date,
+                        'record_count': record_count,
+                        'reason': 'incomplete' if needs_download else 'complete'
+                    }
+
+                # 补充没有数据的股票
+                for symbol in symbols:
+                    if symbol not in completeness_map:
+                        completeness_map[symbol] = {
+                            'needs_download': True,
+                            'latest_date': None,
+                            'record_count': 0,
+                            'reason': 'no_data'
+                        }
+
+                return completeness_map
+
+        except Exception as e:
+            logger.error(f'批量检查股票完整性失败: {e}')
+            # 出错时返回所有股票都需要下载
+            return {symbol: {'needs_download': True, 'latest_date': None,
+                            'record_count': 0, 'reason': 'error'} for symbol in symbols}
+
+    def get_etf_completeness_info(self, symbols: List[str], target_start: str) -> dict:
+        """
+        批量检查ETF数据的完整性（优化版）
+
+        一次查询获取所有ETF的完整性信息，避免逐个查询
+
+        Args:
+            symbols: ETF代码列表
+            target_start: 目标起始日期 (YYYYMMDD)
+
+        Returns:
+            dict: {symbol: {'needs_download': bool, 'latest_date': date, 'record_count': int}}
+        """
+        try:
+            target_start_dt = datetime.strptime(target_start, '%Y%m%d')
+
+            with self.get_session() as session:
+                # 一次查询获取所有ETF的统计信息
+                results = session.query(
+                    EtfHistory.symbol,
+                    sql_func.max(EtfHistory.date).label('latest_date'),
+                    sql_func.count(EtfHistory.id).label('record_count')
+                ).filter(
+                    EtfHistory.symbol.in_(symbols)
+                ).group_by(EtfHistory.symbol).all()
+
+                completeness_map = {}
+
+                # 计算期望的记录数（考虑周末和节假日，约为70%）
+                days_since_target = (datetime.now() - target_start_dt).days
+                expected_records = int(days_since_target * 0.7)
+
+                for symbol, latest_date, record_count in results:
+                    # 确保 latest_date 是 datetime 类型（可能是 date 或 datetime）
+                    if latest_date is not None and isinstance(latest_date, date):
+                        latest_date_dt = datetime.combine(latest_date, datetime.min.time())
+                    else:
+                        latest_date_dt = latest_date
+
+                    # 判断是否需要下载
+                    needs_download = (
+                        latest_date is None or
+                        latest_date_dt < target_start_dt or
+                        record_count < expected_records
+                    )
+
+                    completeness_map[symbol] = {
+                        'needs_download': needs_download,
+                        'latest_date': latest_date,
+                        'record_count': record_count,
+                        'reason': 'incomplete' if needs_download else 'complete'
+                    }
+
+                # 补充没有数据的ETF
+                for symbol in symbols:
+                    if symbol not in completeness_map:
+                        completeness_map[symbol] = {
+                            'needs_download': True,
+                            'latest_date': None,
+                            'record_count': 0,
+                            'reason': 'no_data'
+                        }
+
+                return completeness_map
+
+        except Exception as e:
+            logger.error(f'批量检查ETF完整性失败: {e}')
+            # 出错时返回所有ETF都需要下载
+            return {symbol: {'needs_download': True, 'latest_date': None,
+                            'record_count': 0, 'reason': 'error'} for symbol in symbols}
+
     def get_stock_history(self, symbol: str, start_date: date = None,
                          end_date: date = None) -> pd.DataFrame:
         """
@@ -285,7 +567,7 @@ class PostgreSQLManager:
     def batch_get_stock_history(self, symbols: List[str], start_date: date = None,
                                end_date: date = None) -> pd.DataFrame:
         """
-        批量获取多个股票的历史数据（性能优化）
+        批量获取多个股票的历史数据（性能优化 + 性能监控）
 
         一次查询返回所有股票数据，而不是每个股票单独查询
 
@@ -297,19 +579,21 @@ class PostgreSQLManager:
         Returns:
             DataFrame: 包含所有股票的历史数据
         """
-        with self.get_session() as session:
-            query = session.query(StockHistory).filter(
-                StockHistory.symbol.in_(symbols)
-            )
+        query_name = f"batch_stock_{len(symbols)}_symbols"
+        with query_timer(query_name):
+            with self.get_session() as session:
+                query = session.query(StockHistory).filter(
+                    StockHistory.symbol.in_(symbols)
+                )
 
-            if start_date:
-                query = query.filter(StockHistory.date >= start_date)
-            if end_date:
-                query = query.filter(StockHistory.date <= end_date)
+                if start_date:
+                    query = query.filter(StockHistory.date >= start_date)
+                if end_date:
+                    query = query.filter(StockHistory.date <= end_date)
 
-            query = query.order_by(StockHistory.symbol.asc(), StockHistory.date.asc())
+                query = query.order_by(StockHistory.symbol.asc(), StockHistory.date.asc())
 
-            return pd.read_sql(query.statement, session.bind)
+                return pd.read_sql(query.statement, session.bind)
 
     def get_stock_latest_date(self, symbol: str) -> Optional[datetime]:
         """
@@ -570,7 +854,8 @@ class PostgreSQLManager:
     def insert_trader_signal(self, symbol: str, signal_type: str,
                             strategies: List[str], signal_date: date,
                             price: float = None, score: float = None,
-                            rank: int = None, quantity: int = None):
+                            rank: int = None, quantity: int = None,
+                            asset_type: str = None):
         """
         插入或更新交易信号
 
@@ -583,6 +868,7 @@ class PostgreSQLManager:
             score: 信号评分
             rank: 信号排名
             quantity: 建议数量
+            asset_type: 资产类型 ('etf' or 'ashare')，如果为None则自动检测
         """
         import numpy as np
 
@@ -598,6 +884,15 @@ class PostgreSQLManager:
         score = convert_value(score)
         rank = convert_value(rank)
         quantity = convert_value(quantity)
+
+        # Auto-detect asset_type if not provided
+        if asset_type is None:
+            # ETF: symbol contains '.', A-share: 6-digit code (no dot)
+            if '.' in symbol:
+                asset_type = 'etf'
+            else:
+                asset_type = 'ashare'
+            logger.debug(f'Auto-detected asset_type for {symbol}: {asset_type}')
 
         with self.get_session() as session:
             strategies_str = ','.join(strategies) if strategies else None
@@ -616,6 +911,8 @@ class PostgreSQLManager:
                 signal.score = score
                 signal.rank = rank
                 signal.quantity = quantity
+                signal.asset_type = asset_type
+                trader_id = signal.id
             else:
                 # 插入新信号
                 new_signal = Trader(
@@ -626,11 +923,15 @@ class PostgreSQLManager:
                     price=price,
                     score=score,
                     rank=rank,
-                    quantity=quantity
+                    quantity=quantity,
+                    asset_type=asset_type
                 )
                 session.add(new_signal)
+                session.flush()  # Get the ID
+                trader_id = new_signal.id
 
-            logger.info(f'记录交易信号: {signal_type} {symbol} - {strategies_str}')
+            logger.info(f'记录交易信号: {signal_type} {symbol} ({asset_type}) - {strategies_str}')
+            return trader_id
 
     def get_latest_trader_signals(self, limit: int = 10) -> pd.DataFrame:
         """
@@ -683,30 +984,102 @@ class PostgreSQLManager:
 
             return pd.read_sql(query.statement, session.bind)
 
+    def calculate_realized_pl(self) -> float:
+        """
+        计算已实现盈亏（从交易历史中已完成的买卖交易）
+
+        通过分析交易记录，按时间顺序处理每一笔交易，使用FIFO方法
+        计算每一对买卖交易的盈亏。
+
+        Returns:
+            float: 已实现盈亏总额
+        """
+        from database.models.models import Transaction
+
+        with self.get_session() as session:
+            # 获取所有交易记录，按symbol和日期排序
+            transactions = session.query(Transaction).order_by(
+                Transaction.symbol,
+                Transaction.trade_date.asc(),
+                Transaction.id.asc()
+            ).all()
+
+            realized_pl = 0.0
+
+            # 按symbol分组跟踪持仓和成本
+            positions_tracker = {}  # {symbol: {'quantity': float, 'total_cost': float}}
+
+            for txn in transactions:
+                symbol = txn.symbol
+
+                if symbol not in positions_tracker:
+                    positions_tracker[symbol] = {'quantity': 0.0, 'total_cost': 0.0}
+
+                tracker = positions_tracker[symbol]
+
+                if txn.buy_sell == 'buy':
+                    # 买入：增加持仓数量和总成本
+                    tracker['quantity'] += txn.quantity
+                    tracker['total_cost'] += txn.price * txn.quantity
+
+                elif txn.buy_sell == 'sell':
+                    # 卖出：计算已实现盈亏
+                    if tracker['quantity'] > 0:
+                        # 计算这批卖出的平均成本
+                        avg_cost = tracker['total_cost'] / tracker['quantity']
+
+                        # 计算卖出部分的盈亏
+                        sell_revenue = txn.price * txn.quantity
+                        sell_cost = avg_cost * txn.quantity
+                        profit = sell_revenue - sell_cost
+
+                        realized_pl += profit
+
+                        # 减少持仓数量和总成本
+                        tracker['quantity'] -= txn.quantity
+                        tracker['total_cost'] -= sell_cost
+
+                        # 防止浮点数精度问题
+                        if tracker['quantity'] < 0.001:
+                            tracker['quantity'] = 0.0
+                            tracker['total_cost'] = 0.0
+
+            return realized_pl
+
     def calculate_profit_loss(self) -> dict:
         """
         计算总体盈亏
 
         Returns:
-            dict: 盈亏统计
+            dict: 盈亏统计，包含已实现和未实现盈亏
         """
         with self.get_session() as session:
             positions = session.query(Position).filter(Position.quantity > 0).all()
 
             total_cost = 0
-            total_value = 0
-            total_pl = 0
+            total_market_value = 0
 
             for pos in positions:
                 total_cost += pos.avg_cost * pos.quantity
-                total_value += pos.market_value if pos.market_value else 0
+                total_market_value += pos.market_value if pos.market_value else 0
 
-            total_pl = total_value - total_cost
+            # 未实现盈亏（持仓浮动盈亏）
+            total_unrealized_pl = total_market_value - total_cost
+
+            # 已实现盈亏（从交易历史计算）
+            realized_pl = self.calculate_realized_pl()
+
+            # 总盈亏
+            total_pl = realized_pl + total_unrealized_pl
+
+            # 盈亏百分比
             pl_pct = (total_pl / total_cost * 100) if total_cost > 0 else 0
 
             return {
+                'realized_pl': realized_pl,
+                'total_unrealized_pl': total_unrealized_pl,
+                'total_market_value': total_market_value,
                 'total_cost': total_cost,
-                'total_value': total_value,
                 'total_pl': total_pl,
                 'pl_pct': pl_pct
             }
@@ -785,6 +1158,43 @@ class PostgreSQLManager:
                     'is_new_ipo': metadata.is_new_ipo,
                 }
             return None
+
+    def update_stock_metadata(self, symbol: str, **fields):
+        """
+        更新单个股票的元数据字段（灵活更新）
+
+        Args:
+            symbol: 股票代码
+            **fields: 要更新的字段，如 list_date=..., is_st=..., name=...
+
+        Example:
+            db.update_stock_metadata('000001.SZ', list_date='2020-01-01')
+            db.update_stock_metadata('000001.SZ', is_st=True, name='新名称')
+        """
+        with self.get_session() as session:
+            metadata = session.query(StockMetadata).filter(
+                StockMetadata.symbol == symbol
+            ).first()
+
+            if not metadata:
+                logger.debug(f'股票不存在: {symbol}')
+                return
+
+            # 更新指定字段
+            for key, value in fields.items():
+                if hasattr(metadata, key):
+                    # 特殊处理 list_date
+                    if key == 'list_date' and value:
+                        if isinstance(value, str):
+                            metadata.list_date = pd.to_datetime(value).date()
+                        else:
+                            metadata.list_date = value
+                    else:
+                        setattr(metadata, key, value)
+                else:
+                    logger.warning(f'无效的字段: {key}')
+
+            logger.debug(f'更新股票元数据: {symbol}')
 
     def batch_upsert_stock_metadata(self, df: pd.DataFrame):
         """
@@ -1046,6 +1456,49 @@ class PostgreSQLManager:
                 StockFundamentalDaily.symbol == symbol
             ).scalar()
             return result or 0
+
+    def batch_get_latest_fundamental(self, symbols: List[str]) -> pd.DataFrame:
+        """
+        批量获取多只股票的最新基本面数据（仅PE和PB）
+
+        Args:
+            symbols: 股票代码列表
+
+        Returns:
+            DataFrame: 包含 symbol, pe, pb 列的基本面数据
+        """
+        if not symbols:
+            return pd.DataFrame()
+
+        with self.get_session() as session:
+            # 使用子查询获取每只股票的最新日期
+            subquery = session.query(
+                StockFundamentalDaily.symbol,
+                sql_func.max(StockFundamentalDaily.date).label('max_date')
+            ).filter(
+                StockFundamentalDaily.symbol.in_(symbols)
+            ).group_by(StockFundamentalDaily.symbol).subquery()
+
+            # 联接获取最新数据
+            query = session.query(
+                StockFundamentalDaily.symbol,
+                StockFundamentalDaily.pe_ratio,
+                StockFundamentalDaily.pb_ratio
+            ).join(
+                subquery,
+                (StockFundamentalDaily.symbol == subquery.c.symbol) &
+                (StockFundamentalDaily.date == subquery.c.max_date)
+            )
+
+            df = pd.read_sql(query.statement, session.bind)
+
+            # 重命名列为简短名称（便于公式使用）
+            df.rename(columns={
+                'pe_ratio': 'pe',
+                'pb_ratio': 'pb'
+            }, inplace=True)
+
+            return df
 
     def cleanup_old_fundamental(self, keep_days: int = 30):
         """
@@ -1399,6 +1852,227 @@ class PostgreSQLManager:
         except Exception as e:
             logger.error(f'✗ 保存报告摘要失败: {e}')
             return False
+
+    # ==================== 回测结果操作 ====================
+
+    def save_backtest_result(self, strategy_name: str, asset_type: str,
+                             start_date: str, end_date: str,
+                             total_return: float, annual_return: float,
+                             sharpe_ratio: float, max_drawdown: float,
+                             equity_curve: list, trade_list: list,
+                             strategy_version: str = None,
+                             initial_capital: float = 1000000,
+                             **kwargs) -> Optional[int]:
+        """
+        保存回测结果到数据库
+
+        Args:
+            strategy_name: 策略名称
+            asset_type: 'etf' or 'ashare'
+            start_date: 回测开始日期
+            end_date: 回测结束日期
+            total_return: 总收益率
+            annual_return: 年化收益率
+            sharpe_ratio: 夏普比率
+            max_drawdown: 最大回撤
+            equity_curve: 权益曲线数据 [{date, value}, ...]
+            trade_list: 交易列表
+            strategy_version: 策略版本
+            initial_capital: 初始资金
+            **kwargs: 其他指标
+
+        Returns:
+            int: 新创建的backtest记录ID，失败返回None
+        """
+        import json
+
+        try:
+            with self.get_session() as session:
+                backtest = StrategyBacktest(
+                    strategy_name=strategy_name,
+                    strategy_version=strategy_version,
+                    asset_type=asset_type,
+                    start_date=pd.to_datetime(start_date).date(),
+                    end_date=pd.to_datetime(end_date).date(),
+                    initial_capital=initial_capital,
+                    total_return=total_return,
+                    annual_return=annual_return,
+                    sharpe_ratio=sharpe_ratio,
+                    max_drawdown=max_drawdown,
+                    equity_curve=json.dumps(equity_curve, default=str),
+                    trade_list=json.dumps(trade_list, default=str),
+                    **kwargs
+                )
+                session.add(backtest)
+                session.flush()  # Get the ID without committing
+                backtest_id = backtest.id
+                session.commit()
+                logger.info(f'✓ 回测结果已保存: {strategy_name} (ID: {backtest_id})')
+                return backtest_id
+        except Exception as e:
+            logger.error(f"Failed to save backtest result: {e}")
+            return None
+
+    def get_latest_backtest(self, strategy_name: str,
+                            asset_type: str = 'ashare') -> Optional[dict]:
+        """
+        获取指定策略的最新回测结果
+
+        Args:
+            strategy_name: 策略名称
+            asset_type: 资产类型 ('etf' or 'ashare')
+
+        Returns:
+            dict: 回测结果字典，不存在返回None
+        """
+        import json
+
+        try:
+            with self.get_session() as session:
+                backtest = session.query(StrategyBacktest).filter(
+                    StrategyBacktest.strategy_name == strategy_name,
+                    StrategyBacktest.asset_type == asset_type
+                ).order_by(StrategyBacktest.backtest_date.desc()).first()
+
+                if backtest:
+                    return {
+                        'id': backtest.id,
+                        'strategy_name': backtest.strategy_name,
+                        'strategy_version': backtest.strategy_version,
+                        'asset_type': backtest.asset_type,
+                        'start_date': backtest.start_date.strftime('%Y-%m-%d'),
+                        'end_date': backtest.end_date.strftime('%Y-%m-%d'),
+                        'total_return': float(backtest.total_return) if backtest.total_return else 0.0,
+                        'annual_return': float(backtest.annual_return) if backtest.annual_return else 0.0,
+                        'sharpe_ratio': float(backtest.sharpe_ratio) if backtest.sharpe_ratio else 0.0,
+                        'max_drawdown': float(backtest.max_drawdown) if backtest.max_drawdown else 0.0,
+                        'win_rate': float(backtest.win_rate) if backtest.win_rate else None,
+                        'profit_factor': float(backtest.profit_factor) if backtest.profit_factor else None,
+                        'total_trades': backtest.total_trades,
+                        'benchmark_return': float(backtest.benchmark_return) if backtest.benchmark_return else None,
+                        'equity_curve': json.loads(backtest.equity_curve) if backtest.equity_curve else [],
+                        'trade_list': json.loads(backtest.trade_list) if backtest.trade_list else [],
+                    }
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get latest backtest: {e}")
+            return None
+
+    def get_backtest_by_id(self, backtest_id: int) -> Optional[dict]:
+        """
+        通过ID获取回测详情
+
+        Args:
+            backtest_id: 回测ID
+
+        Returns:
+            dict: 回测详情字典，不存在返回None
+        """
+        import json
+
+        try:
+            with self.get_session() as session:
+                backtest = session.query(StrategyBacktest).filter(
+                    StrategyBacktest.id == backtest_id
+                ).first()
+
+                if backtest:
+                    return {
+                        'id': backtest.id,
+                        'strategy_name': backtest.strategy_name,
+                        'strategy_version': backtest.strategy_version,
+                        'asset_type': backtest.asset_type,
+                        'start_date': backtest.start_date.strftime('%Y-%m-%d'),
+                        'end_date': backtest.end_date.strftime('%Y-%m-%d'),
+                        'total_return': float(backtest.total_return) if backtest.total_return else 0.0,
+                        'annual_return': float(backtest.annual_return) if backtest.annual_return else 0.0,
+                        'sharpe_ratio': float(backtest.sharpe_ratio) if backtest.sharpe_ratio else 0.0,
+                        'max_drawdown': float(backtest.max_drawdown) if backtest.max_drawdown else 0.0,
+                        'win_rate': float(backtest.win_rate) if backtest.win_rate else None,
+                        'profit_factor': float(backtest.profit_factor) if backtest.profit_factor else None,
+                        'total_trades': backtest.total_trades,
+                        'benchmark_return': float(backtest.benchmark_return) if backtest.benchmark_return else None,
+                        'equity_curve': json.loads(backtest.equity_curve) if backtest.equity_curve else [],
+                        'trade_list': json.loads(backtest.trade_list) if backtest.trade_list else [],
+                    }
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get backtest by ID: {e}")
+            return None
+
+    def associate_signal_with_backtest(self, trader_id: int, backtest_id: int,
+                                       strategy_name: str) -> bool:
+        """
+        关联信号与回测结果
+
+        Args:
+            trader_id: 信号ID (trader表)
+            backtest_id: 回测ID
+            strategy_name: 策略名称
+
+        Returns:
+            bool: 成功返回True
+        """
+        try:
+            with self.get_session() as session:
+                # Check if association already exists
+                existing = session.query(SignalBacktestAssociation).filter(
+                    SignalBacktestAssociation.trader_id == trader_id,
+                    SignalBacktestAssociation.backtest_id == backtest_id
+                ).first()
+
+                if existing:
+                    return True  # Already associated
+
+                association = SignalBacktestAssociation(
+                    trader_id=trader_id,
+                    backtest_id=backtest_id,
+                    strategy_name=strategy_name
+                )
+                session.add(association)
+                session.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Failed to associate signal with backtest: {e}")
+            return False
+
+    def get_signal_backtest(self, trader_id: int) -> Optional[dict]:
+        """
+        获取信号关联的回测信息
+
+        Args:
+            trader_id: 信号ID
+
+        Returns:
+            dict: 回测信息字典
+        """
+        import json
+
+        try:
+            with self.get_session() as session:
+                association = session.query(SignalBacktestAssociation).filter(
+                    SignalBacktestAssociation.trader_id == trader_id
+                ).first()
+
+                if association:
+                    backtest = session.query(StrategyBacktest).filter(
+                        StrategyBacktest.id == association.backtest_id
+                    ).first()
+
+                    if backtest:
+                        return {
+                            'id': backtest.id,
+                            'strategy_name': backtest.strategy_name,
+                            'strategy_version': backtest.strategy_version,
+                            'total_return': float(backtest.total_return) if backtest.total_return else 0.0,
+                            'annual_return': float(backtest.annual_return) if backtest.annual_return else 0.0,
+                            'sharpe_ratio': float(backtest.sharpe_ratio) if backtest.sharpe_ratio else 0.0,
+                            'max_drawdown': float(backtest.max_drawdown) if backtest.max_drawdown else 0.0,
+                        }
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get signal backtest: {e}")
+            return None
 
 
 # ==================== 全局单例 ====================

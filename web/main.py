@@ -58,9 +58,9 @@ db = get_db()
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """
-    主仪表板页面
+    主仪表板页面 - 分别显示ETF和A股信号
     """
-    # 获取当前持仓（移到前面，以便在信号处理中使用）
+    # 获取当前持仓
     positions = db.get_positions()
 
     # 构建持仓查找字典
@@ -87,73 +87,47 @@ async def dashboard(request: Request):
             }
 
             # 存储多个格式的symbol以支持匹配
-            # 原始格式 (如: 518880)
             positions_dict[symbol] = position_data
-            # 带.SH后缀的格式 (如: 518880.SH)
             positions_dict[f"{symbol}.SH"] = position_data
-            # 带.SZ后缀的格式 (如: 518880.SZ)
             positions_dict[f"{symbol}.SZ"] = position_data
 
-    # 获取最近5个交易日的信号，按日期分组
-    # 首先获取所有信号的日期
-    from database.models import Trader
-    from sqlalchemy import distinct
+    # Get ETF signals separately
+    from web.routers.signals import get_latest_etf_signals
+    etf_result = await get_latest_etf_signals(limit=50)
+    etf_signals_by_date = etf_result.get("dates", [])
 
-    with db.get_session() as session:
-        query = session.query(distinct(Trader.signal_date)).order_by(
-            Trader.signal_date.desc()
-        ).limit(5)
-        dates_df = pd.read_sql(query.statement, session.bind)
+    # Enrich ETF signals with position data
+    for date_group in etf_signals_by_date:
+        for signal in date_group["signals"]:
+            symbol = signal.get('symbol')
+            if symbol and symbol in positions_dict:
+                signal['position'] = positions_dict[symbol]
 
-    grouped_signals = {}
-    if not dates_df.empty:
-        # 获取每个日期的信号
-        for date_record in dates_df.to_dict('records'):
-            date_str = date_record['signal_date']
-            if isinstance(date_str, str):
-                date_obj = pd.to_datetime(date_str)
-            else:
-                date_obj = date_str
+    # Get A-share signals with backtests (split by weekly/monthly)
+    from web.routers.signals import get_latest_ashare_signals
+    ashare_result = await get_latest_ashare_signals(limit=50)
+    ashare_weekly_signals = ashare_result.get("weekly", [])
+    ashare_monthly_signals = ashare_result.get("monthly", [])
 
-            date_key = date_obj.strftime('%Y-%m-%d')
+    # Enrich A-share weekly signals with position data
+    for date_group in ashare_weekly_signals:
+        for signal in date_group["signals"]:
+            symbol = signal.get('symbol')
+            if symbol and symbol in positions_dict:
+                signal['position'] = positions_dict[symbol]
 
-            # 获取该日期的信号
-            with db.get_session() as session:
-                query = session.query(Trader).filter(
-                    Trader.signal_date == date_key
-                ).order_by(Trader.signal_type, Trader.symbol)
-                daily_signals_df = pd.read_sql(query.statement, session.bind)
+    # Enrich A-share monthly signals with position data
+    for date_group in ashare_monthly_signals:
+        for signal in date_group["signals"]:
+            symbol = signal.get('symbol')
+            if symbol and symbol in positions_dict:
+                signal['position'] = positions_dict[symbol]
 
-            if not daily_signals_df.empty:
-                daily_signals_df = clean_dataframes(daily_signals_df)
-
-                signals_list = []
-                for record in daily_signals_df.to_dict('records'):
-                    cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
-                    # 格式化日期
-                    if 'signal_date' in cleaned_record and cleaned_record['signal_date']:
-                        if hasattr(cleaned_record['signal_date'], 'strftime'):
-                            cleaned_record['signal_date'] = cleaned_record['signal_date'].strftime('%Y-%m-%d')
-                    if 'created_at' in cleaned_record and cleaned_record['created_at']:
-                        if hasattr(cleaned_record['created_at'], 'strftime'):
-                            cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
-
-                    # 关联持仓信息
-                    symbol = cleaned_record.get('symbol')
-                    if symbol and symbol in positions_dict:
-                        cleaned_record['position'] = positions_dict[symbol]
-
-                    signals_list.append(cleaned_record)
-
-                grouped_signals[date_key] = signals_list
-
-    # 获取最近交易记录
+    # Get recent transactions
     transactions = db.get_transactions()[:20]
-
-    # 清理 NaN 值
     positions, transactions = clean_dataframes(positions, transactions)
 
-    # 转换为字典并清理剩余 NaN
+    # Convert to list
     positions_list = []
     if not positions.empty:
         for record in positions.to_dict('records'):
@@ -166,18 +140,13 @@ async def dashboard(request: Request):
             cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
             transactions_list.append(cleaned_record)
 
-    # 将分组信号转换为按日期排序的列表
-    signals_by_date = [
-        {"date": date, "signals": signals}
-        for date, signals in grouped_signals.items()
-    ]
-    signals_by_date.sort(key=lambda x: x["date"], reverse=True)
-
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "signals_by_date": signals_by_date,
+            "etf_signals_by_date": etf_signals_by_date,
+            "ashare_weekly_signals": ashare_weekly_signals,
+            "ashare_monthly_signals": ashare_monthly_signals,
             "positions": positions_list,
             "transactions": transactions_list
         }

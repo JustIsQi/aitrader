@@ -13,12 +13,46 @@
 """
 
 import pandas as pd
+import time
 from datetime import datetime, date, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable, TypeVar
 from loguru import logger
+from sqlalchemy.exc import OperationalError, DBAPIError
 
 from database.pg_manager import get_db
 from database.models import StockMetadata, StockFundamentalDaily
+
+T = TypeVar('T')
+
+
+def retry_on_db_error(func: Callable[..., T], max_retries: int = 3, delay: float = 1.0) -> T:
+    """
+    数据库操作重试装饰器
+    
+    Args:
+        func: 要执行的函数
+        max_retries: 最大重试次数
+        delay: 重试延迟（秒）
+        
+    Returns:
+        函数执行结果
+    """
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except (OperationalError, DBAPIError) as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"数据库操作失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                time.sleep(delay * (attempt + 1))  # 指数退避
+                continue
+            else:
+                logger.error(f"数据库操作失败，已达最大重试次数: {e}")
+                raise
+        except Exception as e:
+            logger.error(f"非数据库错误: {e}")
+            raise
+    
+    raise RuntimeError("重试逻辑异常")
 
 
 class StockUniverse:
@@ -42,39 +76,57 @@ class StockUniverse:
         logger.debug('股票池管理器初始化完成')
 
     def get_all_stocks(self, exclude_st=True, exclude_suspend=True,
-                      exclude_new_ipo_days=None) -> List[str]:
+                      exclude_new_ipo_days=None, min_data_days=180) -> List[str]:
         """
-        获取所有可交易股票
+        获取所有可交易股票（基于实际交易数据）
 
         Args:
-            exclude_st: 是否排除ST股票
-            exclude_suspend: 是否排除停牌股票
-            exclude_new_ipo_days: 排除新上市股票天数（None表示不排除）
+            exclude_st: 是否排除ST股票（需要元数据支持）
+            exclude_suspend: 是否排除停牌股票（需要元数据支持）
+            exclude_new_ipo_days: **已废弃**，保留参数仅为兼容性
+            min_data_days: 最小数据天数，默认180天（半年）
 
         Returns:
             股票代码列表
         """
-        try:
+        def _query_stocks():
+            from database.models import StockHistory
+            from sqlalchemy import distinct
+
+            # 计算截止日期
+            cutoff_date = datetime.now().date() - timedelta(days=min_data_days)
+
             with self.db.get_session() as session:
-                query = session.query(StockMetadata.symbol)
+                # 从 stock_history 表查询有足够数据的股票
+                query = session.query(
+                    distinct(StockHistory.symbol)
+                ).filter(
+                    StockHistory.date >= cutoff_date
+                )
 
-                # 排除ST股票
-                if exclude_st:
-                    query = query.filter(StockMetadata.is_st == False)
+                # 如果需要排除ST/停牌股票，且元数据有标记，则进行过滤
+                if exclude_st or exclude_suspend:
+                    # 子查询：获取可交易股票的元数据
+                    metadata_query = session.query(StockMetadata.symbol)
 
-                # 排除停牌股票
-                if exclude_suspend:
-                    query = query.filter(StockMetadata.is_suspend == False)
+                    if exclude_st:
+                        metadata_query = metadata_query.filter(StockMetadata.is_st == False)
 
-                # 排除新上市股票
-                if exclude_new_ipo_days:
-                    cutoff_date = date.today() - timedelta(days=exclude_new_ipo_days)
-                    query = query.filter(StockMetadata.list_date < cutoff_date)
+                    if exclude_suspend:
+                        metadata_query = metadata_query.filter(StockMetadata.is_suspend == False)
+
+                    # 只保留既满足数据要求，又满足元数据要求的股票
+                    valid_symbols = [row[0] for row in metadata_query.all()]
+                    if valid_symbols:
+                        query = query.filter(StockHistory.symbol.in_(valid_symbols))
 
                 symbols = [row[0] for row in query.all()]
-                logger.info(f'获取可交易股票: {len(symbols)} 只')
+                logger.info(f'获取可交易股票: {len(symbols)} 只 '
+                           f'(最近{min_data_days}天有数据)')
                 return symbols
 
+        try:
+            return retry_on_db_error(_query_stocks, max_retries=3, delay=1.0)
         except Exception as e:
             logger.error(f'获取股票列表失败: {e}')
             return []

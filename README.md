@@ -420,9 +420,138 @@ python tests/test_ashare_constraints.py
 ### 详细文档
 
 - **完整实施计划**: [PLAN.md](PLAN.md)
-- **使用指南**: [GUIDE.md](GUIDE.md)
+- **使用指南**: [GUIDE.md](GUIDE.md) - 包含完整的A股策略使用指南
 - **测试文件**: [tests/test_ashare_constraints.py](tests/test_ashare_constraints.py)
 - **示例脚本**: [examples/ashare_strategy_example.py](examples/ashare_strategy_example.py)
+
+---
+
+## A股策略库
+
+### 策略列表
+
+系统已实现6个A股智能选股策略，涵盖多因子和动量两大类：
+
+#### 多因子智能选股策略
+
+**文件**: [strategies/stocks_多因子智能选股策略.py](strategies/stocks_多因子智能选股策略.py)
+
+| 策略版本 | 函数名 | 持仓数 | 风险等级 | 适用场景 |
+|---------|-------|-------|---------|---------|
+| 周频版本 | `multi_factor_strategy_weekly()` | 20只 | 中等 | 震荡市、慢牛 |
+| 月频版本 | `multi_factor_strategy_monthly()` | 30只 | 中等 | 长期投资 |
+| 保守版本 | `multi_factor_strategy_conservative()` | 15只 | 低 | 稳健投资 |
+
+**策略特点**:
+- 综合技术面(40%) + 质量因子(30%) + 估值因子(20%) + 流动性因子(10%)
+- 至少满足7个条件中的3个
+- 动态因子权重
+- 新股过滤、流动性过滤
+
+**快速使用**:
+```python
+from strategies.stocks_多因子智能选股策略 import multi_factor_strategy_weekly
+from core.backtrader_engine import Engine
+
+task = multi_factor_strategy_weekly()
+engine = Engine()
+result = engine.run(task)
+result.stats()
+```
+
+#### 动量轮动选股策略
+
+**文件**: [strategies/stocks_动量轮动选股策略.py](strategies/stocks_动量轮动选股策略.py)
+
+| 策略版本 | 函数名 | 持仓数 | 风险等级 | 适用场景 |
+|---------|-------|-------|---------|---------|
+| 周频版本 | `momentum_strategy_weekly()` | 15只 | 高 | 趋势牛市 |
+| 月频版本 | `momentum_strategy_monthly()` | 20只 | 中高 | 趋势牛市 |
+| 激进版本 | `momentum_strategy_aggressive()` | 10只 | 极高 | 强势牛市 |
+
+**策略特点**:
+- 纯动量驱动，追求高收益
+- 强势筛选（6个条件全部满足）
+- 多层止损机制
+- 避免涨停追高
+
+**快速使用**:
+```python
+from strategies.stocks_动量轮动选股策略 import momentum_strategy_weekly
+from core.backtrader_engine import Engine
+
+task = momentum_strategy_weekly()
+engine = Engine()
+result = engine.run(task)
+result.stats()
+```
+
+### 批量回测
+
+使用回测脚本批量运行所有策略：
+
+```bash
+# 运行所有策略
+python scripts/run_stock_backtests.py --all
+
+# 运行所有多因子策略
+python scripts/run_stock_backtests.py --multi-factor-all
+
+# 运行所有动量策略
+python scripts/run_stock_backtests.py --momentum-all
+
+# 运行指定策略
+python scripts/run_stock_backtests.py --strategy multi_factor --period weekly
+```
+
+### 策略对比
+
+| 策略 | 风险 | 年化收益 | 最大回撤 | 适合市场 |
+|-----|------|---------|---------|---------|
+| 多因子-周频 | 中等 | 15-25% | < 20% | 震荡市、慢牛 |
+| 多因子-月频 | 中等 | 12-20% | < 18% | 长期投资 |
+| 多因子-保守版 | 低 | 10-18% | < 15% | 稳健投资 |
+| 动量-周频 | 高 | 20-35% | < 30% | 趋势牛市 |
+| 动量-月频 | 中高 | 15-30% | < 25% | 趋势牛市 |
+| 动量-激进版 | 极高 | 25-45% | < 40% | 强势牛市 |
+
+### 自定义策略
+
+所有策略都支持自定义修改：
+
+```python
+from strategies.stocks_多因子智能选股策略 import multi_factor_strategy_weekly
+
+def my_custom_strategy():
+    t = multi_factor_strategy_weekly()
+    t.name = '我的自定义策略'
+
+    # 修改持仓数量
+    t.order_by_topK = 30
+
+    # 修改选股条件
+    t.select_buy = [
+        'roc(close,20) > 0.05',
+        'roe > 0.15',
+        'pe < 30'
+    ]
+    t.buy_at_least_count = 2
+
+    # 修改因子权重
+    t.order_by_signal = '''
+        roc(close,20)*0.5 +
+        trend_score(close,25)*0.3 +
+        roe_score(roe)*0.2
+    '''
+
+    return t
+```
+
+### 详细文档
+
+完整的A股策略使用指南请参阅：
+- **A股策略使用指南**: [GUIDE.md - A股策略使用指南](GUIDE.md#a股策略使用指南)
+- **实施计划**: [PLAN.md - Phase 4](PLAN.md#phase-4-策略实现)
 
 ---
 
@@ -478,19 +607,19 @@ t.order_by_signal = 'pe_score(pe) + pb_score(pb)'  # 低估值优先
 
 ```bash
 # 运行所有策略，输出到终端
-python run_multi_strategy_signals.py
+python run_etf_signals.py
 
 # 指定分析日期
-python run_multi_strategy_signals.py --date 20251225
+python run_etf_signals.py --date 20251225
 
 # 输出到文件
-python run_multi_strategy_signals.py --output report.txt
+python run_etf_signals.py --output report.txt
 
 # 设置最大持仓数和初始资金
-python run_multi_strategy_signals.py --max-positions 10 --initial-capital 10000
+python run_etf_signals.py --max-positions 10 --initial-capital 10000
 
 # 显示详细执行信息
-python run_multi_strategy_signals.py --verbose
+python run_etf_signals.py --verbose
 ```
 
 #### 命令行参数
@@ -646,6 +775,287 @@ python run_multi_strategy_signals.py --verbose
 - 检查因子表达式语法
 - 确认数据完整性
 - 查看日志中的错误信息
+
+---
+
+## 统一信号管道与回测集成
+
+### 简介
+
+统一信号管道 (`run_ashare_signals.py`) 是一个集成了回测分析和信号生成的自动化系统，支持智能选股和多策略频率分离。
+
+### 核心特性
+
+- ✅ **智能选股筛选**: 多层级筛选（基础→市值→流动性），将5298只股票减少到1000只，性能提升80%
+- ✅ **频率分离**: 周频策略用于每日推荐，月频策略用于长期投资
+- ✅ **回测与信号分离**: 支持只生成信号或回测+信号两种模式
+- ✅ **数据库存储**: 回测结果持久化存储在 PostgreSQL
+- ✅ **信号关联**: 交易信号与对应策略的回测报告自动关联
+
+### 快速开始
+
+#### 命令行参数
+
+```bash
+# ========== 信号生成模式 ==========
+
+# 每日推荐（仅周频策略，2个）
+python run_ashare_signals.py --signal
+
+# 全量信号（所有策略，7个：周频2 + 月频2 + 其他3）
+python run_ashare_signals.py --all-signal
+
+# ========== 回测+信号模式 ==========
+
+# 周频策略回测+信号（2个策略）
+python run_ashare_signals.py --weekly
+
+# 月频策略回测+信号（2个策略）
+python run_ashare_signals.py --monthly
+
+# 所有策略回测+信号（默认，7个策略）
+python run_ashare_signals.py
+
+# ========== 智能选股筛选 ==========
+
+# 使用保守型筛选（500只，大市值+高流动性）
+python run_ashare_signals.py --signal --filter-preset conservative
+
+# 使用激进型筛选（1500只，较低市值要求）
+python run_ashare_signals.py --signal --filter-preset aggressive
+
+# 自定义目标数量
+python run_ashare_signals.py --signal --filter-target 800
+
+# 禁用智能筛选（使用完整股票池5298只）
+python run_ashare_signals.py --signal --no-filter
+
+# ========== 组合使用 ==========
+
+# 周频回测+保守型筛选
+python run_ashare_signals.py --weekly --filter-preset conservative
+
+# 月频回测+激进型筛选
+python run_ashare_signals.py --monthly --filter-preset aggressive
+
+# 强制重新运行回测（忽略缓存）
+python run_ashare_signals.py --weekly --force-backtest
+
+# 并发优化（默认3个线程，最多15个）
+python run_ashare_signals.py --signal --workers 5
+```
+
+#### 命令对比
+
+| 命令 | 策略数量 | 回测 | 信号 | 适用场景 | 耗时 |
+|------|---------|------|------|---------|------|
+| `--signal` | 2个（周频） | ❌ | ✅ | 每日推荐 | ~1分钟 |
+| `--all-signal` | 7个（全部） | ❌ | ✅ | 完整信号 | ~2-3分钟 |
+| `--weekly` | 2个（周频） | ✅ | ✅ | 周一更新 | ~2-3分钟 |
+| `--monthly` | 2个（月频） | ✅ | ✅ | 每月1号更新 | ~3-4分钟 |
+| 无参数 | 7个（全部） | ✅ | ✅ | 完整运行 | ~5-12分钟 |
+
+### 智能选股模块
+
+#### 筛选流程
+
+**文件**: [core/smart_stock_filter.py](core/smart_stock_filter.py)
+
+三层筛选架构：
+
+1. **第0层：基础过滤**
+   - 排除ST股票
+   - 排除停牌股票
+   - 排除新上市股票（默认60天内）
+   - 数据完整性检查（至少180天历史数据）
+
+2. **第1层：市值筛选**
+   - Conservative: 市值 > 100亿
+   - **Balanced（默认）**: 市值 > 50亿
+   - Aggressive: 市值 > 30亿
+
+3. **第2层：流动性筛选**
+   - Conservative: 换手率 > 2%, 日均成交额 > 1亿
+   - **Balanced（默认）**: 换手率 > 1.5%, 日均成交额 > 5000万
+   - Aggressive: 换手率 > 1%, 日均成交额 > 3000万
+
+#### 性能提升
+
+| 指标 | 无筛选 | 智能筛选 | 提升 |
+|------|--------|---------|------|
+| 股票池大小 | 5298只 | 1000只 | 减少81% |
+| 因子计算时间 | 100% | 20-30% | 提升70-80% |
+| 总执行时间 | 100% | 40-60% | 提升40-60% |
+| 内存占用 | 100% | 30-40% | 降低60-70% |
+
+### 策略列表
+
+系统已实现7个A股智能选股策略：
+
+#### 多因子智能选股策略（3个）
+
+**文件**: [strategies/stocks_多因子智能选股策略.py](strategies/stocks_多因子智能选股策略.py)
+
+| 策略版本 | 函数名 | 版本标识 | 持仓数 | 风险等级 |
+|---------|-------|---------|-------|---------|
+| 周频版本 | `multi_factor_strategy_weekly()` | weekly | 20只 | 中等 |
+| 月频版本 | `multi_factor_strategy_monthly()` | monthly | 30只 | 中等 |
+| 保守版本 | `multi_factor_strategy_conservative()` | conservative | 15只 | 低 |
+
+#### 动量轮动选股策略（4个）
+
+**文件**: [strategies/stocks_动量轮动选股策略.py](strategies/stocks_动量轮动选股策略.py)
+
+| 策略版本 | 函数名 | 版本标识 | 持仓数 | 风险等级 |
+|---------|-------|---------|-------|---------|
+| 周频版本 | `momentum_strategy_weekly()` | weekly | 15只 | 高 |
+| 月频版本 | `momentum_strategy_monthly()` | monthly | 20只 | 中高 |
+| 激进版本 | `momentum_strategy_aggressive()` | aggressive | 10只 | 极高 |
+| 跳过版本 | `momentum_strategy_with_skip()` | default | 17只 | 中高 |
+
+### 推荐使用流程
+
+#### 每日推荐流程（周一至周五）
+
+```bash
+# 每天运行周频策略信号（每日推荐）
+python run_ashare_signals.py --signal
+
+# 输出示例:
+# ✓ 智能选股已启用: preset=balanced, target=1000
+# ✓ 第0层(基础过滤): 5298 只股票
+# ✓ 第1层(市值筛选): 2697 只股票
+# ✓ 第2层(流动性筛选): 1729 只股票
+# ✓ 最终限制: 1000 只股票
+# ✓ 筛选完成! 最终: 1000 只股票, 减少 81.1%, 耗时 4.42秒
+# ✓ 2 个策略, 1000 个标的, 52 个因子
+```
+
+#### 周一更新流程（推荐）
+
+```bash
+# 每周一运行周频策略的完整回测和信号生成
+python run_ashare_signals.py --weekly
+
+# 流程:
+# 步骤 1/2: 运行 weekly 策略回测...
+#   - A股动量轮动-周频
+#   - A股多因子智能选股-周频
+# 步骤 2/2: 生成 weekly 策略信号...
+```
+
+#### 月初更新流程
+
+```bash
+# 每月1号运行月频策略的完整回测和信号生成
+python run_ashare_signals.py --monthly
+
+# 流程:
+# 步骤 1/2: 运行 monthly 策略回测...
+#   - A股动量轮动-月频
+#   - A股多因子智能选股-月频
+# 步骤 2/2: 生成 monthly 策略信号...
+```
+
+### 回测指标
+
+每个策略回测后存储以下关键指标：
+
+| 指标 | 说明 |
+|------|------|
+| Total Return | 总收益率 (%) |
+| Annual Return | 年化收益率 (%) |
+| Sharpe Ratio | 夏普比率 |
+| Max Drawdown | 最大回撤 (%) |
+| Win Rate | 胜率 (%) |
+| Profit Factor | 盈亏比 |
+| Total Trades | 总交易次数 |
+| Benchmark Return | 基准收益率 (%) |
+| Equity Curve | 权益曲线数据 |
+| Trade List | 交易明细 |
+
+### Web 界面展示
+
+#### ETF 信号模块
+- 显示所有 ETF 交易信号（带 .SH/.SZ 后缀）
+- 按日期分组，可展开/收起
+- 绿色 = 买入，红色 = 卖出
+
+#### A股信号模块
+- 显示所有 A股信号（6位数字代码）
+- **每个信号关联对应的回测报告**
+- 回测报告可展开查看核心指标（4个关键指标）
+- "View Full Report" 按钮打开详细回测信息模态框
+  - 完整的性能指标
+  - 权益曲线可视化
+  - 最近20笔交易明细
+
+### 数据库表结构
+
+#### strategy_backtests
+存储策略回测结果，包含所有性能指标和详细数据。
+
+#### signal_backtest_associations
+关联交易信号 (trader 表) 与回测结果 (strategy_backtests 表)。
+
+### 定时任务配置
+
+```bash
+# 查看当前定时任务
+crontab -l
+
+# 统一管道任务（每个工作日 20:00 执行）
+0 20 * * 1-5 cd /data/home/yy/code/aitrader && /root/miniconda3/bin/python run_ashare_signals.py >> logs/ashare_pipeline.log 2>&1
+```
+
+### 日志文件
+
+- **统一管道日志**: `logs/ashare_pipeline.log`
+
+### API 端点
+
+| 端点 | 说明 |
+|------|------|
+| `GET /api/signals/etf/latest` | 获取最新 ETF 信号 |
+| `GET /api/signals/ashare/latest` | 获取最新 A股 信号（带回测信息） |
+| `GET /api/signals/ashare/backtest/{id}` | 获取完整回测报告 |
+
+### 工作流程
+
+1. **回测阶段**
+   - 遍历所有6个A股策略
+   - 运行完整回测
+   - 提取性能指标
+   - 存储到 `strategy_backtests` 表
+
+2. **信号生成阶段**
+   - 调用多策略信号生成器
+   - 获取当前持仓
+   - 生成买卖信号
+   - 存储到 `trader` 表
+
+3. **关联阶段**
+   - 将每个信号与对应策略的回测关联
+   - 存储关联关系到 `signal_backtest_associations` 表
+
+4. **Web展示阶段**
+   - Dashboard 从数据库读取 ETF 和 A-share 信号
+   - A-share 信号自动加载关联的回测信息
+   - 用户可查看回测概要和详细报告
+
+### 故障排查
+
+#### 问题: 回测失败
+**解决方案**:
+- 检查数据完整性（确保历史数据存在）
+- 查看日志 `logs/ashare_pipeline.log`
+- 单独运行策略测试
+
+#### 问题: 信号与回测未关联
+**解决方案**:
+- 检查数据库表 `signal_backtest_associations`
+- 确认回测ID和信号ID都存在
+- 查看 PostgreSQL 日志
 
 ---
 
@@ -950,7 +1360,50 @@ pip install -r requirements.txt
 
 ### 快速启动
 
+#### 生产模式（推荐）
+
+使用提供的控制脚本管理 Web 服务：
+
+```bash
+cd /data/home/yy/code/aitrader
+
+# 启动服务器（后台运行）
+./web_server.sh start
+
+# 查看运行状态
+./web_server.sh status
+
+# 停止服务器
+./web_server.sh stop
+
+# 重启服务器
+./web_server.sh restart
+```
+
+**特性**:
+- ✅ 后台运行，不阻塞终端
+- ✅ 自动日志记录到 `logs/web_server.log`
+- ✅ PID 文件管理，防止重复启动
+- ✅ 优雅停止，支持强制结束
+- ✅ 状态查询，显示访问地址和日志路径
+
+**输出示例**:
+```
+$ ./web_server.sh start
+Starting web server...
+Web server started (PID: 3976686)
+Logs: /data/home/yy/code/aitrader/logs/web_server.log
+Access: http://0.0.0.0:8000
+
+$ ./web_server.sh status
+Web server is running (PID: 3976686)
+Access: http://0.0.0.0:8000
+Logs: /data/home/yy/code/aitrader/logs/web_server.log
+```
+
 #### 开发模式
+
+如需实时重载功能（开发调试）：
 
 ```bash
 cd /data/home/yy/code/aitrader
@@ -968,20 +1421,43 @@ python -m uvicorn web.main:app --reload --host 0.0.0.0 --port 8000
 
 #### 特性说明
 
-Dashboard 主页 (`/`) 左侧显示最近5个交易日的推荐策略：
+Dashboard 主页 (`/`) 采用**分层布局**显示交易信号：
 
-1. **按日期分组**: 自动获取最近5个有信号的交易日，每个日期为一个独立的栏目
-2. **可展开/收缩**: 点击日期标题可以展开或收起该日期下的所有信号
-3. **信号数量显示**: 每个日期标题显示该日期的信号总数
-4. **颜色标识**: 买入信号为绿色，卖出信号为红色
-5. **简洁设计**: 适合快速查看最近的策略推荐
+**左侧信号区（分为两个独立模块）：**
+
+1. **ETF 交易信号模块**（上方）
+   - 显示所有 ETF 信号（带 .SH/.SZ 后缀的标的）
+   - 按日期分组，可独立展开/收起模块
+   - 每个日期组也可展开/收起
+   - 绿色 = 买入，红色 = 卖出
+
+2. **A 股信号模块**（下方）
+   - 显示所有 A 股信号（6位数字代码）
+   - **每个信号卡片包含对应的回测报告**
+   - 回测报告默认折叠，点击展开查看4个核心指标：
+     - Total Return (总收益率)
+     - Annual Return (年化收益率)
+     - Sharpe Ratio (夏普比率)
+     - Max Drawdown (最大回撤)
+   - "View Full Report" 按钮打开完整回测详情模态框
+     - 所有性能指标
+     - 权益曲线数据
+     - 最近20笔交易明细
+
+**右侧交易管理区：**
+- 交易记录表单
+- 当前持仓列表
+- 盈亏汇总
 
 #### 使用方法
 
 1. 访问 http://localhost:8000
-2. 左侧显示最近5个交易日的信号
-3. 点击日期标题展开/收缩该日期的信号列表
-4. 查看信号详情（标的、类型、价格、策略、评分）
+2. 点击 ETF/A-share 模块标题展开/收起整个模块
+3. 点击日期标题展开/收起该日期的信号列表
+4. 对于 A-share 信号：
+   - 点击回测报告标题展开/收起核心指标
+   - 点击 "View Full Report" 查看完整回测详情
+   - 在模态框中查看交易明细和完整指标
 
 ### 历史信号页面功能
 
@@ -1159,7 +1635,7 @@ ls -la PostgreSQL数据库
 python -c "from database.pg_manager import get_db; db = get_db(); print(db.get_statistics())"
 
 # Web 服务运行时手动生成信号
-python run_multi_strategy_signals.py --save-to-db  # 会自动重试
+python run_etf_signals.py --save-to-db  # 会自动重试
 ```
 
 ### 安全建议

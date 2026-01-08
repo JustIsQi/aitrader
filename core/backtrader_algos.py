@@ -176,7 +176,7 @@ class SelectTopK:
             N: int - 要丢弃的信号数量
             K: int - 要选取的信号数量
         """
-        current_date = target.datetime.date()  # 获取当前日期
+        current_date = target.datetime.date(0)  # 获取当前日期
         current_date_pd = pd.Timestamp(current_date)  # 转换为Pandas时间戳
         #print(current_date_pd)
         signal =  self.signal
