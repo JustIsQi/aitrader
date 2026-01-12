@@ -139,12 +139,6 @@ async function loadProfitLoss() {
 
         plContainer.innerHTML = `
             <div class="pl-item">
-                <span class="pl-label">Realized P&L:</span>
-                <span class="pl-value ${getValueClass(data.realized_pl)}">
-                    ${formatCurrency(data.realized_pl)}
-                </span>
-            </div>
-            <div class="pl-item">
                 <span class="pl-label">Unrealized P&L:</span>
                 <span class="pl-value ${getValueClass(data.total_unrealized_pl)}">
                     ${formatCurrency(data.total_unrealized_pl)}

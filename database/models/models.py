@@ -188,6 +188,19 @@ class StockCode(Base):
     symbol = Column(String(20), nullable=False, unique=True)
 
 
+class AShareStockInfo(Base):
+    """A股股票信息表 (from ashare.csv)"""
+    __tablename__ = 'ashare_stock_info'
+
+    symbol = Column(String(20), primary_key=True)  # 格式: 002788.SZ
+    stock_code = Column(String(20), nullable=False)  # 原始代码: 002788
+    zh_company_abbr = Column(String(100), nullable=False)  # 中文简称
+    exchange_name = Column(String(50), nullable=False)  # 交易所名称
+    exchange_suffix = Column(String(5), nullable=False)  # SH/SZ/BJ
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class StrategyBacktest(Base):
     """策略回测结果表"""
     __tablename__ = 'strategy_backtests'
@@ -249,4 +262,56 @@ class SignalBacktestAssociation(Base):
 
     __table_args__ = (
         UniqueConstraint('trader_id', 'backtest_id', name='uix_signal_backtest'),
+    )
+
+
+class EtfHistoryQfq(Base):
+    """ETF前复权历史数据表"""
+    __tablename__ = 'etf_history_qfq'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), nullable=False)
+    date = Column(Date, nullable=False)
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+    volume = Column(Integer)
+    amount = Column(Float)
+    amplitude = Column(Float)
+    change_pct = Column(Float)
+    change_amount = Column(Float)
+    turnover_rate = Column(Float)
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('symbol', 'date', name='uix_etf_qfq_symbol_date'),
+        Index('idx_etf_qfq_symbol_date', 'symbol', 'date'),
+        Index('idx_etf_qfq_date', 'date'),
+    )
+
+
+class StockHistoryQfq(Base):
+    """股票前复权历史数据表"""
+    __tablename__ = 'stock_history_qfq'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), nullable=False)
+    date = Column(Date, nullable=False)
+    open = Column(Float)
+    high = Column(Float)
+    low = Column(Float)
+    close = Column(Float)
+    volume = Column(Integer)
+    amount = Column(Float)
+    amplitude = Column(Float)
+    change_pct = Column(Float)
+    change_amount = Column(Float)
+    turnover_rate = Column(Float)
+    created_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('symbol', 'date', name='uix_stock_qfq_symbol_date'),
+        Index('idx_stock_qfq_symbol_date', 'symbol', 'date'),
+        Index('idx_stock_qfq_date', 'date'),
     )

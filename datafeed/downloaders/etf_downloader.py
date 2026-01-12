@@ -58,7 +58,7 @@ class EtfDownloader:
             return f'{code}.SH'
 
     def fetch_etf_history(self, symbol: str, start_date: str = None,
-                         end_date: str = None) -> Optional[pd.DataFrame]:
+                         end_date: str = None, adjust: str = "hfq") -> Optional[pd.DataFrame]:
         """
         从 AkShare 获取 ETF 历史数据
 
@@ -66,6 +66,7 @@ class EtfDownloader:
             symbol: ETF 代码 (例如: '510300')
             start_date: 开始日期 (YYYYMMDD 格式)
             end_date: 结束日期 (YYYYMMDD 格式)
+            adjust: 复权类型 ('qfq'前复权, 'hfq'后复权, ''不复权)
 
         Returns:
             DataFrame: 历史数据
@@ -74,7 +75,7 @@ class EtfDownloader:
             result = ak.fund_etf_hist_em(
                 symbol=symbol,
                 period="daily",
-                adjust="hfq",
+                adjust=adjust,
                 start_date=start_date,
                 end_date=end_date
             )
@@ -144,6 +145,69 @@ class EtfDownloader:
 
         except Exception as e:
             logger.error(f'更新 ETF {symbol} 失败: {e}')
+            return False
+
+    def update_etf_data_qfq(self, symbol: str) -> bool:
+        """
+        更新单个 ETF 前复权数据（增量下载）
+
+        Args:
+            symbol: ETF 代码 (例如: '510300.SH')
+
+        Returns:
+            bool: 成功返回 True，失败返回 False
+        """
+        try:
+            # 从数据库获取最新日期
+            latest_date = self.db.get_etf_qfq_latest_date(symbol)
+
+            # 使用今天的日期,akshare会自动判断交易日
+            from datetime import timedelta
+            end_date = datetime.now().strftime('%Y%m%d')
+
+            if latest_date:
+                # 增量更新
+                next_day = latest_date + timedelta(days=1)
+                start_date = next_day.strftime('%Y%m%d')
+                logger.info(f'增量更新前复权数据 {symbol}，从 {start_date} 开始')
+            else:
+                # 首次下载,从2020年开始
+                start_date = '20200101'
+                logger.info(f'首次下载前复权数据 {symbol}，从 {start_date} 开始')
+
+            # 获取前复权数据
+            code = symbol.split('.')[0]
+            df = self.fetch_etf_history(code, start_date, end_date, adjust="qfq")
+
+            if df is None or df.empty:
+                logger.info(f'{symbol} 无新前复权数据')
+                return True
+
+            # 转换列名为英文
+            df.rename(columns={
+                '日期': 'date',
+                '开盘': 'open',
+                '收盘': 'close',
+                '最高': 'high',
+                '最低': 'low',
+                '成交量': 'volume',
+                '成交额': 'amount',
+                '振幅': 'amplitude',
+                '涨跌幅': 'change_pct',
+                '涨跌额': 'change_amount',
+                '换手率': 'turnover_rate'
+            }, inplace=True)
+
+            # 追加到前复权数据表
+            success = self.db.append_etf_history_qfq(df, symbol)
+
+            if success:
+                logger.info(f'成功更新 {symbol} 前复权数据，新增 {len(df)} 条数据')
+
+            return success
+
+        except Exception as e:
+            logger.error(f'更新 ETF 前复权数据 {symbol} 失败: {e}')
             return False
 
     def update_all_etf_data(self) -> dict:

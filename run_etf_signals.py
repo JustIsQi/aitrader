@@ -9,14 +9,15 @@ ETF策略信号生成主程序
 - 支持信号保存到数据库
 
 使用方法:
-    python run_etf_signals.py                              # 运行所有ETF策略
+    python run_etf_signals.py                              # 运行所有ETF策略(默认保存到数据库)
     python run_etf_signals.py --date 20251225             # 指定日期
     python run_etf_signals.py --output report.txt         # 输出到文件
-    python run_etf_signals.py --save-to-db                # 保存到数据库
+    python run_etf_signals.py --no-save-to-db             # 不保存到数据库
 """
 import argparse
 import sys
 from datetime import datetime
+from loguru import logger
 
 from database.pg_manager import get_db
 from signals.multi_strategy_signals import MultiStrategySignalGenerator
@@ -113,7 +114,7 @@ class ETFSignalGenerator(MultiStrategySignalGenerator):
             print(f"  ✓ {len(strategies)} 个ETF策略, {len(all_symbols)} 个标的, {len(all_factor_exprs)} 个因子")
 
             # 批量计算并缓存因子
-            factor_cache = FactorCache(all_symbols, '20200101', self.target_date)
+            factor_cache = FactorCache(all_symbols, '20200101', self.target_date, adjust_type='qfq')
             factor_cache.calculate_factors(all_factor_exprs)
 
             # 生成每个策略的信号（并发执行）
@@ -226,7 +227,15 @@ def parse_arguments():
     parser.add_argument(
         '--save-to-db',
         action='store_true',
-        help='保存信号到数据库trader表'
+        default=True,
+        help='保存信号到数据库trader表 (默认开启)'
+    )
+
+    parser.add_argument(
+        '--no-save-to-db',
+        action='store_false',
+        dest='save_to_db',
+        help='不保存信号到数据库'
     )
 
     return parser.parse_args()
@@ -337,8 +346,6 @@ def main():
 
     try:
         # 初始化数据库 (禁用详细日志)
-        from loguru import logger
-
         logger.disable("database.db_manager")
         logger.disable("datafeed.db_dataloader")
         logger.disable("core.stock_universe")  # 禁用股票池相关日志,ETF策略不需要

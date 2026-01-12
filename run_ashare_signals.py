@@ -119,7 +119,7 @@ class AShareSignalPipeline:
     """A股策略信号生成管道"""
 
     def __init__(self, mode='all', force_backtest=False, max_workers=None,
-                 enable_smart_filter=True, filter_config=None):
+                 enable_smart_filter=True, filter_config=None, adjust_type='qfq'):
         """
         初始化A股策略管道
 
@@ -129,16 +129,19 @@ class AShareSignalPipeline:
             max_workers: 并发回测的最大线程数
             enable_smart_filter: 是否启用智能选股筛选 (默认True)
             filter_config: 筛选配置对象
+            adjust_type: 复权类型 ('qfq'前复权, 'hfq'后复权，默认前复权)
         """
         self.db = get_db()
         self.signal_generator = MultiStrategySignalGenerator(
             enable_smart_filter=enable_smart_filter,
-            filter_config=filter_config
+            filter_config=filter_config,
+            adjust_type=adjust_type
         )
         self.force_backtest = force_backtest
         self.mode = mode
         self.enable_smart_filter = enable_smart_filter
         self.filter_config = filter_config
+        self.adjust_type = adjust_type
 
         # 使用线程池优化配置（针对I/O密集型任务）
         # 线程池可以安全地共享数据库连接池，不会有进程fork的问题

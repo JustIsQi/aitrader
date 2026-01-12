@@ -43,6 +43,9 @@
                                 <div class="signal-card {{ 'buy' if signal.signal_type == 'buy' else 'sell' }}">
                                     <div class="signal-header">
                                         <span class="symbol">{{ signal.symbol }}</span>
+                                        {% if signal.zh_company_abbr %}
+                                        <span class="company-name">{{ signal.zh_company_abbr }}</span>
+                                        {% endif %}
                                         <span class="signal-type">{{ signal.signal_type.upper() }}</span>
                                     </div>
                                     <div class="signal-details">
@@ -115,6 +118,9 @@
                                     <!-- Signal Info -->
                                     <div class="signal-header">
                                         <span class="symbol">{{ signal.symbol }}</span>
+                                        {% if signal.zh_company_abbr %}
+                                        <span class="company-name">{{ signal.zh_company_abbr }}</span>
+                                        {% endif %}
                                         <span class="signal-type">{{ signal.signal_type.upper() }}</span>
                                     </div>
 
@@ -230,6 +236,9 @@
                                     <!-- Signal Info -->
                                     <div class="signal-header">
                                         <span class="symbol">{{ signal.symbol }}</span>
+                                        {% if signal.zh_company_abbr %}
+                                        <span class="company-name">{{ signal.zh_company_abbr }}</span>
+                                        {% endif %}
                                         <span class="signal-type">{{ signal.signal_type.upper() }}</span>
                                     </div>
 

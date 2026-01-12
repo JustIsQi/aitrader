@@ -50,6 +50,9 @@ class Task:
     ashare_mode: bool = False          # 是否启用A股模式
     ashare_commission: str = 'v2'      # A股手续费方案 ('v1', 'v2', 'zero', 'fixed')
 
+    # 复权类型参数
+    adjust_type: str = 'hfq'           # 复权类型: 'qfq'前复权, 'hfq'后复权 (默认后复权保持向后兼容)
+
 
 @dataclass
 class StrategyConfig:

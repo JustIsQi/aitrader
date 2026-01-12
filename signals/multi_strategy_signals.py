@@ -50,7 +50,7 @@ class StrategySignals:
 class MultiStrategySignalGenerator:
     """多策略信号生成器"""
 
-    def __init__(self, enable_smart_filter=True, filter_config=None, version_filter=None):
+    def __init__(self, enable_smart_filter=True, filter_config=None, version_filter=None, adjust_type='qfq'):
         """
         初始化信号生成器
 
@@ -58,6 +58,7 @@ class MultiStrategySignalGenerator:
             enable_smart_filter: 是否启用智能选股筛选 (默认True)
             filter_config: 筛选配置对象 (默认使用balanced模式)
             version_filter: 策略版本过滤 ('weekly', 'monthly' 或 None表示所有)
+            adjust_type: 复权类型 ('qfq'前复权, 'hfq'后复权，默认前复权)
         """
         self.db = get_db()
         self.parser = StrategyParser('strategies')
@@ -65,6 +66,7 @@ class MultiStrategySignalGenerator:
         self.enable_smart_filter = enable_smart_filter
         self.filter_config = filter_config
         self.version_filter = version_filter
+        self.adjust_type = adjust_type
 
     def generate_signals(self,
                         current_positions: pd.DataFrame = None,
@@ -182,7 +184,7 @@ class MultiStrategySignalGenerator:
         print(f"  ✓ {len(strategies)} 个策略, {len(all_symbols)} 个标的, {len(all_factor_exprs)} 个因子")
 
         # 批量计算并缓存因子
-        factor_cache = FactorCache(all_symbols, '20200101', self.target_date)
+        factor_cache = FactorCache(all_symbols, '20200101', self.target_date, adjust_type=self.adjust_type)
         factor_cache.calculate_factors(all_factor_exprs)
 
         # 生成每个策略的信号（并发执行）

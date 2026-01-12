@@ -192,28 +192,30 @@ def fetch_with_retry(func, *args, max_retries=5, wait_seconds=3, **kwargs):
                 raise
 
 
-def fetch_stock_history(symbol, start_date=None, end_date=None):
+def fetch_stock_history(symbol, start_date=None, end_date=None, adjust="hfq"):
     """获取股票历史数据
 
     Args:
         symbol: 股票代码
         start_date: 开始日期 (YYYYMMDD 格式)
         end_date: 结束日期 (YYYYMMDD 格式)
+        adjust: 复权类型 ('qfq'前复权, 'hfq'后复权, ''不复权)
     """
-    result = ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust="hfq",
+    result = ak.stock_zh_a_hist(symbol=symbol, period="daily", adjust=adjust,
                               start_date=start_date, end_date=end_date)
     return result
 
 
-def fetch_etf_history(symbol, start_date=None, end_date=None):
+def fetch_etf_history(symbol, start_date=None, end_date=None, adjust="hfq"):
     """获取ETF历史数据
 
     Args:
         symbol: ETF代码
         start_date: 开始日期 (YYYYMMDD 格式)
         end_date: 结束日期 (YYYYMMDD 格式)
+        adjust: 复权类型 ('qfq'前复权, 'hfq'后复权, ''不复权)
     """
-    result = ak.fund_etf_hist_em(symbol=symbol, period="daily", adjust="hfq",
+    result = ak.fund_etf_hist_em(symbol=symbol, period="daily", adjust=adjust,
                                 start_date=start_date, end_date=end_date)
     return result
 

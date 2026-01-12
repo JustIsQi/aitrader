@@ -16,7 +16,10 @@ from database.models.models import (
     EtfCode,
     StockCode,
     StrategyBacktest,
-    SignalBacktestAssociation
+    SignalBacktestAssociation,
+    AShareStockInfo,
+    EtfHistoryQfq,
+    StockHistoryQfq
 )
 
 __all__ = [
@@ -35,4 +38,7 @@ __all__ = [
     'StockCode',
     'StrategyBacktest',
     'SignalBacktestAssociation',
+    'AShareStockInfo',
+    'EtfHistoryQfq',
+    'StockHistoryQfq',
 ]

@@ -226,11 +226,16 @@ async def get_latest_etf_signals(limit: int = 50):
         with db.get_session() as session:
             # Query ETF signals using asset_type column
             from database.models.models import Trader
+            from sqlalchemy import func
 
-            # ETF信号：使用asset_type字段过滤
+            # ETF信号：使用asset_type字段过滤，按rank排序（rank=1优先）
             query = session.query(Trader).filter(
                 Trader.asset_type == 'etf'
-            ).order_by(Trader.signal_date.desc(), Trader.created_at.desc()).limit(limit)
+            ).order_by(
+                func.coalesce(Trader.rank, 9999).asc(),
+                Trader.signal_date.desc(),
+                Trader.created_at.desc()
+            ).limit(limit)
 
             signals_df = pd.read_sql(query.statement, session.bind)
 
@@ -239,6 +244,11 @@ async def get_latest_etf_signals(limit: int = 50):
 
         # Clean and group by date
         signals_df = clean_dataframe(signals_df)
+
+        # Batch get company abbreviations for all symbols
+        symbols = signals_df['symbol'].unique().tolist()
+        company_abbr_map = db.batch_get_company_abbr(symbols)
+
         signals_list = []
         for record in signals_df.to_dict('records'):
             cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
@@ -246,6 +256,10 @@ async def get_latest_etf_signals(limit: int = 50):
                 cleaned_record['signal_date'] = cleaned_record['signal_date'].strftime('%Y-%m-%d')
             if 'created_at' in cleaned_record and cleaned_record['created_at']:
                 cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+
+            # Add company abbreviation
+            cleaned_record['zh_company_abbr'] = company_abbr_map.get(record['symbol'], '')
+
             signals_list.append(cleaned_record)
 
         # Group by date
@@ -279,11 +293,16 @@ async def get_latest_ashare_signals(limit: int = 50):
         with db.get_session() as session:
             # Query A-share signals using asset_type column
             from database.models.models import Trader
+            from sqlalchemy import func
 
-            # A股信号：使用asset_type字段过滤
+            # A股信号：使用asset_type字段过滤，按rank排序（rank=1优先）
             query = session.query(Trader).filter(
                 Trader.asset_type == 'ashare'
-            ).order_by(Trader.signal_date.desc(), Trader.created_at.desc()).limit(limit)
+            ).order_by(
+                func.coalesce(Trader.rank, 9999).asc(),
+                Trader.signal_date.desc(),
+                Trader.created_at.desc()
+            ).limit(limit)
 
             signals_df = pd.read_sql(query.statement, session.bind)
 
@@ -291,6 +310,10 @@ async def get_latest_ashare_signals(limit: int = 50):
             return {"weekly": [], "monthly": []}
 
         signals_df = clean_dataframe(signals_df)
+
+        # Batch get company abbreviations for all symbols
+        symbols = signals_df['symbol'].unique().tolist()
+        company_abbr_map = db.batch_get_company_abbr(symbols)
 
         # Enrich with backtest information and split by frequency
         weekly_signals = []
@@ -304,6 +327,9 @@ async def get_latest_ashare_signals(limit: int = 50):
                 cleaned_record['signal_date'] = cleaned_record['signal_date'].strftime('%Y-%m-%d')
             if 'created_at' in cleaned_record and cleaned_record['created_at']:
                 cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+
+            # Add company abbreviation
+            cleaned_record['zh_company_abbr'] = company_abbr_map.get(record['symbol'], '')
 
             # Get associated backtest
             backtest_info = db.get_signal_backtest(record['id'])

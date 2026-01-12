@@ -9,15 +9,17 @@ from config import DATA_DIR
 class DbDataLoader:
     """数据库批量查询数据加载器（支持PostgreSQL）"""
 
-    def __init__(self, auto_download=True):
+    def __init__(self, auto_download=True, adjust_type='hfq'):
         """
         Args:
             auto_download: 是否自动下载缺失的数据
+            adjust_type: 复权类型 ('qfq'前复权, 'hfq'后复权)
         """
         self.auto_download = auto_download
+        self.adjust_type = adjust_type
         from database.pg_manager import get_db
         self.db = get_db()
-        logger.info('DbDataLoader: 使用 PostgreSQL 作为数据源')
+        logger.info(f'DbDataLoader: 使用 PostgreSQL 作为数据源, 复权类型={adjust_type}')
 
     def _download_to_postgres(self, symbol):
         """下载数据并直接写入 PostgreSQL"""
@@ -120,14 +122,22 @@ class DbDataLoader:
 
             # 判断是 ETF 还是股票
             from scripts.get_data import is_etf
+
+            # 根据 adjust_type 选择查询前复权还是后复权表
             if is_etf(symbol):
-                df = self.db.get_etf_history(symbol, start_date=start_date_fmt, end_date=end_date_fmt)
+                if self.adjust_type == 'qfq':
+                    df = self.db.get_etf_history_qfq(symbol, start_date=start_date_fmt, end_date=end_date_fmt)
+                else:
+                    df = self.db.get_etf_history(symbol, start_date=start_date_fmt, end_date=end_date_fmt)
             else:
-                df = self.db.get_stock_history(symbol, start_date=start_date_fmt, end_date=end_date_fmt)
+                if self.adjust_type == 'qfq':
+                    df = self.db.get_stock_history_qfq(symbol, start_date=start_date_fmt, end_date=end_date_fmt)
+                else:
+                    df = self.db.get_stock_history(symbol, start_date=start_date_fmt, end_date=end_date_fmt)
 
             if df.empty:
                 if self.auto_download:
-                    logger.info(f'PostgreSQL 中无 {symbol} 数据，开始下载...')
+                    logger.info(f'PostgreSQL 中无 {symbol} 数据({self.adjust_type})，开始下载...')
                     # 尝试下载数据到 PostgreSQL
                     df = self._download_to_postgres(symbol)
                     if df is not None:
@@ -212,7 +222,11 @@ class DbDataLoader:
                     query_start = time.time()
 
                     # ✅ Date filtering happens in SQL (fast)
-                    df_all = self.db.batch_get_etf_history(batch, start_date_fmt, end_date_fmt)
+                    # 根据 adjust_type 选择查询前复权还是后复权表
+                    if self.adjust_type == 'qfq':
+                        df_all = self.db.batch_get_etf_history_qfq(batch, start_date_fmt, end_date_fmt)
+                    else:
+                        df_all = self.db.batch_get_etf_history(batch, start_date_fmt, end_date_fmt)
 
                     query_elapsed = time.time() - query_start
                     logger.debug(f'  查询耗时: {query_elapsed:.2f}秒, 返回 {len(df_all)} 行')
@@ -253,7 +267,11 @@ class DbDataLoader:
                     query_start = time.time()
 
                     # ✅ Date filtering happens in SQL (fast)
-                    df_all = self.db.batch_get_stock_history(batch, start_date_fmt, end_date_fmt)
+                    # 根据 adjust_type 选择查询前复权还是后复权表
+                    if self.adjust_type == 'qfq':
+                        df_all = self.db.batch_get_stock_history_qfq(batch, start_date_fmt, end_date_fmt)
+                    else:
+                        df_all = self.db.batch_get_stock_history(batch, start_date_fmt, end_date_fmt)
 
                     query_elapsed = time.time() - query_start
                     logger.debug(f'  查询耗时: {query_elapsed:.2f}秒, 返回 {len(df_all)} 行')

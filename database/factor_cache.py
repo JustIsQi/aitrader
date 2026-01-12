@@ -11,7 +11,7 @@ from datafeed.factor_expr import FactorExpr
 class FactorCache:
     """因子缓存类"""
 
-    def __init__(self, symbols: List[str], start_date: str, end_date: str):
+    def __init__(self, symbols: List[str], start_date: str, end_date: str, adjust_type='qfq'):
         """
         初始化因子缓存
 
@@ -19,10 +19,12 @@ class FactorCache:
             symbols: 标的列表
             start_date: 开始日期 (YYYYMMDD)
             end_date: 结束日期 (YYYYMMDD)
+            adjust_type: 复权类型 ('qfq'前复权, 'hfq'后复权，默认前复权)
         """
         self.symbols = list(set(symbols))  # 去重
         self.start_date = start_date
         self.end_date = end_date
+        self.adjust_type = adjust_type
         self.factor_cache: Dict[str, pd.DataFrame] = {}
         self.df_all = None
 
@@ -54,7 +56,7 @@ class FactorCache:
 
         try:
             # 加载数据
-            loader = DbDataLoader()
+            loader = DbDataLoader(adjust_type=self.adjust_type)
             dfs = loader.read_dfs(
                 symbols=self.symbols,
                 start_date=self.start_date,

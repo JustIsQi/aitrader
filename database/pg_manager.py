@@ -17,7 +17,8 @@ from sqlalchemy.exc import IntegrityError
 from database.models import (
     EtfHistory, StockHistory, StockMetadata, StockFundamentalDaily,
     Trader, Transaction, Position, FactorCache, EtfCode, StockCode,
-    StrategyBacktest, SignalBacktestAssociation
+    StrategyBacktest, SignalBacktestAssociation, AShareStockInfo,
+    EtfHistoryQfq, StockHistoryQfq
 )
 from database.models.base import SessionLocal, engine
 
@@ -611,6 +612,332 @@ class PostgreSQLManager:
             ).scalar()
             return result
 
+    # ==================== 前复权数据操作 ====================
+
+    def get_stock_history_qfq(self, symbol: str, start_date: date = None,
+                             end_date: date = None) -> pd.DataFrame:
+        """
+        获取股票前复权历史数据
+
+        Args:
+            symbol: 股票代码
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            DataFrame: 前复权历史数据
+        """
+        with self.get_session() as session:
+            query = session.query(StockHistoryQfq).filter(StockHistoryQfq.symbol == symbol)
+
+            if start_date:
+                query = query.filter(StockHistoryQfq.date >= start_date)
+            if end_date:
+                query = query.filter(StockHistoryQfq.date <= end_date)
+
+            query = query.order_by(StockHistoryQfq.date.asc())
+
+            return pd.read_sql(query.statement, session.bind)
+
+    def batch_get_stock_history_qfq(self, symbols: List[str], start_date: date = None,
+                                   end_date: date = None) -> pd.DataFrame:
+        """
+        批量获取多个股票的前复权历史数据（性能优化）
+
+        一次查询返回所有股票数据，而不是每个股票单独查询
+
+        Args:
+            symbols: 股票代码列表
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            DataFrame: 包含所有股票的前复权历史数据
+        """
+        query_name = f"batch_stock_qfq_{len(symbols)}_symbols"
+        with query_timer(query_name):
+            with self.get_session() as session:
+                query = session.query(StockHistoryQfq).filter(
+                    StockHistoryQfq.symbol.in_(symbols)
+                )
+
+                if start_date:
+                    query = query.filter(StockHistoryQfq.date >= start_date)
+                if end_date:
+                    query = query.filter(StockHistoryQfq.date <= end_date)
+
+                query = query.order_by(StockHistoryQfq.symbol.asc(), StockHistoryQfq.date.asc())
+
+                return pd.read_sql(query.statement, session.bind)
+
+    def get_stock_qfq_latest_date(self, symbol: str) -> Optional[datetime]:
+        """
+        获取指定股票的前复权最新数据日期
+
+        Args:
+            symbol: 股票代码
+
+        Returns:
+            最新日期，如果没有数据则返回 None
+        """
+        with self.get_session() as session:
+            result = session.query(sql_func.max(StockHistoryQfq.date)).filter(
+                StockHistoryQfq.symbol == symbol
+            ).scalar()
+            return result
+
+    def append_stock_history_qfq(self, df: pd.DataFrame, symbol: str) -> bool:
+        """
+        追加新的股票前复权历史数据
+
+        Args:
+            df: 新的数据 DataFrame
+            symbol: 股票代码
+        """
+        try:
+            df = df.copy()
+            df['symbol'] = symbol
+            df['date'] = pd.to_datetime(df['date']).dt.date
+
+            with self.get_session() as session:
+                df.to_sql('temp_stock_qfq_insert', self.engine, if_exists='replace', index=False)
+
+                session.execute(text("""
+                    INSERT INTO stock_history_qfq
+                    (symbol, date, open, high, low, close, volume, amount,
+                     amplitude, change_pct, change_amount, turnover_rate)
+                    SELECT symbol, date, open, high, low, close, volume, amount,
+                           amplitude, change_pct, change_amount, turnover_rate
+                    FROM temp_stock_qfq_insert
+                    ON CONFLICT (symbol, date) DO NOTHING
+                """))
+
+                session.execute(text("DROP TABLE temp_stock_qfq_insert"))
+
+                logger.info(f'成功追加 {len(df)} 条股票前复权数据')
+                return True
+        except Exception as e:
+            logger.error(f'追加股票前复权数据失败: {e}')
+            return False
+
+    def batch_append_stock_history_qfq(self, df: pd.DataFrame) -> int:
+        """
+        批量追加多个股票的前复权历史数据（优化版）
+
+        一次性插入多个股票的数据，减少数据库操作次数
+
+        Args:
+            df: 包含多个股票数据的 DataFrame，必须有 symbol 列
+
+        Returns:
+            int: 实际插入的记录数
+        """
+        try:
+            df = df.copy()
+            df['date'] = pd.to_datetime(df['date']).dt.date
+
+            # 使用唯一的临时表名避免并发冲突
+            temp_table_name = f'temp_stock_qfq_batch_{uuid.uuid4().hex[:8]}'
+
+            with self.get_session() as session:
+                # 创建临时表
+                df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
+
+                # 先检查有多少记录是重复的
+                duplicate_check = session.execute(text(f"""
+                    SELECT COUNT(*) FROM {temp_table_name} t
+                    INNER JOIN stock_history_qfq s ON t.symbol = s.symbol AND t.date = s.date
+                """))
+                duplicate_count = duplicate_check.scalar() or 0
+
+                # 批量插入，忽略重复记录
+                result = session.execute(text(f"""
+                    INSERT INTO stock_history_qfq
+                    (symbol, date, open, high, low, close, volume, amount,
+                     amplitude, change_pct, change_amount, turnover_rate)
+                    SELECT symbol, date, open, high, low, close, volume, amount,
+                           amplitude, change_pct, change_amount, turnover_rate
+                    FROM {temp_table_name}
+                    ON CONFLICT (symbol, date) DO NOTHING
+                """))
+
+                # 删除临时表
+                session.execute(text(f"DROP TABLE {temp_table_name}"))
+
+                # 计算实际插入的记录数（总记录数 - 重复记录数）
+                inserted_count = len(df) - duplicate_count
+
+                logger.info(f'批量追加股票前复权数据: {inserted_count} 条新增, {duplicate_count} 条重复 ({len(df)} 个股票)')
+                return inserted_count
+
+        except Exception as e:
+            logger.error(f'批量追加股票前复权数据失败: {e}')
+            return 0
+
+    def get_etf_history_qfq(self, symbol: str, start_date: date = None,
+                           end_date: date = None) -> pd.DataFrame:
+        """
+        获取 ETF 前复权历史数据
+
+        Args:
+            symbol: ETF 代码
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            DataFrame: 前复权历史数据
+        """
+        with self.get_session() as session:
+            query = session.query(EtfHistoryQfq).filter(EtfHistoryQfq.symbol == symbol)
+
+            if start_date:
+                query = query.filter(EtfHistoryQfq.date >= start_date)
+            if end_date:
+                query = query.filter(EtfHistoryQfq.date <= end_date)
+
+            query = query.order_by(EtfHistoryQfq.date.asc())
+
+            return pd.read_sql(query.statement, session.bind)
+
+    def batch_get_etf_history_qfq(self, symbols: List[str], start_date: date = None,
+                                 end_date: date = None) -> pd.DataFrame:
+        """
+        批量获取多个ETF的前复权历史数据（性能优化）
+
+        一次查询返回所有ETF数据，而不是每个ETF单独查询
+
+        Args:
+            symbols: ETF代码列表
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            DataFrame: 包含所有ETF的前复权历史数据
+        """
+        query_name = f"batch_etf_qfq_{len(symbols)}_symbols"
+        with query_timer(query_name):
+            with self.get_session() as session:
+                query = session.query(EtfHistoryQfq).filter(
+                    EtfHistoryQfq.symbol.in_(symbols)
+                )
+
+                if start_date:
+                    query = query.filter(EtfHistoryQfq.date >= start_date)
+                if end_date:
+                    query = query.filter(EtfHistoryQfq.date <= end_date)
+
+                query = query.order_by(EtfHistoryQfq.symbol.asc(), EtfHistoryQfq.date.asc())
+
+                return pd.read_sql(query.statement, session.bind)
+
+    def get_etf_qfq_latest_date(self, symbol: str) -> Optional[datetime]:
+        """
+        获取指定 ETF 的前复权最新数据日期
+
+        Args:
+            symbol: ETF 代码
+
+        Returns:
+            最新日期，如果没有数据则返回 None
+        """
+        with self.get_session() as session:
+            result = session.query(sql_func.max(EtfHistoryQfq.date)).filter(
+                EtfHistoryQfq.symbol == symbol
+            ).scalar()
+            return result
+
+    def append_etf_history_qfq(self, df: pd.DataFrame, symbol: str) -> bool:
+        """
+        追加新的 ETF 前复权历史数据
+
+        Args:
+            df: 新的数据 DataFrame
+            symbol: ETF 代码
+        """
+        try:
+            df = df.copy()
+            df['symbol'] = symbol
+            df['date'] = pd.to_datetime(df['date']).dt.date
+
+            # 使用唯一的临时表名避免并发冲突
+            temp_table_name = f'temp_etf_qfq_insert_{uuid.uuid4().hex[:8]}'
+
+            with self.get_session() as session:
+                # 使用临时表和 ON CONFLICT DO NOTHING
+                df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
+
+                session.execute(text(f"""
+                    INSERT INTO etf_history_qfq
+                    (symbol, date, open, high, low, close, volume, amount,
+                     amplitude, change_pct, change_amount, turnover_rate)
+                    SELECT symbol, date, open, high, low, close, volume, amount,
+                           amplitude, change_pct, change_amount, turnover_rate
+                    FROM {temp_table_name}
+                    ON CONFLICT (symbol, date) DO NOTHING
+                """))
+
+                session.execute(text(f"DROP TABLE {temp_table_name}"))
+
+                logger.info(f'成功追加 {len(df)} 条ETF前复权数据')
+                return True
+        except Exception as e:
+            logger.error(f'追加ETF前复权数据失败: {e}')
+            return False
+
+    def batch_append_etf_history_qfq(self, df: pd.DataFrame) -> int:
+        """
+        批量追加多个ETF的前复权历史数据（优化版）
+
+        一次性插入多个ETF的数据，减少数据库操作次数
+
+        Args:
+            df: 包含多个ETF数据的 DataFrame，必须有 symbol 列
+
+        Returns:
+            int: 实际插入的记录数
+        """
+        try:
+            df = df.copy()
+            df['date'] = pd.to_datetime(df['date']).dt.date
+
+            # 使用唯一的临时表名避免并发冲突
+            temp_table_name = f'temp_etf_qfq_batch_{uuid.uuid4().hex[:8]}'
+
+            with self.get_session() as session:
+                # 创建临时表
+                df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
+
+                # 先检查有多少记录是重复的
+                duplicate_check = session.execute(text(f"""
+                    SELECT COUNT(*) FROM {temp_table_name} t
+                    INNER JOIN etf_history_qfq e ON t.symbol = e.symbol AND t.date = e.date
+                """))
+                duplicate_count = duplicate_check.scalar() or 0
+
+                # 批量插入，忽略重复记录
+                result = session.execute(text(f"""
+                    INSERT INTO etf_history_qfq
+                    (symbol, date, open, high, low, close, volume, amount,
+                     amplitude, change_pct, change_amount, turnover_rate)
+                    SELECT symbol, date, open, high, low, close, volume, amount,
+                           amplitude, change_pct, change_amount, turnover_rate
+                    FROM {temp_table_name}
+                    ON CONFLICT (symbol, date) DO NOTHING
+                """))
+
+                # 删除临时表
+                session.execute(text(f"DROP TABLE {temp_table_name}"))
+
+                # 计算实际插入的记录数（总记录数 - 重复记录数）
+                inserted_count = len(df) - duplicate_count
+
+                logger.info(f'批量追加ETF前复权数据: {inserted_count} 条新增, {duplicate_count} 条重复 ({len(df)} 个ETF)')
+                return inserted_count
+
+        except Exception as e:
+            logger.error(f'批量追加ETF前复权数据失败: {e}')
+            return 0
+
     # ==================== 交易操作 ====================
 
     def insert_transaction(self, symbol: str, buy_sell: str, quantity: float,
@@ -727,6 +1054,25 @@ class PostgreSQLManager:
         self.clear_transactions()
         logger.info('已清空所有交易数据')
 
+    def _update_positions_latest_price(self, session):
+        """
+        更新所有持仓的当前价格（从 qfq 表读取最新数据）
+
+        Args:
+            session: SQLAlchemy session
+        """
+        positions = session.query(Position).filter(Position.quantity > 0).all()
+
+        for pos in positions:
+            # 获取最新价格
+            latest_price = self._get_latest_price_for_symbol(session, pos.symbol)
+
+            # 更新持仓的当前价格和市值
+            if latest_price is not None:
+                pos.current_price = latest_price
+                pos.market_value = pos.quantity * latest_price
+                logger.debug(f'更新 {pos.symbol} 最新价格: {latest_price}')
+
     def recalculate_positions(self) -> dict:
         """
         从 transactions 表重新计算所有持仓
@@ -738,14 +1084,18 @@ class PostgreSQLManager:
 
         Returns:
             dict: {
-                'updated_count': int,      # 更新的持仓数量
-                'deleted_count': int,      # 删除的持仓数量
+                'updated_count': int,      # 创建的持仓数量
+                'deleted_count': int,      # 删除的旧持仓数量
                 'details': List[dict]      # 每个symbol的详细信息
             }
         """
         try:
             with self.get_session() as session:
-                # 1. 读取所有交易记录，按 symbol 和 trade_date 排序
+                # 1. 清空 positions 表
+                deleted_count = session.query(Position).delete()
+                logger.info(f'清空positions表: 删除 {deleted_count} 条旧记录')
+
+                # 2. 读取所有交易记录，按 symbol 和 trade_date 排序
                 transactions = session.query(Transaction).order_by(
                     Transaction.symbol,
                     Transaction.trade_date.asc(),
@@ -754,9 +1104,9 @@ class PostgreSQLManager:
 
                 if not transactions:
                     logger.info('没有交易记录，跳过重新计算')
-                    return {'updated_count': 0, 'deleted_count': 0, 'details': []}
+                    return {'updated_count': 0, 'deleted_count': deleted_count, 'details': []}
 
-                # 2. 按 symbol 分组计算
+                # 3. 按 symbol 分组计算
                 positions_dict = {}  # {symbol: {'quantity': float, 'avg_cost': float, 'current_price': float}}
 
                 for txn in transactions:
@@ -787,57 +1137,38 @@ class PostgreSQLManager:
                         pos['quantity'] = max(0, pos['quantity'] - txn.quantity)
                         pos['current_price'] = txn.price
 
-                # 3. 更新 positions 表
+                # 4. 创建新的持仓记录
                 updated_count = 0
-                deleted_count = 0
                 details = []
 
                 for symbol, pos_data in positions_dict.items():
                     if pos_data['quantity'] > 0:
-                        # 更新或创建持仓
-                        position = session.query(Position).filter(
-                            Position.symbol == symbol
-                        ).first()
-
                         market_value = pos_data['quantity'] * pos_data['current_price']
 
-                        if position:
-                            position.quantity = pos_data['quantity']
-                            position.avg_cost = pos_data['avg_cost']
-                            position.current_price = pos_data['current_price']
-                            position.market_value = market_value
-                        else:
-                            new_position = Position(
-                                symbol=symbol,
-                                quantity=pos_data['quantity'],
-                                avg_cost=pos_data['avg_cost'],
-                                current_price=pos_data['current_price'],
-                                market_value=market_value
-                            )
-                            session.add(new_position)
+                        new_position = Position(
+                            symbol=symbol,
+                            quantity=pos_data['quantity'],
+                            avg_cost=pos_data['avg_cost'],
+                            current_price=pos_data['current_price'],
+                            market_value=market_value
+                        )
+                        session.add(new_position)
 
                         updated_count += 1
                         details.append({
                             'symbol': symbol,
                             'quantity': pos_data['quantity'],
                             'avg_cost': pos_data['avg_cost'],
-                            'action': 'updated'
+                            'action': 'created'
                         })
 
-                    else:
-                        # 删除持仓（quantity = 0）
-                        session.query(Position).filter(
-                            Position.symbol == symbol
-                        ).delete()
-                        deleted_count += 1
-                        details.append({
-                            'symbol': symbol,
-                            'quantity': 0,
-                            'avg_cost': 0,
-                            'action': 'deleted'
-                        })
+                # 5. 立即刷新到数据库
+                session.flush()
 
-                logger.info(f'重新计算持仓完成: 更新 {updated_count} 个, 删除 {deleted_count} 个')
+                # 6. 从 qfq 表更新最新价格
+                self._update_positions_latest_price(session)
+
+                logger.info(f'重新计算持仓完成: 清空 {deleted_count} 条旧记录, 创建 {updated_count} 个新持仓')
 
                 return {
                     'updated_count': updated_count,
@@ -984,6 +1315,84 @@ class PostgreSQLManager:
 
             return pd.read_sql(query.statement, session.bind)
 
+    def get_stock_qfq_latest_price(self, symbol: str) -> Optional[float]:
+        """
+        获取股票在前复权表中的最新收盘价
+
+        Args:
+            symbol: 股票代码
+
+        Returns:
+            最新收盘价，如果没有数据返回 None
+        """
+        with self.get_session() as session:
+            latest = session.query(StockHistoryQfq.close).filter(
+                StockHistoryQfq.symbol == symbol
+            ).order_by(StockHistoryQfq.date.desc()).first()
+
+            return latest[0] if latest else None
+
+    def get_etf_qfq_latest_price(self, symbol: str) -> Optional[float]:
+        """
+        获取ETF在前复权表中的最新收盘价
+
+        Args:
+            symbol: ETF代码
+
+        Returns:
+            最新收盘价，如果没有数据返回 None
+        """
+        with self.get_session() as session:
+            latest = session.query(EtfHistoryQfq.close).filter(
+                EtfHistoryQfq.symbol == symbol
+            ).order_by(EtfHistoryQfq.date.desc()).first()
+
+            return latest[0] if latest else None
+
+    def get_qfq_latest_prices(self, symbols: List[str]) -> dict:
+        """
+        批量获取股票/ETF的最新价格
+
+        Args:
+            symbols: 代码列表
+
+        Returns:
+            dict: {symbol: latest_price}
+        """
+        prices = {}
+        with self.get_session() as session:
+            for symbol in symbols:
+                # 使用辅助方法获取最新价格（自动判断股票或ETF）
+                prices[symbol] = self._get_latest_price_for_symbol(session, symbol)
+
+        return prices
+
+    def _get_latest_price_for_symbol(self, session, symbol: str) -> Optional[float]:
+        """
+        获取指定代码的最新价格（自动判断股票或ETF）
+
+        Args:
+            session: SQLAlchemy session
+            symbol: 股票/ETF代码
+
+        Returns:
+            最新收盘价，如果没有数据返回 None
+        """
+        # 先尝试从 stock_history_qfq 获取
+        latest = session.query(StockHistoryQfq.close).filter(
+            StockHistoryQfq.symbol == symbol
+        ).order_by(StockHistoryQfq.date.desc()).first()
+
+        if latest:
+            return latest[0]
+
+        # 再尝试从 etf_history_qfq 获取
+        latest = session.query(EtfHistoryQfq.close).filter(
+            EtfHistoryQfq.symbol == symbol
+        ).order_by(EtfHistoryQfq.date.desc()).first()
+
+        return latest[0] if latest else None
+
     def calculate_realized_pl(self) -> float:
         """
         计算已实现盈亏（从交易历史中已完成的买卖交易）
@@ -1048,7 +1457,7 @@ class PostgreSQLManager:
 
     def calculate_profit_loss(self) -> dict:
         """
-        计算总体盈亏
+        计算总体盈亏（使用 qfq 表的最新价格）
 
         Returns:
             dict: 盈亏统计，包含已实现和未实现盈亏
@@ -1058,19 +1467,38 @@ class PostgreSQLManager:
 
             total_cost = 0
             total_market_value = 0
+            price_details = []  # 记录价格更新详情
 
             for pos in positions:
-                total_cost += pos.avg_cost * pos.quantity
-                total_market_value += pos.market_value if pos.market_value else 0
+                # 从 qfq 表获取最新价格
+                latest_price = self._get_latest_price_for_symbol(session, pos.symbol)
 
-            # 未实现盈亏（持仓浮动盈亏）
+                if latest_price is not None:
+                    current_market_value = latest_price * pos.quantity
+                else:
+                    # 如果没有最新价格，使用 positions 表中的价格
+                    current_market_value = pos.market_value if pos.market_value else 0
+                    latest_price = pos.current_price
+
+                total_cost += pos.avg_cost * pos.quantity
+                total_market_value += current_market_value
+
+                price_details.append({
+                    'symbol': pos.symbol,
+                    'avg_cost': pos.avg_cost,
+                    'latest_price': latest_price,
+                    'quantity': pos.quantity,
+                    'market_value': current_market_value
+                })
+
+            # 未实现盈亏（持仓浮动盈亏）= 当前市值 - 总成本
             total_unrealized_pl = total_market_value - total_cost
 
-            # 已实现盈亏（从交易历史计算）
-            realized_pl = self.calculate_realized_pl()
+            # 已实现盈亏（不计算历史已实现盈亏，只显示当前持仓盈亏）
+            realized_pl = 0
 
-            # 总盈亏
-            total_pl = realized_pl + total_unrealized_pl
+            # 总盈亏 = 当前持仓盈亏
+            total_pl = total_unrealized_pl
 
             # 盈亏百分比
             pl_pct = (total_pl / total_cost * 100) if total_cost > 0 else 0
@@ -1081,7 +1509,8 @@ class PostgreSQLManager:
                 'total_market_value': total_market_value,
                 'total_cost': total_cost,
                 'total_pl': total_pl,
-                'pl_pct': pl_pct
+                'pl_pct': pl_pct,
+                'price_details': price_details
             }
 
     # ==================== 基本面数据操作 ====================
@@ -1158,6 +1587,48 @@ class PostgreSQLManager:
                     'is_new_ipo': metadata.is_new_ipo,
                 }
             return None
+
+    def get_company_abbr(self, symbol: str) -> Optional[str]:
+        """
+        查询股票的中文简称
+
+        Args:
+            symbol: 股票代码（格式: 002788.SZ）
+
+        Returns:
+            Optional[str]: 中文简称，如果未找到返回None
+        """
+        with self.get_session() as session:
+            stock_info = session.query(AShareStockInfo).filter(
+                AShareStockInfo.symbol == symbol
+            ).first()
+
+            if stock_info:
+                return stock_info.zh_company_abbr
+            return None
+
+    def batch_get_company_abbr(self, symbols: List[str]) -> dict:
+        """
+        批量查询股票的中文简称
+
+        Args:
+            symbols: 股票代码列表
+
+        Returns:
+            dict: {symbol: zh_company_abbr} 映射字典
+        """
+        if not symbols:
+            return {}
+
+        with self.get_session() as session:
+            results = session.query(
+                AShareStockInfo.symbol,
+                AShareStockInfo.zh_company_abbr
+            ).filter(
+                AShareStockInfo.symbol.in_(symbols)
+            ).all()
+
+            return {row.symbol: row.zh_company_abbr for row in results}
 
     def update_stock_metadata(self, symbol: str, **fields):
         """

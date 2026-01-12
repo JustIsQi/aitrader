@@ -249,6 +249,298 @@ A: 脚本使用tqdm显示实时进度条,股票下载时每100只还会输出日
 
 ---
 
+### 2.05 前复权数据下载（新增功能）
+
+**脚本文件**: `scripts/init_qfq_data.py`
+
+#### 概述
+
+前复权数据下载脚本用于初始化和维护前复权版本的历史数据。前复权数据以当前价格为基准,调整历史价格,适合用于信号生成。
+
+#### 为什么需要前复权数据？
+
+**前复权 vs 后复权**:
+
+| 特性 | 前复权 | 后复权 |
+|------|--------|--------|
+| 调整基准 | 当前价格 | 首日价格 |
+| 最新价格 | 真实市场价格 | 调整后价格 |
+| 历史价格 | 经过调整 | 保持不变 |
+| 适用场景 | 信号生成、实时决策 | 回测、历史分析 |
+| 优势 | 反映当前真实价格 | 保持历史序列一致性 |
+
+**使用建议**:
+- ✅ **信号生成**: 使用前复权数据,价格更贴近真实市场
+- ✅ **回测验证**: 使用后复权数据,保持历史一致性
+- ✅ **策略灵活性**: 每个策略可独立选择复权类型
+
+#### 基本用法
+
+```bash
+# 下载所有股票前复权数据
+python scripts/init_qfq_data.py --type stock
+
+# 下载所有ETF前复权数据
+python scripts/init_qfq_data.py --type etf
+
+# 同时下载股票和ETF前复权数据
+python scripts/init_qfq_data.py --type all
+
+# 测试模式: 限制下载数量
+python scripts/init_qfq_data.py --type stock --limit 10
+
+# 指定股票/ETF代码下载
+python scripts/init_qfq_data.py --type stock --symbols 000001.SZ 000002.SZ
+```
+
+#### 命令行参数
+
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| `--type` | 数据类型: stock(股票), etf(ETF), all(全部) | `--type stock` |
+| `--limit` | 限制下载数量(测试用) | `--limit 10` |
+| `--symbols` | 指定股票/ETF代码列表 | `--symbols 000001.SZ 510300.SH` |
+
+#### 数据库表
+
+脚本会操作以下前复权数据表:
+
+| 表名 | 说明 | 关键字段 |
+|------|------|----------|
+| `stock_history_qfq` | 股票前复权历史数据 | symbol, date, open, high, low, close |
+| `etf_history_qfq` | ETF前复权历史数据 | symbol, date, open, high, low, close |
+
+**表结构与后复权表相同**:
+- 相同的字段和索引
+- 独立存储,互不影响
+- 支持所有现有查询方法
+
+#### 下载数据统计
+
+| 数据类型 | 数量 | 预计耗时 | 存储空间 |
+|---------|------|---------|---------|
+| 股票 | ~5446 只 | ~1.5 小时 | ~1.5 GB |
+| ETF | ~1335 只 | ~20 分钟 | ~300 MB |
+
+**注意**: 前复权数据会使数据库存储需求增加约一倍。
+
+#### 更新策略
+
+脚本支持增量更新:
+
+```bash
+# 首次运行: 下载所有历史数据(从2020年开始)
+python scripts/init_qfq_data.py --type stock
+
+# 后续运行: 只下载最新增量数据
+python scripts/init_qfq_data.py --type stock
+```
+
+**更新逻辑**:
+1. 从数据库查询每只股票/ETF的最新日期
+2. 如果有数据,从最新日期的下一天开始下载
+3. 如果无数据,从 2020-01-01 开始下载
+4. 自动跳过无新数据的标的
+
+#### 后台运行建议
+
+对于完整下载,建议使用后台运行:
+
+```bash
+# 后台运行股票前复权下载
+nohup python scripts/init_qfq_data.py --type stock > logs/qfq_stock_init.log 2>&1 &
+
+# 后台运行ETF前复权下载
+nohup python scripts/init_qfq_data.py --type etf > logs/qfq_etf_init.log 2>&1 &
+
+# 后台运行全部下载
+nohup python scripts/init_qfq_data.py --type all > logs/qfq_all_init.log 2>&1 &
+
+# 查看进度
+tail -f logs/qfq_stock_init.log
+```
+
+#### 输出示例
+
+```
+========================================
+前复权数据初始化脚本
+========================================
+
+开始初始化股票前复权数据...
+PostgreSQL 数据库已连接
+获取到 5446 只股票
+开始下载前复权数据，共 5446 只股票
+进度: 10/5446 - 成功: 9, 失败: 0, 跳过: 0
+进度: 20/5446 - 成功: 19, 失败: 0, 跳过: 0
+...
+✓ 股票前复权数据初始化完成!
+总计: 5446, 成功: 5440, 失败: 5, 跳过: 1
+```
+
+#### 数据验证
+
+下载完成后,可以使用以下方式验证数据:
+
+```bash
+# 验证前复权数据
+python -c "
+from database.pg_manager import get_db
+db = get_db()
+
+# 查看股票前复权数据
+df = db.get_stock_history_qfq('000001.SZ')
+print(f'前复权数据: {len(df)} 条')
+print(f'最新收盘价: {df.iloc[-1][\"close\"]:.2f}')
+
+# 对比后复权数据
+df2 = db.get_stock_history('000001.SZ')
+print(f'后复权数据: {len(df2)} 条')
+print(f'最新收盘价: {df2.iloc[-1][\"close\"]:.2f}')
+"
+```
+
+#### 在策略中使用前复权数据
+
+**方法1: 在 Task 配置中指定**
+
+```python
+from core.backtrader_engine import Task
+
+# 信号生成策略: 使用前复权
+task = Task(
+    name='动量轮动策略',
+    symbols=get_stock_codes(),
+    adjust_type='qfq',  # 前复权
+    # ... 其他参数
+)
+
+# 回测策略: 使用后复权
+task = Task(
+    name='回测验证',
+    symbols=get_stock_codes(),
+    adjust_type='hfq',  # 后复权
+    # ... 其他参数
+)
+```
+
+**方法2: 在代码中指定**
+
+```python
+from datafeed.db_dataloader import DbDataLoader
+
+# 使用前复权数据
+loader_qfq = DbDataLoader(adjust_type='qfq')
+dfs = loader_qfq.read_dfs(symbols=['000001.SZ'])
+
+# 使用后复权数据(默认)
+loader_hfq = DbDataLoader(adjust_type='hfq')
+dfs = loader_hfq.read_dfs(symbols=['000001.SZ'])
+```
+
+#### 复权类型对比示例
+
+以 `000001.SZ` (平安银行) 为例:
+
+| 日期 | 前复权收盘价 | 后复权收盘价 | 说明 |
+|------|-------------|-------------|------|
+| 2020-01-02 | 14.40 | 2189.30 | 历史价格差异较大 |
+| 2024-12-31 | 11.20 | 1780.50 | 前复权反映当前价格水平 |
+| 最新日期 | 11.51 | 1828.49 | 前复权接近真实市场价格 |
+
+**关键差异**:
+- 前复权最新价 = 真实市场价格
+- 后复权最新价 = 调整后价格(可能偏离真实价格)
+- 前复权适合实时决策,后复权适合历史分析
+
+#### 常见问题
+
+**Q: 前复权和后复权数据可以同时存在吗?**
+
+A: 可以。它们存储在不同的表中,互不影响:
+- `stock_history` - 后复权数据
+- `stock_history_qfq` - 前复权数据
+
+**Q: 策略应该使用哪种复权数据?**
+
+A: 根据策略用途选择:
+- 信号生成策略 → 前复权 (`adjust_type='qfq'`)
+- 回测验证策略 → 后复权 (`adjust_type='hfq'`)
+
+**Q: 前复权数据需要定期更新吗?**
+
+A: 需要。建议与后复权数据同步更新,使用增量更新模式:
+```bash
+# 添加到定时任务中
+python scripts/init_qfq_data.py --type stock
+```
+
+**Q: 下载数据时可以继续使用系统吗?**
+
+A: 可以。前复权数据下载是独立进程,不影响现有功能。
+
+**Q: 数据库空间不够怎么办?**
+
+A: 前复权数据会使存储需求增加约一倍。建议:
+- 定期清理旧的日志和临时文件
+- 考虑增加数据库存储空间
+- 或者仅保留部分重要股票的前复权数据
+
+#### 对比: 与后复权下载的区别
+
+| 特性 | 后复权下载 | 前复权下载 |
+|------|-----------|-----------|
+| 脚本文件 | `scripts/download_historical_data.py` | `scripts/init_qfq_data.py` |
+| 数据表 | `stock_history`, `etf_history` | `stock_history_qfq`, `etf_history_qfq` |
+| 用途 | 回测、历史分析 | 信号生成、实时决策 |
+| 数据量 | 全部 | 全部(独立存储) |
+| 是否必需 | 是 | 可选(推荐) |
+
+**建议**:
+- 必须下载后复权数据(默认)
+- 推荐下载前复权数据(提升信号质量)
+- 两者可以共存,互不影响
+
+#### 相关API
+
+**数据库管理器新增方法**:
+
+```python
+from database.pg_manager import get_db
+
+db = get_db()
+
+# 股票前复权数据
+df = db.get_stock_history_qfq('000001.SZ', start_date, end_date)
+df = db.batch_get_stock_history_qfq(['000001.SZ', '000002.SZ'], start_date, end_date)
+latest_date = db.get_stock_qfq_latest_date('000001.SZ')
+success = db.append_stock_history_qfq(df, '000001.SZ')
+count = db.batch_append_stock_history_qfq(df)
+
+# ETF前复权数据
+df = db.get_etf_history_qfq('510300.SH', start_date, end_date)
+df = db.batch_get_etf_history_qfq(['510300.SH', '159001.SZ'], start_date, end_date)
+latest_date = db.get_etf_qfq_latest_date('510300.SH')
+success = db.append_etf_history_qfq(df, '510300.SH')
+count = db.batch_append_etf_history_qfq(df)
+```
+
+**数据加载器支持**:
+
+```python
+from datafeed.db_dataloader import DbDataLoader
+
+# 加载前复权数据
+loader = DbDataLoader(adjust_type='qfq')
+dfs = loader.read_dfs(symbols=['000001.SZ', '510300.SH'])
+
+# 加载后复权数据(默认)
+loader = DbDataLoader(adjust_type='hfq')
+dfs = loader.read_dfs(symbols=['000001.SZ', '510300.SH'])
+```
+
+---
+
 ### 2.1 统一更新脚本（日常增量更新）
 
 **脚本文件**: `scripts/unified_update.py`
