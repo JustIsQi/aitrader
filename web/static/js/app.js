@@ -22,6 +22,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize modal handlers
     initModalHandlers();
 
+    // Initialize refresh P&L button
+    initRefreshPLButton();
+
     // Initialize trading form
     const tradingForm = document.getElementById('tradingForm');
     if (tradingForm) {
@@ -71,11 +74,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load profit/loss data
     loadProfitLoss();
+
+    // Load historical P&L data
+    loadHistoricalPL();
 });
 
 // Initialize dashboard date groups expand/collapse
 function initDashboardDateGroups() {
-    const dateHeaders = document.querySelectorAll('#dashboard-signals-container .date-header');
+    const dateHeaders = document.querySelectorAll('.signals-panel .date-header');
 
     if (dateHeaders.length === 0) {
         console.warn('No dashboard date headers found');
@@ -490,3 +496,96 @@ function initModalHandlers() {
         }
     });
 }
+
+// Initialize refresh P&L button
+function initRefreshPLButton() {
+    const refreshBtn = document.getElementById('refresh-pl-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', loadHistoricalPL);
+    }
+}
+
+// Load Historical P&L data
+async function loadHistoricalPL() {
+    const tableBody = document.getElementById('pl-table-body');
+    const realizedEl = document.getElementById('pl-realized');
+    const unrealizedEl = document.getElementById('pl-unrealized');
+    const totalEl = document.getElementById('pl-total');
+
+    if (!tableBody) return;
+
+    try {
+        const response = await fetch('/api/analytics/historical-pl');
+        const data = await response.json();
+
+        const formatCurrency = (value) => {
+            return new Intl.NumberFormat('zh-CN', {
+                style: 'currency',
+                currency: 'CNY'
+            }).format(value);
+        };
+
+        const getValueClass = (value) => {
+            if (value > 0) return 'positive';
+            if (value < 0) return 'negative';
+            return '';
+        };
+
+        // Update summary cards
+        if (data.summary) {
+            realizedEl.textContent = formatCurrency(data.summary.total_realized_pl);
+            realizedEl.className = 'pl-card-value ' + getValueClass(data.summary.total_realized_pl);
+
+            unrealizedEl.textContent = formatCurrency(data.summary.total_unrealized_pl);
+            unrealizedEl.className = 'pl-card-value ' + getValueClass(data.summary.total_unrealized_pl);
+
+            totalEl.textContent = formatCurrency(data.summary.total_pl);
+            totalEl.className = 'pl-card-value ' + getValueClass(data.summary.total_pl);
+        }
+
+        // Render table
+        if (!data.symbols || data.symbols.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="7" class="no-data">No historical P&L data available</td></tr>';
+            return;
+        }
+
+        tableBody.innerHTML = data.symbols.map(symbol => {
+            const boughtStr = symbol.bought_qty > 0
+                ? `${symbol.bought_qty} × ¥${symbol.avg_buy_price}`
+                : '-';
+
+            const soldStr = symbol.sold_qty > 0
+                ? `${symbol.sold_qty} × ¥${symbol.avg_sell_price}`
+                : '-';
+
+            const holdingsStr = symbol.current_qty > 0
+                ? `${symbol.current_qty} × ¥${symbol.current_price || '-'}`
+                : '-';
+
+            return `
+                <tr>
+                    <td>
+                        <div class="symbol-cell">
+                            <span class="symbol-name">${symbol.symbol}</span>
+                            ${symbol.zh_name ? `<span class="symbol-name-cn">${symbol.zh_name}</span>` : ''}
+                        </div>
+                    </td>
+                    <td>${boughtStr}</td>
+                    <td>${soldStr}</td>
+                    <td>${holdingsStr}</td>
+                    <td class="${getValueClass(symbol.realized_pl)}">${formatCurrency(symbol.realized_pl)}</td>
+                    <td class="${getValueClass(symbol.unrealized_pl)}">${formatCurrency(symbol.unrealized_pl)}</td>
+                    <td class="${getValueClass(symbol.total_pl)}">
+                        ${formatCurrency(symbol.total_pl)}
+                        <span class="pl-pct">(${symbol.total_pl_pct}%)</span>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (error) {
+        console.error('Failed to load historical P&L:', error);
+        tableBody.innerHTML = '<tr><td colspan="7" class="error-cell">Error loading P&L data: ' + error.message + '</td></tr>';
+    }
+}
+

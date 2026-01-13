@@ -275,6 +275,9 @@ A: 脚本使用tqdm显示实时进度条,股票下载时每100只还会输出日
 - ✅ **策略灵活性**: 每个策略可独立选择复权类型
 
 #### 基本用法
+# 16:30 - 更新前复权数据（在股票数据更新后）
+0 16 * * 1-5 cd /data/home/yy/code/aitrader && python scripts/init_qfq_data.py --type all >> logs/qfq_update.log 2>&1
+
 
 ```bash
 # 下载所有股票前复权数据
@@ -469,11 +472,83 @@ A: 根据策略用途选择:
 
 **Q: 前复权数据需要定期更新吗?**
 
-A: 需要。建议与后复权数据同步更新,使用增量更新模式:
+A: 需要。建议与后复权数据同步更新,使用增量更新模式。
+
+#### 自动更新方法
+
+**方法1: 使用独立脚本更新**
+
 ```bash
-# 添加到定时任务中
+# 更新股票前复权数据
 python scripts/init_qfq_data.py --type stock
+
+# 更新ETF前复权数据
+python scripts/init_qfq_data.py --type etf
+
+# 更新全部
+python scripts/init_qfq_data.py --type all
 ```
+
+**方法2: 配置定时任务（推荐）**
+
+将前复权数据更新添加到 crontab 定时任务中：
+
+```bash
+# 编辑定时任务
+crontab -e
+
+# 添加以下行（每个交易日收盘后更新）
+# 16:30 - 更新股票前复权数据（在股票数据更新后）
+30 16 * * 1-5 cd /data/home/yy/code/aitrader && python scripts/init_qfq_data.py --type stock >> logs/qfq_update.log 2>&1
+
+# 或同时更新股票和ETF前复权数据
+30 16 * * 1-5 cd /data/home/yy/code/aitrader && python scripts/init_qfq_data.py --type all >> logs/qfq_update.log 2>&1
+```
+
+**完整定时任务示例（与 unified_update.py 配合）**:
+
+```bash
+# 15:30 - 更新ETF和基本面数据
+30 15 * * 1-5 cd /data/home/yy/code/aitrader && python scripts/unified_update.py --stage etf --stage fundamental >> logs/unified_update.log 2>&1
+
+# 16:00 - 更新股票交易数据（后复权）
+0 16 * * 1-5 cd /data/home/yy/code/aitrader && python scripts/unified_update.py --stage stock >> logs/unified_update.log 2>&1
+
+# 16:30 - 更新前复权数据（依赖股票数据更新完成）
+30 16 * * 1-5 cd /data/home/yy/code/aitrader && python scripts/init_qfq_data.py --type stock >> logs/qfq_update.log 2>&1
+```
+
+**更新机制说明**:
+
+1. **增量更新**: `update_stock_data_qfq()` 方法会自动检测数据库中每只股票的最新日期
+2. **智能下载**: 只下载缺失的增量数据，避免重复请求
+3. **首次下载**: 如果数据库为空，从 2020-01-01 开始下载
+4. **自动跳过**: 如果已是最新数据，自动跳过该标的
+
+**核心代码逻辑**（[stock_downloader.py:130-191](datafeed/downloaders/stock_downloader.py#L130-L191)）:
+
+```python
+def update_stock_data_qfq(self, symbol: str) -> bool:
+    # 1. 从数据库获取最新日期
+    latest_date = self.db.get_stock_qfq_latest_date(symbol)
+
+    if latest_date:
+        # 2. 增量更新：从最新日期的下一天开始
+        next_day = latest_date + timedelta(days=1)
+        start_date = next_day.strftime('%Y%m%d')
+    else:
+        # 3. 首次下载：从2020年开始
+        start_date = '20200101'
+
+    # 4. 获取前复权数据（ak.share.stock_zh_a_hist 参数 adjust="qfq"）
+    df = self.fetch_stock_history(code, start_date, end_date, adjust="qfq")
+
+    # 5. 追加到 stock_history_qfq 表
+    success = self.db.append_stock_history_qfq(df, symbol)
+    return success
+```
+
+**数据库表**: `stock_history_qfq`（与 `stock_history` 结构相同，独立存储）
 
 **Q: 下载数据时可以继续使用系统吗?**
 
@@ -673,14 +748,20 @@ chmod +x setup_unified_cron.sh
 # 15:30 - 更新ETF和基本面数据
 30 15 * * 1-5 cd /path/to/aitrader && python scripts/unified_update.py --stage etf --stage fundamental >> logs/unified_update.log 2>&1
 
-# 16:00 - 更新股票交易数据
+# 16:00 - 更新股票交易数据（后复权）
 0 16 * * 1-5 cd /path/to/aitrader && python scripts/unified_update.py --stage stock >> logs/unified_update.log 2>&1
+
+# 16:30 - 更新前复权数据（可选，用于信号生成）
+30 16 * * 1-5 cd /path/to/aitrader && python scripts/init_qfq_data.py --type stock >> logs/qfq_update.log 2>&1
 ```
 
 **说明**:
 - 每周一至周五执行
 - 15:30: ETF + 基本面数据（预计 20-30 分钟）
-- 16:00: 股票交易数据（预计 45-60 分钟）
+- 16:00: 股票交易数据（后复权）（预计 45-60 分钟）
+- 16:30: 股票前复权数据（可选，预计 30-60 分钟）
+
+> **注意**: 前复权数据更新是可选的，仅在需要使用前复权数据进行信号生成时才需要配置。
 
 ### 3.2 信号生成定时任务
 

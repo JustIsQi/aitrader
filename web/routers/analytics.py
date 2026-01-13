@@ -4,6 +4,7 @@ Analytics API endpoints
 from fastapi import APIRouter, HTTPException
 from database.pg_manager import get_db
 from web.models import ProfitLossResponse
+from loguru import logger
 import numpy as np
 import pandas as pd
 
@@ -108,4 +109,36 @@ async def get_performance_metrics():
             "avg_return_pct": safe_float(positions['return_pct'].mean())
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/historical-pl")
+async def get_historical_pl():
+    """
+    获取按标的分组的历史盈亏
+
+    Returns:
+        按symbol分组的盈亏统计，包含买入、卖出、当前持仓等信息
+    """
+    try:
+        db = get_db()
+        symbols_data = db.calculate_historical_pl_by_symbol()
+
+        # 计算汇总统计
+        total_symbols = len(symbols_data)
+        total_realized_pl = sum(s['realized_pl'] for s in symbols_data)
+        total_unrealized_pl = sum(s['unrealized_pl'] for s in symbols_data)
+        total_pl = total_realized_pl + total_unrealized_pl
+
+        return {
+            "symbols": symbols_data,
+            "summary": {
+                "total_symbols": total_symbols,
+                "total_realized_pl": safe_float(total_realized_pl),
+                "total_unrealized_pl": safe_float(total_unrealized_pl),
+                "total_pl": safe_float(total_pl)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching historical P&L: {e}")
         raise HTTPException(status_code=500, detail=str(e))

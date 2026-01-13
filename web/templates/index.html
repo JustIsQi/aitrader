@@ -414,9 +414,47 @@
 
                 <!-- Profit/Loss Summary -->
                 <div class="pl-summary">
-                    <h3>Profit/Loss Summary</h3>
-                    <div id="pl-container">
-                        <p>Loading...</p>
+                    <div class="section-header">
+                        <h3>Historical Profit/Loss Summary</h3>
+                        <button id="refresh-pl-btn" class="btn-secondary">Refresh</button>
+                    </div>
+
+                    <!-- Summary Cards -->
+                    <div id="pl-summary-cards" class="pl-summary-cards">
+                        <div class="pl-card">
+                            <span class="pl-card-label">Realized P&L</span>
+                            <span id="pl-realized" class="pl-card-value">--</span>
+                        </div>
+                        <div class="pl-card">
+                            <span class="pl-card-label">Unrealized P&L</span>
+                            <span id="pl-unrealized" class="pl-card-value">--</span>
+                        </div>
+                        <div class="pl-card">
+                            <span class="pl-card-label">Total P&L</span>
+                            <span id="pl-total" class="pl-card-value">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Historical P&L Table -->
+                    <div id="pl-table-container" class="pl-table-container">
+                        <table class="data-table pl-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Bought</th>
+                                    <th>Sold</th>
+                                    <th>Current Holdings</th>
+                                    <th>Realized P&L</th>
+                                    <th>Unrealized P&L</th>
+                                    <th>Total P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pl-table-body">
+                                <tr>
+                                    <td colspan="7" class="loading-cell">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>

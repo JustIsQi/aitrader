@@ -231,6 +231,56 @@
     font-size: 0.8rem;
 }
 
+/* History Page Panels (ETF/A-share modules) */
+.signals-panel.history-panel {
+    margin-bottom: 2rem;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.signals-panel.history-panel .module-header {
+    padding: 1rem 1.5rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.signals-panel.history-panel .module-title {
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+.signals-panel.history-panel .expand-icon {
+    font-size: 1rem;
+}
+
+.signals-panel.history-panel .signals-container {
+    max-height: 5000px;
+    overflow: hidden;
+    transition: max-height 0.4s ease-out;
+}
+
+.signals-panel.history-panel .signals-container.collapsed {
+    max-height: 0;
+}
+
+/* Company name in history signal card */
+.company-name {
+    font-size: 0.9rem;
+    color: #666;
+    margin-left: 0.5rem;
+}
+
+.signal-timestamp {
+    font-size: 0.8rem;
+    color: #999;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .controls {

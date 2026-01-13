@@ -68,13 +68,18 @@ document.addEventListener('DOMContentLoaded', function() {
             // Hide loading
             loadingElement.style.display = 'none';
 
-            if (!data.dates || data.dates.length === 0) {
+            // Check if there's any data
+            const hasEtf = data.etf && data.etf.dates && data.etf.dates.length > 0;
+            const hasWeekly = data.ashare && data.ashare.weekly && data.ashare.weekly.dates && data.ashare.weekly.dates.length > 0;
+            const hasMonthly = data.ashare && data.ashare.monthly && data.ashare.monthly.dates && data.ashare.monthly.dates.length > 0;
+
+            if (!hasEtf && !hasWeekly && !hasMonthly) {
                 emptyStateElement.style.display = 'block';
                 return;
             }
 
-            // Render signals grouped by date
-            renderSignals(data.dates);
+            // Render signals grouped by asset type
+            renderSignals(data);
         } catch (error) {
             loadingElement.style.display = 'none';
             signalsContainer.innerHTML = `
@@ -85,11 +90,71 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function renderSignals(dates) {
+    function renderSignals(data) {
+        // Render ETF section
+        if (data.etf && data.etf.dates && data.etf.dates.length > 0) {
+            const etfSection = createAssetTypeSection('ETF Trading Signals', 'etf', data.etf.dates);
+            signalsContainer.appendChild(etfSection);
+        }
+
+        // Render A-Share Weekly section
+        if (data.ashare && data.ashare.weekly && data.ashare.weekly.dates && data.ashare.weekly.dates.length > 0) {
+            const weeklySection = createAssetTypeSection('A-Share Weekly Strategies (A股周频策略)', 'ashare-weekly', data.ashare.weekly.dates);
+            signalsContainer.appendChild(weeklySection);
+        }
+
+        // Render A-Share Monthly section
+        if (data.ashare && data.ashare.monthly && data.ashare.monthly.dates && data.ashare.monthly.dates.length > 0) {
+            const monthlySection = createAssetTypeSection('A-Share Monthly Strategies (A股月频策略)', 'ashare-monthly', data.ashare.monthly.dates);
+            signalsContainer.appendChild(monthlySection);
+        }
+    }
+
+    function createAssetTypeSection(title, sectionId, dates) {
+        const section = document.createElement('div');
+        section.className = 'signals-panel history-panel';
+
+        // Create module header
+        const moduleHeader = document.createElement('div');
+        moduleHeader.className = 'module-header';
+        moduleHeader.id = `${sectionId}-module-header`;
+
+        const moduleTitle = document.createElement('span');
+        moduleTitle.className = 'module-title';
+        moduleTitle.textContent = title;
+
+        const expandIcon = document.createElement('span');
+        expandIcon.className = 'expand-icon';
+        expandIcon.innerHTML = '&#9662;';
+
+        moduleHeader.appendChild(moduleTitle);
+        moduleHeader.appendChild(expandIcon);
+
+        // Create signals container
+        const signalsContainer = document.createElement('div');
+        signalsContainer.className = 'signals-container';
+        signalsContainer.id = `${sectionId}-signals-container`;
+
+        // Add date groups
         dates.forEach(dateGroup => {
             const dateSection = createDateSection(dateGroup);
             signalsContainer.appendChild(dateSection);
         });
+
+        // Toggle expand/collapse on module header click
+        moduleHeader.addEventListener('click', () => {
+            signalsContainer.classList.toggle('collapsed');
+            if (signalsContainer.classList.contains('collapsed')) {
+                expandIcon.innerHTML = '&#9652;';
+            } else {
+                expandIcon.innerHTML = '&#9662;';
+            }
+        });
+
+        section.appendChild(moduleHeader);
+        section.appendChild(signalsContainer);
+
+        return section;
     }
 
     function createDateSection(dateGroup) {
@@ -132,7 +197,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Toggle expand/collapse on header click
-        header.addEventListener('click', () => {
+        header.addEventListener('click', (e) => {
+            e.stopPropagation();
             section.classList.toggle('collapsed');
         });
 
@@ -154,11 +220,20 @@ document.addEventListener('DOMContentLoaded', function() {
         symbol.className = 'symbol';
         symbol.textContent = signal.symbol;
 
+        const companyName = document.createElement('div');
+        companyName.className = 'company-name';
+        if (signal.zh_company_abbr) {
+            companyName.textContent = signal.zh_company_abbr;
+        }
+
         const signalType = document.createElement('div');
         signalType.className = 'signal-type';
         signalType.textContent = signal.signal_type.toUpperCase();
 
         header.appendChild(symbol);
+        if (signal.zh_company_abbr) {
+            header.appendChild(companyName);
+        }
         header.appendChild(signalType);
 
         // Details
@@ -205,6 +280,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Created at timestamp
         const timestamp = document.createElement('div');
+        timestamp.className = 'signal-timestamp';
         timestamp.textContent = signal.created_at || '';
         meta.appendChild(timestamp);
 

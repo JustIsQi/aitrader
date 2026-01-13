@@ -147,69 +147,139 @@ async def get_signals_by_symbol(symbol: str, start_date: str = None, end_date: s
 @router.get("/history/grouped")
 async def get_signals_history_grouped(start_date: str = None, end_date: str = None):
     """
-    获取历史信号，按日期分组
+    获取历史信号，按日期分组，并按ETF/A股分类
 
     Args:
         start_date: 开始日期 YYYY-MM-DD (可选)
         end_date: 结束日期 YYYY-MM-DD (可选)
 
     Returns:
-        按日期分组的历史信号
+        按ETF和A股分类，再按日期分组的历史信号
+        {
+            "etf": {"dates": [...]},
+            "ashare": {"weekly": {"dates": [...]}, "monthly": {"dates": [...]}}
+        }
     """
     try:
         db = get_db()
+        with db.get_session() as session:
+            from database.models.models import Trader
+            from sqlalchemy import func, and_
 
-        # 构建查询
-        query = "SELECT * FROM trader"
-        conditions = []
+            # 构建查询条件
+            conditions = []
+            if start_date:
+                conditions.append(Trader.signal_date >= start_date)
+            if end_date:
+                conditions.append(Trader.signal_date <= end_date)
 
-        if start_date:
-            conditions.append(f"signal_date >= '{start_date}'")
-        if end_date:
-            conditions.append(f"signal_date <= '{end_date}'")
+            # 查询所有信号
+            if conditions:
+                query = session.query(Trader).filter(and_(*conditions))
+            else:
+                query = session.query(Trader)
 
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
+            query = query.order_by(
+                func.coalesce(Trader.rank, 9999).asc(),
+                Trader.signal_date.desc(),
+                Trader.created_at.desc()
+            )
 
-        query += " ORDER BY signal_date DESC, created_at DESC"
-
-        # 执行查询
-        signals_df = db.conn.sql(query).df()
+            signals_df = pd.read_sql(query.statement, session.bind)
 
         if signals_df.empty:
-            return {"dates": []}
+            return {
+                "etf": {"dates": []},
+                "ashare": {"weekly": {"dates": []}, "monthly": {"dates": []}}
+            }
 
         # 清理 NaN 值
         signals_df = clean_dataframe(signals_df)
 
-        # 按日期分组
-        grouped = {}
+        # 批量获取公司简称
+        symbols = signals_df['symbol'].unique().tolist()
+        company_abbr_map = db.batch_get_company_abbr(symbols)
+
+        # 按asset_type分组
+        etf_signals = []
+        ashare_signals = []
+
         for record in signals_df.to_dict('records'):
             cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
 
             # 格式化日期字段
-            signal_date = cleaned_record.get('signal_date')
-            if signal_date:
-                signal_date_str = signal_date.strftime('%Y-%m-%d')
-                cleaned_record['signal_date'] = signal_date_str
+            if 'signal_date' in cleaned_record and cleaned_record['signal_date']:
+                cleaned_record['signal_date'] = cleaned_record['signal_date'].strftime('%Y-%m-%d')
+            if 'created_at' in cleaned_record and cleaned_record['created_at']:
+                cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
 
-                if 'created_at' in cleaned_record and cleaned_record['created_at']:
-                    cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+            # 添加公司简称
+            cleaned_record['zh_company_abbr'] = company_abbr_map.get(record['symbol'], '')
 
-                if signal_date_str not in grouped:
-                    grouped[signal_date_str] = []
+            # 按类型分组
+            asset_type = cleaned_record.get('asset_type', '')
+            if asset_type == 'etf':
+                etf_signals.append(cleaned_record)
+            elif asset_type == 'ashare':
+                ashare_signals.append(cleaned_record)
 
-                grouped[signal_date_str].append(cleaned_record)
+        # ETF信号按日期分组
+        etf_grouped = {}
+        for signal in etf_signals:
+            date_key = signal['signal_date']
+            if date_key not in etf_grouped:
+                etf_grouped[date_key] = []
+            etf_grouped[date_key].append(signal)
 
-        # 转换为列表并排序
-        dates_list = [
-            {"date": date, "signals": signals}
-            for date, signals in grouped.items()
-        ]
-        dates_list.sort(key=lambda x: x["date"], reverse=True)
+        etf_dates_list = [{"date": date, "signals": signals}
+                         for date, signals in etf_grouped.items()]
 
-        return {"dates": dates_list}
+        # A股信号按周频/月频分组，再按日期分组
+        ashare_weekly = []
+        ashare_monthly = []
+
+        for signal in ashare_signals:
+            strategies = signal.get('strategies', '')
+            if '周频' in strategies:
+                ashare_weekly.append(signal)
+            elif '月频' in strategies:
+                ashare_monthly.append(signal)
+            else:
+                # 默认归为周频
+                ashare_weekly.append(signal)
+
+        # 周频信号按日期分组
+        weekly_grouped = {}
+        for signal in ashare_weekly:
+            date_key = signal['signal_date']
+            if date_key not in weekly_grouped:
+                weekly_grouped[date_key] = []
+            weekly_grouped[date_key].append(signal)
+
+        weekly_dates_list = [{"date": date, "signals": signals}
+                            for date, signals in weekly_grouped.items()]
+
+        # 月频信号按日期分组
+        monthly_grouped = {}
+        for signal in ashare_monthly:
+            date_key = signal['signal_date']
+            if date_key not in monthly_grouped:
+                monthly_grouped[date_key] = []
+            monthly_grouped[date_key].append(signal)
+
+        monthly_dates_list = [{"date": date, "signals": signals}
+                             for date, signals in monthly_grouped.items()]
+
+        return {
+            "etf": {"dates": etf_dates_list},
+            "ashare": {
+                "weekly": {"dates": weekly_dates_list},
+                "monthly": {"dates": monthly_dates_list}
+            }
+        }
+
     except Exception as e:
+        logger.error(f"Error fetching historical signals grouped: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

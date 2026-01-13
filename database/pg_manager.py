@@ -1513,6 +1513,156 @@ class PostgreSQLManager:
                 'price_details': price_details
             }
 
+    def calculate_historical_pl_by_symbol(self) -> list:
+        """
+        计算按标的分组的历史盈亏
+
+        对每个标的统计：
+        - 买入数量和平均买入价
+        - 卖出数量和平均卖出价
+        - 当前持仓数量和市值
+        - 已实现盈亏（卖出交易）
+        - 未实现盈亏（当前持仓）
+        - 总盈亏
+
+        Returns:
+            list: 每个标的的盈亏详情
+        """
+        from database.models.models import Transaction
+
+        with self.get_session() as session:
+            # 获取所有交易记录，按symbol和日期排序
+            transactions = session.query(Transaction).order_by(
+                Transaction.symbol,
+                Transaction.trade_date.asc(),
+                Transaction.id.asc()
+            ).all()
+
+            # 按symbol分组统计数据
+            symbol_stats = {}  # {symbol: {...}}
+
+            for txn in transactions:
+                symbol = txn.symbol
+
+                if symbol not in symbol_stats:
+                    symbol_stats[symbol] = {
+                        'symbol': symbol,
+                        'bought_qty': 0.0,
+                        'total_buy_cost': 0.0,
+                        'sold_qty': 0.0,
+                        'total_sell_revenue': 0.0,
+                        'current_qty': 0.0,
+                        'realized_pl': 0.0,
+                        'queue': []  # FIFO queue for tracking buy lots
+                    }
+
+                stats = symbol_stats[symbol]
+
+                if txn.buy_sell == 'buy':
+                    # 买入：增加持仓，加入FIFO队列
+                    stats['bought_qty'] += txn.quantity
+                    stats['total_buy_cost'] += txn.price * txn.quantity
+                    stats['current_qty'] += txn.quantity
+                    # 加入FIFO队列：{quantity, avg_cost}
+                    stats['queue'].append({
+                        'quantity': txn.quantity,
+                        'avg_cost': txn.price
+                    })
+
+                elif txn.buy_sell == 'sell':
+                    # 卖出：使用FIFO计算已实现盈亏
+                    remaining_sell = txn.quantity
+                    sell_revenue = txn.price * txn.quantity
+                    stats['sold_qty'] += txn.quantity
+                    stats['total_sell_revenue'] += sell_revenue
+
+                    # 从FIFO队列中扣除
+                    while remaining_sell > 0.001 and stats['queue']:
+                        lot = stats['queue'][0]
+                        if lot['quantity'] <= remaining_sell + 0.001:
+                            # 整个lot都卖出
+                            stats['realized_pl'] += (txn.price - lot['avg_cost']) * lot['quantity']
+                            remaining_sell -= lot['quantity']
+                            stats['current_qty'] -= lot['quantity']
+                            stats['queue'].pop(0)
+                        else:
+                            # 部分卖出
+                            sell_qty = remaining_sell
+                            stats['realized_pl'] += (txn.price - lot['avg_cost']) * sell_qty
+                            lot['quantity'] -= sell_qty
+                            stats['current_qty'] -= sell_qty
+                            remaining_sell = 0
+
+            # 获取所有有持仓或曾经有交易的标的
+            symbols = list(symbol_stats.keys())
+
+            # 批量获取公司简称
+            company_abbr_map = self.batch_get_company_abbr(symbols)
+
+            # 为每个标的获取当前价格并计算未实现盈亏
+            results = []
+            for symbol, stats in symbol_stats.items():
+                # 跳过没有任何交易的标的
+                if stats['bought_qty'] == 0 and stats['sold_qty'] == 0:
+                    continue
+
+                # 计算平均买入价
+                avg_buy_price = stats['total_buy_cost'] / stats['bought_qty'] if stats['bought_qty'] > 0 else 0
+
+                # 计算平均卖出价
+                avg_sell_price = stats['total_sell_revenue'] / stats['sold_qty'] if stats['sold_qty'] > 0 else 0
+
+                # 获取当前价格（如果有持仓）
+                current_price = None
+                current_market_value = 0.0
+                unrealized_pl = 0.0
+
+                if stats['current_qty'] > 0:
+                    latest_price = self._get_latest_price_for_symbol(session, symbol)
+                    if latest_price is not None:
+                        current_price = latest_price
+                        current_market_value = latest_price * stats['current_qty']
+
+                        # 计算未实现盈亏：使用FIFO剩余持仓的成本
+                        remaining_cost = sum(lot['quantity'] * lot['avg_cost'] for lot in stats['queue'])
+                        unrealized_pl = (current_price * stats['current_qty']) - remaining_cost
+                    else:
+                        # 没有最新价格，使用队列中的平均成本估算
+                        if stats['queue']:
+                            avg_cost = sum(lot['quantity'] * lot['avg_cost'] for lot in stats['queue']) / stats['current_qty']
+                            current_price = avg_cost
+                            current_market_value = avg_cost * stats['current_qty']
+                            unrealized_pl = 0
+
+                # 总盈亏
+                total_pl = stats['realized_pl'] + unrealized_pl
+
+                # 总盈亏百分比（相对于总买入成本）
+                total_pl_pct = (total_pl / stats['total_buy_cost'] * 100) if stats['total_buy_cost'] > 0 else 0
+
+                results.append({
+                    'symbol': symbol,
+                    'zh_name': company_abbr_map.get(symbol, ''),
+                    'bought_qty': round(stats['bought_qty'], 2),
+                    'avg_buy_price': round(avg_buy_price, 3),
+                    'total_buy_cost': round(stats['total_buy_cost'], 2),
+                    'sold_qty': round(stats['sold_qty'], 2),
+                    'avg_sell_price': round(avg_sell_price, 3),
+                    'total_sell_revenue': round(stats['total_sell_revenue'], 2),
+                    'current_qty': round(stats['current_qty'], 2),
+                    'current_price': round(current_price, 3) if current_price is not None else None,
+                    'current_market_value': round(current_market_value, 2),
+                    'realized_pl': round(stats['realized_pl'], 2),
+                    'unrealized_pl': round(unrealized_pl, 2),
+                    'total_pl': round(total_pl, 2),
+                    'total_pl_pct': round(total_pl_pct, 2)
+                })
+
+            # 按总盈亏排序
+            results.sort(key=lambda x: x['total_pl'], reverse=True)
+
+            return results
+
     # ==================== 基本面数据操作 ====================
 
     def upsert_stock_metadata(self, symbol: str, name: str = None,
