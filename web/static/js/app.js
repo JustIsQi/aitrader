@@ -88,6 +88,10 @@ function initDashboardDateGroups() {
         return;
     }
 
+    // Auto-collapse historical dates (keep only first/latest expanded)
+    autoCollapseHistoricalDates();
+
+    // Setup click handlers for manual toggle
     dateHeaders.forEach((header) => {
         header.addEventListener('click', function(e) {
             e.preventDefault();
@@ -98,6 +102,35 @@ function initDashboardDateGroups() {
                 dateGroup.classList.toggle('collapsed');
             }
         });
+    });
+}
+
+// Auto-collapse all historical dates except the first/latest one
+function autoCollapseHistoricalDates() {
+    // Process each module separately (ETF, Weekly, Monthly)
+    const modules = [
+        { containerId: 'etf-signals-container', name: 'ETF' },
+        { containerId: 'ashare-weekly-signals-container', name: 'Weekly' },
+        { containerId: 'ashare-monthly-signals-container', name: 'Monthly' }
+    ];
+
+    modules.forEach(module => {
+        const container = document.getElementById(module.containerId);
+        if (!container) return;
+
+        const dateGroups = container.querySelectorAll('.date-group');
+
+        // Keep first date group expanded, collapse all others
+        dateGroups.forEach((dateGroup, index) => {
+            if (index > 0) {
+                dateGroup.classList.add('collapsed');
+            } else {
+                // Ensure first one is NOT collapsed
+                dateGroup.classList.remove('collapsed');
+            }
+        });
+
+        console.log(`${module.name}: ${dateGroups.length} date groups, first expanded, ${dateGroups.length - 1} collapsed`);
     });
 }
 

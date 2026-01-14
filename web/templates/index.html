@@ -39,51 +39,107 @@
                                 <div class="expand-icon">&#9662;</div>
                             </div>
                             <div class="signals-list">
-                                {% for signal in date_group.signals %}
-                                <div class="signal-card {{ 'buy' if signal.signal_type == 'buy' else 'sell' }}">
-                                    <div class="signal-header">
-                                        <span class="symbol">{{ signal.symbol }}</span>
-                                        {% if signal.zh_company_abbr %}
-                                        <span class="company-name">{{ signal.zh_company_abbr }}</span>
-                                        {% endif %}
-                                        <span class="signal-type">{{ signal.signal_type.upper() }}</span>
-                                    </div>
-                                    <div class="signal-details">
-                                        <p>Price: {{ signal.price }}</p>
-                                        <p>Strategies: {{ signal.strategies }}</p>
-                                        {% if signal.score is not none %}
-                                        <p>Score: {{ "%.4f"|format(signal.score) }}</p>
-                                        {% endif %}
-                                    </div>
-
-                                    {% if signal.position is defined and signal.position %}
-                                    <div class="signal-position-info">
-                                        <div class="position-header">Current Position</div>
-                                        <div class="position-details">
-                                            <div class="position-row">
-                                                <span class="pos-label">Quantity:</span>
-                                                <span class="pos-value">{{ "%.0f"|format(signal.position.quantity) }}</span>
-                                            </div>
-                                            <div class="position-row">
-                                                <span class="pos-label">Market Value:</span>
-                                                <span class="pos-value">¥{{ "%.2f"|format(signal.position.market_value) if signal.position.market_value else '-' }}</span>
-                                            </div>
-                                            <div class="position-row">
-                                                <span class="pos-label">Unrealized P&L:</span>
-                                                <span class="pos-value {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
-                                                    ¥{{ "%.2f"|format(signal.position.unrealized_pl) }}
-                                                    ({{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%)
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% endif %}
-
-                                    <div class="signal-date">
-                                        {{ signal.created_at }}
-                                    </div>
+                                <!-- Buy Signals Table -->
+                                {% set buy_signals = date_group.signals|selectattr('signal_type', 'equalto', 'buy')|list %}
+                                {% if buy_signals %}
+                                <div class="signals-table-wrapper buy-signals-table">
+                                    <div class="signals-table-header">买入信号 ({{ buy_signals|length }})</div>
+                                    <table class="signals-table">
+                                        <colgroup>
+                                            <col class="symbol-col">
+                                            <col class="name-col">
+                                            <col class="price-col">
+                                            <col class="strategy-col">
+                                            <col class="score-col">
+                                            <col class="position-col">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>代码</th>
+                                                <th>名称</th>
+                                                <th>价格</th>
+                                                <th>策略</th>
+                                                <th>得分</th>
+                                                <th>持仓</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for signal in buy_signals %}
+                                            <tr class="signal-row buy" data-symbol="{{ signal.symbol }}">
+                                                <td class="symbol-cell">{{ signal.symbol }}</td>
+                                                <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
+                                                <td class="price-cell">{{ signal.price }}</td>
+                                                <td class="strategies-cell">{{ signal.strategies }}</td>
+                                                <td class="score-cell">{{ "%.4f"|format(signal.score) if signal.score is not none else '-' }}</td>
+                                                <td class="position-cell">
+                                                    {% if signal.position is defined and signal.position %}
+                                                    <div class="position-info">
+                                                        <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
+                                                        <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                            {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
+                                                        </span>
+                                                    </div>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
                                 </div>
-                                {% endfor %}
+                                {% endif %}
+
+                                <!-- Sell Signals Table -->
+                                {% set sell_signals = date_group.signals|selectattr('signal_type', 'equalto', 'sell')|list %}
+                                {% if sell_signals %}
+                                <div class="signals-table-wrapper sell-signals-table">
+                                    <div class="signals-table-header">卖出信号 ({{ sell_signals|length }})</div>
+                                    <table class="signals-table sell-highlight">
+                                        <colgroup>
+                                            <col class="symbol-col">
+                                            <col class="name-col">
+                                            <col class="price-col">
+                                            <col class="strategy-col">
+                                            <col class="score-col">
+                                            <col class="position-col">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>代码</th>
+                                                <th>名称</th>
+                                                <th>价格</th>
+                                                <th>策略</th>
+                                                <th>得分</th>
+                                                <th>持仓</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for signal in sell_signals %}
+                                            <tr class="signal-row sell" data-symbol="{{ signal.symbol }}">
+                                                <td class="symbol-cell">{{ signal.symbol }}</td>
+                                                <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
+                                                <td class="price-cell">{{ signal.price }}</td>
+                                                <td class="strategies-cell">{{ signal.strategies }}</td>
+                                                <td class="score-cell">{{ "%.4f"|format(signal.score) if signal.score is not none else '-' }}</td>
+                                                <td class="position-cell">
+                                                    {% if signal.position is defined and signal.position %}
+                                                    <div class="position-info">
+                                                        <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
+                                                        <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                            {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
+                                                        </span>
+                                                    </div>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                         {% endfor %}
@@ -112,96 +168,129 @@
                                 <div class="expand-icon">&#9662;</div>
                             </div>
                             <div class="signals-list">
-                                {% for signal in date_group.signals %}
-                                <div class="signal-card-with-backtest {{ 'buy' if signal.signal_type == 'buy' else 'sell' }}">
-
-                                    <!-- Signal Info -->
-                                    <div class="signal-header">
-                                        <span class="symbol">{{ signal.symbol }}</span>
-                                        {% if signal.zh_company_abbr %}
-                                        <span class="company-name">{{ signal.zh_company_abbr }}</span>
-                                        {% endif %}
-                                        <span class="signal-type">{{ signal.signal_type.upper() }}</span>
-                                    </div>
-
-                                    <!-- Backtest Report (Expandable) -->
-                                    {% if signal.backtest %}
-                                    <div class="backtest-section">
-                                        <div class="backtest-header">
-                                            <span class="backtest-title">Backtest: {{ signal.backtest.strategy_name }}</span>
-                                            <span class="expand-icon-small">&#9662;</span>
-                                        </div>
-                                        <div class="backtest-content collapsed">
-                                            <div class="backtest-metrics">
-                                                <div class="metric">
-                                                    <span class="metric-label">Total Return:</span>
-                                                    <span class="metric-value {{ 'positive' if signal.backtest.total_return >= 0 else 'negative' }}">
-                                                        {{ "%.2f"|format(signal.backtest.total_return) }}%
-                                                    </span>
-                                                </div>
-                                                <div class="metric">
-                                                    <span class="metric-label">Annual Return:</span>
-                                                    <span class="metric-value">
-                                                        {{ "%.2f"|format(signal.backtest.annual_return) }}%
-                                                    </span>
-                                                </div>
-                                                <div class="metric">
-                                                    <span class="metric-label">Sharpe Ratio:</span>
-                                                    <span class="metric-value">
-                                                        {{ "%.2f"|format(signal.backtest.sharpe_ratio) }}
-                                                    </span>
-                                                </div>
-                                                <div class="metric">
-                                                    <span class="metric-label">Max Drawdown:</span>
-                                                    <span class="metric-value negative">
-                                                        {{ "%.2f"|format(signal.backtest.max_drawdown) }}%
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <button class="btn-view-backtest" data-backtest-id="{{ signal.backtest.id }}">
-                                                View Full Report
-                                            </button>
-                                        </div>
-                                    </div>
-                                    {% endif %}
-
-                                    <!-- Signal Details -->
-                                    <div class="signal-details">
-                                        <p>Price: {{ signal.price }}</p>
-                                        <p>Strategies: {{ signal.strategies }}</p>
-                                        {% if signal.score is not none %}
-                                        <p>Score: {{ "%.4f"|format(signal.score) }}</p>
-                                        {% endif %}
-                                    </div>
-
-                                    {% if signal.position is defined and signal.position %}
-                                    <div class="signal-position-info">
-                                        <div class="position-header">Current Position</div>
-                                        <div class="position-details">
-                                            <div class="position-row">
-                                                <span class="pos-label">Quantity:</span>
-                                                <span class="pos-value">{{ "%.0f"|format(signal.position.quantity) }}</span>
-                                            </div>
-                                            <div class="position-row">
-                                                <span class="pos-label">Market Value:</span>
-                                                <span class="pos-value">¥{{ "%.2f"|format(signal.position.market_value) if signal.position.market_value else '-' }}</span>
-                                            </div>
-                                            <div class="position-row">
-                                                <span class="pos-label">Unrealized P&L:</span>
-                                                <span class="pos-value {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
-                                                    ¥{{ "%.2f"|format(signal.position.unrealized_pl) }}
-                                                    ({{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%)
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% endif %}
-
-                                    <div class="signal-date">
-                                        {{ signal.created_at }}
-                                    </div>
+                                <!-- Buy Signals Table -->
+                                {% set buy_signals = date_group.signals|selectattr('signal_type', 'equalto', 'buy')|list %}
+                                {% if buy_signals %}
+                                <div class="signals-table-wrapper buy-signals-table">
+                                    <div class="signals-table-header">买入信号 ({{ buy_signals|length }})</div>
+                                    <table class="signals-table">
+                                        <colgroup>
+                                            <col class="symbol-col">
+                                            <col class="name-col">
+                                            <col class="price-col">
+                                            <col class="strategy-col">
+                                            <col class="score-col">
+                                            <col class="position-col">
+                                            <col class="backtest-col">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>代码</th>
+                                                <th>名称</th>
+                                                <th>价格</th>
+                                                <th>策略</th>
+                                                <th>得分</th>
+                                                <th>持仓</th>
+                                                <th>回测</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for signal in buy_signals %}
+                                            <tr class="signal-row buy" data-symbol="{{ signal.symbol }}">
+                                                <td class="symbol-cell">{{ signal.symbol }}</td>
+                                                <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
+                                                <td class="price-cell">{{ signal.price }}</td>
+                                                <td class="strategies-cell">{{ signal.strategies }}</td>
+                                                <td class="score-cell">{{ "%.4f"|format(signal.score) if signal.score is not none else '-' }}</td>
+                                                <td class="position-cell">
+                                                    {% if signal.position is defined and signal.position %}
+                                                    <div class="position-info">
+                                                        <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
+                                                        <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                            {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
+                                                        </span>
+                                                    </div>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                                <td class="backtest-cell">
+                                                    {% if signal.backtest %}
+                                                    <button class="btn-view-backtest" data-backtest-id="{{ signal.backtest.id }}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                                                        查看报告
+                                                    </button>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
                                 </div>
-                                {% endfor %}
+                                {% endif %}
+
+                                <!-- Sell Signals Table -->
+                                {% set sell_signals = date_group.signals|selectattr('signal_type', 'equalto', 'sell')|list %}
+                                {% if sell_signals %}
+                                <div class="signals-table-wrapper sell-signals-table">
+                                    <div class="signals-table-header">卖出信号 ({{ sell_signals|length }})</div>
+                                    <table class="signals-table sell-highlight">
+                                        <colgroup>
+                                            <col class="symbol-col">
+                                            <col class="name-col">
+                                            <col class="price-col">
+                                            <col class="strategy-col">
+                                            <col class="score-col">
+                                            <col class="position-col">
+                                            <col class="backtest-col">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>代码</th>
+                                                <th>名称</th>
+                                                <th>价格</th>
+                                                <th>策略</th>
+                                                <th>得分</th>
+                                                <th>持仓</th>
+                                                <th>回测</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for signal in sell_signals %}
+                                            <tr class="signal-row sell" data-symbol="{{ signal.symbol }}">
+                                                <td class="symbol-cell">{{ signal.symbol }}</td>
+                                                <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
+                                                <td class="price-cell">{{ signal.price }}</td>
+                                                <td class="strategies-cell">{{ signal.strategies }}</td>
+                                                <td class="score-cell">{{ "%.4f"|format(signal.score) if signal.score is not none else '-' }}</td>
+                                                <td class="position-cell">
+                                                    {% if signal.position is defined and signal.position %}
+                                                    <div class="position-info">
+                                                        <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
+                                                        <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                            {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
+                                                        </span>
+                                                    </div>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                                <td class="backtest-cell">
+                                                    {% if signal.backtest %}
+                                                    <button class="btn-view-backtest" data-backtest-id="{{ signal.backtest.id }}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                                                        查看报告
+                                                    </button>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                         {% endfor %}
@@ -230,96 +319,129 @@
                                 <div class="expand-icon">&#9662;</div>
                             </div>
                             <div class="signals-list">
-                                {% for signal in date_group.signals %}
-                                <div class="signal-card-with-backtest {{ 'buy' if signal.signal_type == 'buy' else 'sell' }}">
-
-                                    <!-- Signal Info -->
-                                    <div class="signal-header">
-                                        <span class="symbol">{{ signal.symbol }}</span>
-                                        {% if signal.zh_company_abbr %}
-                                        <span class="company-name">{{ signal.zh_company_abbr }}</span>
-                                        {% endif %}
-                                        <span class="signal-type">{{ signal.signal_type.upper() }}</span>
-                                    </div>
-
-                                    <!-- Backtest Report (Expandable) -->
-                                    {% if signal.backtest %}
-                                    <div class="backtest-section">
-                                        <div class="backtest-header">
-                                            <span class="backtest-title">Backtest: {{ signal.backtest.strategy_name }}</span>
-                                            <span class="expand-icon-small">&#9662;</span>
-                                        </div>
-                                        <div class="backtest-content collapsed">
-                                            <div class="backtest-metrics">
-                                                <div class="metric">
-                                                    <span class="metric-label">Total Return:</span>
-                                                    <span class="metric-value {{ 'positive' if signal.backtest.total_return >= 0 else 'negative' }}">
-                                                        {{ "%.2f"|format(signal.backtest.total_return) }}%
-                                                    </span>
-                                                </div>
-                                                <div class="metric">
-                                                    <span class="metric-label">Annual Return:</span>
-                                                    <span class="metric-value">
-                                                        {{ "%.2f"|format(signal.backtest.annual_return) }}%
-                                                    </span>
-                                                </div>
-                                                <div class="metric">
-                                                    <span class="metric-label">Sharpe Ratio:</span>
-                                                    <span class="metric-value">
-                                                        {{ "%.2f"|format(signal.backtest.sharpe_ratio) }}
-                                                    </span>
-                                                </div>
-                                                <div class="metric">
-                                                    <span class="metric-label">Max Drawdown:</span>
-                                                    <span class="metric-value negative">
-                                                        {{ "%.2f"|format(signal.backtest.max_drawdown) }}%
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <button class="btn-view-backtest" data-backtest-id="{{ signal.backtest.id }}">
-                                                View Full Report
-                                            </button>
-                                        </div>
-                                    </div>
-                                    {% endif %}
-
-                                    <!-- Signal Details -->
-                                    <div class="signal-details">
-                                        <p>Price: {{ signal.price }}</p>
-                                        <p>Strategies: {{ signal.strategies }}</p>
-                                        {% if signal.score is not none %}
-                                        <p>Score: {{ "%.4f"|format(signal.score) }}</p>
-                                        {% endif %}
-                                    </div>
-
-                                    {% if signal.position is defined and signal.position %}
-                                    <div class="signal-position-info">
-                                        <div class="position-header">Current Position</div>
-                                        <div class="position-details">
-                                            <div class="position-row">
-                                                <span class="pos-label">Quantity:</span>
-                                                <span class="pos-value">{{ "%.0f"|format(signal.position.quantity) }}</span>
-                                            </div>
-                                            <div class="position-row">
-                                                <span class="pos-label">Market Value:</span>
-                                                <span class="pos-value">¥{{ "%.2f"|format(signal.position.market_value) if signal.position.market_value else '-' }}</span>
-                                            </div>
-                                            <div class="position-row">
-                                                <span class="pos-label">Unrealized P&L:</span>
-                                                <span class="pos-value {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
-                                                    ¥{{ "%.2f"|format(signal.position.unrealized_pl) }}
-                                                    ({{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%)
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% endif %}
-
-                                    <div class="signal-date">
-                                        {{ signal.created_at }}
-                                    </div>
+                                <!-- Buy Signals Table -->
+                                {% set buy_signals = date_group.signals|selectattr('signal_type', 'equalto', 'buy')|list %}
+                                {% if buy_signals %}
+                                <div class="signals-table-wrapper buy-signals-table">
+                                    <div class="signals-table-header">买入信号 ({{ buy_signals|length }})</div>
+                                    <table class="signals-table">
+                                        <colgroup>
+                                            <col class="symbol-col">
+                                            <col class="name-col">
+                                            <col class="price-col">
+                                            <col class="strategy-col">
+                                            <col class="score-col">
+                                            <col class="position-col">
+                                            <col class="backtest-col">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>代码</th>
+                                                <th>名称</th>
+                                                <th>价格</th>
+                                                <th>策略</th>
+                                                <th>得分</th>
+                                                <th>持仓</th>
+                                                <th>回测</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for signal in buy_signals %}
+                                            <tr class="signal-row buy" data-symbol="{{ signal.symbol }}">
+                                                <td class="symbol-cell">{{ signal.symbol }}</td>
+                                                <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
+                                                <td class="price-cell">{{ signal.price }}</td>
+                                                <td class="strategies-cell">{{ signal.strategies }}</td>
+                                                <td class="score-cell">{{ "%.4f"|format(signal.score) if signal.score is not none else '-' }}</td>
+                                                <td class="position-cell">
+                                                    {% if signal.position is defined and signal.position %}
+                                                    <div class="position-info">
+                                                        <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
+                                                        <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                            {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
+                                                        </span>
+                                                    </div>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                                <td class="backtest-cell">
+                                                    {% if signal.backtest %}
+                                                    <button class="btn-view-backtest" data-backtest-id="{{ signal.backtest.id }}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                                                        查看报告
+                                                    </button>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
                                 </div>
-                                {% endfor %}
+                                {% endif %}
+
+                                <!-- Sell Signals Table -->
+                                {% set sell_signals = date_group.signals|selectattr('signal_type', 'equalto', 'sell')|list %}
+                                {% if sell_signals %}
+                                <div class="signals-table-wrapper sell-signals-table">
+                                    <div class="signals-table-header">卖出信号 ({{ sell_signals|length }})</div>
+                                    <table class="signals-table sell-highlight">
+                                        <colgroup>
+                                            <col class="symbol-col">
+                                            <col class="name-col">
+                                            <col class="price-col">
+                                            <col class="strategy-col">
+                                            <col class="score-col">
+                                            <col class="position-col">
+                                            <col class="backtest-col">
+                                        </colgroup>
+                                        <thead>
+                                            <tr>
+                                                <th>代码</th>
+                                                <th>名称</th>
+                                                <th>价格</th>
+                                                <th>策略</th>
+                                                <th>得分</th>
+                                                <th>持仓</th>
+                                                <th>回测</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for signal in sell_signals %}
+                                            <tr class="signal-row sell" data-symbol="{{ signal.symbol }}">
+                                                <td class="symbol-cell">{{ signal.symbol }}</td>
+                                                <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
+                                                <td class="price-cell">{{ signal.price }}</td>
+                                                <td class="strategies-cell">{{ signal.strategies }}</td>
+                                                <td class="score-cell">{{ "%.4f"|format(signal.score) if signal.score is not none else '-' }}</td>
+                                                <td class="position-cell">
+                                                    {% if signal.position is defined and signal.position %}
+                                                    <div class="position-info">
+                                                        <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
+                                                        <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                            {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
+                                                        </span>
+                                                    </div>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                                <td class="backtest-cell">
+                                                    {% if signal.backtest %}
+                                                    <button class="btn-view-backtest" data-backtest-id="{{ signal.backtest.id }}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                                                        查看报告
+                                                    </button>
+                                                    {% else %}
+                                                        -
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                         {% endfor %}

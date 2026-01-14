@@ -190,20 +190,33 @@ class DbDataLoader:
 
         dfs = {}
 
-        # ⭐ OPTIMIZATION 1: Adaptive batch sizes based on symbol count
+        # ⭐ OPTIMIZATION 1: Adaptive batch sizes based on symbol count (8GB RAM optimized)
         # ETF batches: Keep 100 (ETFs are fewer, queries are faster)
         ETF_BATCH_SIZE = 100
 
-        # Stock batches: Scale based on total stocks
-        # - < 500 stocks: batch size = stock count (single query)
-        # - 500-2000 stocks: batch size = 500
-        # - > 2000 stocks: batch size = 1000
-        if len(stock_symbols) < 500:
+        # Stock batches: Scale based on total stocks (reduced for 8GB system)
+        # - < 200 stocks: batch size = stock count (single query)
+        # - 200-500 stocks: batch size = 200 (reduced from 500)
+        # - 500-1000 stocks: batch size = 300 (reduced from 500)
+        # - > 1000 stocks: batch size = 500 (reduced from 1000)
+        if len(stock_symbols) < 200:
             STOCK_BATCH_SIZE = len(stock_symbols)  # Single batch
-        elif len(stock_symbols) < 2000:
-            STOCK_BATCH_SIZE = 500
+        elif len(stock_symbols) < 500:
+            STOCK_BATCH_SIZE = 200  # Reduced from 500 (save memory)
+        elif len(stock_symbols) < 1000:
+            STOCK_BATCH_SIZE = 300  # Reduced from 500 (save memory)
         else:
-            STOCK_BATCH_SIZE = 1000
+            STOCK_BATCH_SIZE = 500  # Reduced from 1000 (save memory)
+
+        # ⭐ ADD: Memory monitoring for 8GB system
+        try:
+            import psutil
+            available_mem_gb = psutil.virtual_memory().available / (1024**3)
+            if available_mem_gb < 2.0:
+                logger.warning(f"⚠️ Low memory: {available_mem_gb:.2f}GB available, reducing batch size by 50%")
+                STOCK_BATCH_SIZE = max(50, STOCK_BATCH_SIZE // 2)
+        except ImportError:
+            logger.debug("psutil not available, skipping memory check")
 
         logger.debug(f'批量查询配置: ETF_BATCH={ETF_BATCH_SIZE}, STOCK_BATCH={STOCK_BATCH_SIZE}')
 

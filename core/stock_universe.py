@@ -76,7 +76,8 @@ class StockUniverse:
         logger.debug('股票池管理器初始化完成')
 
     def get_all_stocks(self, exclude_st=True, exclude_suspend=True,
-                      exclude_new_ipo_days=None, min_data_days=180) -> List[str]:
+                      exclude_new_ipo_days=None, min_data_days=180,
+                      exclude_restricted_stocks=True) -> List[str]:
         """
         获取所有可交易股票（基于实际交易数据）
 
@@ -85,6 +86,8 @@ class StockUniverse:
             exclude_suspend: 是否排除停牌股票（需要元数据支持）
             exclude_new_ipo_days: **已废弃**，保留参数仅为兼容性
             min_data_days: 最小数据天数，默认180天（半年）
+            exclude_restricted_stocks: 是否排除限制交易股票（科创板688xxx、创业板300xxx、北交所BJ）
+                                       仅保留主板股票。默认True。
 
         Returns:
             股票代码列表
@@ -119,6 +122,30 @@ class StockUniverse:
                     valid_symbols = [row[0] for row in metadata_query.all()]
                     if valid_symbols:
                         query = query.filter(StockHistory.symbol.in_(valid_symbols))
+
+                # 如果需要排除限制交易股票（科创板、创业板、北交所）
+                if exclude_restricted_stocks:
+                    from database.models import AShareStockInfo
+
+                    # 获取当前查询结果中的所有股票代码
+                    temp_symbols = [row[0] for row in query.all()]
+
+                    if temp_symbols:
+                        # 获取主板股票（使用SQL级别的过滤以提高性能）
+                        main_board_query = session.query(AShareStockInfo.symbol).filter(
+                            AShareStockInfo.symbol.in_(temp_symbols),
+                            ~AShareStockInfo.stock_code.like('688%'),      # 排除科创板
+                            ~AShareStockInfo.stock_code.like('300%'),      # 排除创业板
+                            AShareStockInfo.exchange_suffix != 'BJ'         # 排除北交所
+                        )
+
+                        valid_symbols = [row[0] for row in main_board_query.all()]
+                        logger.info(f'限制交易股票过滤: 剩余 {len(valid_symbols)} 只主板股票 (原 {len(temp_symbols)} 只)')
+                        # 更新查询，只保留主板股票
+                        query = session.query(distinct(StockHistory.symbol)).filter(
+                            StockHistory.date >= cutoff_date,
+                            StockHistory.symbol.in_(valid_symbols)
+                        )
 
                 symbols = [row[0] for row in query.all()]
                 logger.info(f'获取可交易股票: {len(symbols)} 只 '

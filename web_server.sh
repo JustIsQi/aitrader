@@ -3,7 +3,7 @@
 # Web server control script for AITrader
 # Usage: ./web_server.sh {start|stop|restart|status}
 
-WORKDIR="/data/home/yy/code/aitrader"
+WORKDIR="/home/code/aitrader"
 PID_FILE="$WORKDIR/web_server.pid"
 LOG_FILE="$WORKDIR/logs/web_server.log"
 HOST="0.0.0.0"

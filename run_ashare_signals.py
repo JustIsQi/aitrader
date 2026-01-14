@@ -143,20 +143,21 @@ class AShareSignalPipeline:
         self.filter_config = filter_config
         self.adjust_type = adjust_type
 
-        # 使用线程池优化配置（针对I/O密集型任务）
+        # 使用线程池优化配置（针对I/O密集型任务, 8GB RAM优化）
         # 线程池可以安全地共享数据库连接池，不会有进程fork的问题
         # 计算公式：
-        # - pool_size=5, max_overflow=10 → 每个进程最多15个连接
+        # - pool_size=10, max_overflow=20 → 总计30连接
         # - 使用线程池：所有线程共享同一个连接池
-        # - 推荐线程数：CPU核心数 × 2（对于I/O密集型任务）
-        # - 最大限制：不超过 pool_size + max_overflow = 15
+        # - 推荐线程数：对于8GB RAM，使用2个并发回测（每个~1.5-2GB）
+        # - 最大限制：不超过3个worker（内存安全）
         # - 注意：由于数据加载较慢（使用代理），过多的并发会导致资源耗尽
         if max_workers is None:
-            # 默认使用 3 个并发线程，避免数据加载时资源耗尽
-            self.max_workers = 3
+            # ⭐ 8GB优化：默认使用 2 个并发线程（从3降至2）
+            # 每个回测约1.5-2GB内存，2个并发约3-4GB，为系统留出足够空间
+            self.max_workers = 2
         else:
-            # 用户指定时，最大不超过连接池大小
-            self.max_workers = min(max_workers, 15)
+            # ⭐ 用户指定时，最大不超过3个（8GB安全值）
+            self.max_workers = min(max_workers, 3)
 
         self.backtest_results = {}  # {strategy_name: backtest_id}
         logger.info(f"A股策略管道初始化: 并发线程数={self.max_workers} (使用线程池，I/O密集型优化)")

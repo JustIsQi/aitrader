@@ -235,9 +235,33 @@ section h3 {
 
 .signals-panel .signals-list {
     max-height: 2000px;
-    overflow: hidden;
+    overflow-y: visible;
+    overflow-x: hidden;
     transition: max-height 0.4s ease-out;
     padding: 0.5rem 0;
+    /* 确保内容不会溢出 */
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* 美化滚动条样式 */
+.signals-panel .signals-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.signals-panel .signals-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.signals-panel .signals-list::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.signals-panel .signals-list::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
 }
 
 .signals-panel .date-group.collapsed .signals-list {
@@ -246,8 +270,28 @@ section h3 {
 
 #dashboard-signals-container .signals-list {
     max-height: 2000px;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     transition: max-height 0.4s ease-out;
+}
+
+/* 美化滚动条样式 */
+#dashboard-signals-container .signals-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+#dashboard-signals-container .signals-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+#dashboard-signals-container .signals-list::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+#dashboard-signals-container .signals-list::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
 }
 
 #dashboard-signals-container .date-group.collapsed .signals-list {
@@ -625,6 +669,315 @@ button:hover {
     margin-left: 0.5rem;
 }
 
+/* ========== Signal Tables ========== */
+
+.signals-table-wrapper {
+    margin-bottom: 1.5rem;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* 买入信号表格容器 - 设置最大高度和滚动 */
+.signals-table-wrapper.buy-signals-table {
+    max-height: 500px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 卖出信号表格保持自适应高度 */
+.signals-table-wrapper.sell-signals-table {
+    max-height: none;
+}
+
+/* 表格头部标题固定 */
+.signals-table-wrapper.buy-signals-table .signals-table-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    flex-shrink: 0;
+}
+
+/* 表格内容区域可滚动 */
+.signals-table-wrapper.buy-signals-table .signals-table {
+    overflow-y: auto;
+    display: block;
+}
+
+.signals-table-wrapper.buy-signals-table .signals-table thead,
+.signals-table-wrapper.buy-signals-table .signals-table tbody {
+    display: block;
+}
+
+.signals-table-wrapper.buy-signals-table .signals-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.signals-table-wrapper.buy-signals-table .signals-table tbody {
+    overflow-y: auto;
+    max-height: calc(500px - 90px); /* 减去标题和表头的高度 */
+}
+
+.signals-table-wrapper.buy-signals-table .signals-table tr {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+}
+
+/* 美化买入信号表格滚动条 */
+.signals-table-wrapper.buy-signals-table::-webkit-scrollbar {
+    width: 8px;
+}
+
+.signals-table-wrapper.buy-signals-table::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.signals-table-wrapper.buy-signals-table::-webkit-scrollbar-thumb {
+    background: #6b8e7e;
+    border-radius: 4px;
+}
+
+.signals-table-wrapper.buy-signals-table::-webkit-scrollbar-thumb:hover {
+    background: #5a7a6a;
+}
+
+.signals-table-header {
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.buy-signals-table .signals-table-header {
+    background: linear-gradient(135deg, #6b8e7e 0%, #5a7a6a 100%);
+    color: #ffffff;
+}
+
+.sell-signals-table .signals-table-header {
+    background: linear-gradient(135deg, #c77d7d 0%, #b86d6d 100%);
+    color: #ffffff;
+}
+
+.signals-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    table-layout: fixed;
+}
+
+/* 设置固定的列宽，确保对齐 */
+.signals-table col.symbol-col { width: 13%; }
+.signals-table col.name-col { width: 15%; }
+.signals-table col.price-col { width: 9%; }
+.signals-table col.strategy-col { width: 28%; }
+.signals-table col.score-col { width: 11%; }
+.signals-table col.position-col { width: 13%; }
+.signals-table col.backtest-col { width: 11%; }
+
+.signals-table th {
+    background-color: #f9fafb;
+    padding: 0.85rem 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 2px solid #d1d5db;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+    line-height: 1.5; /* 添加统一的行高 */
+}
+
+/* 买入信号表格的表头样式 */
+.buy-signals-table .signals-table th {
+    background-color: #f9fafb;
+    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
+}
+
+.signals-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    color: #4b5563;
+    vertical-align: middle;
+    line-height: 1.5; /* 添加统一的行高 */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+}
+
+.signals-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.signals-table tbody tr:hover {
+    background-color: #f9fafb;
+    transition: background-color 0.2s;
+}
+
+.signals-table tbody tr {
+    height: auto;
+    min-height: 54px;
+}
+
+/* Signal Type Row Styling */
+.signals-table tbody tr.signal-row.buy {
+    border-left: 3px solid #6b8e7e;
+}
+
+.signals-table tbody tr.signal-row.sell {
+    border-left: 3px solid #c77d7d;
+}
+
+/* Sell Table Highlight */
+.signals-table.sell-highlight {
+    background-color: #fff5f5;
+}
+
+.signals-table.sell-highlight tbody tr:hover {
+    background-color: #ffebeb;
+}
+
+.signals-table.sell-highlight td {
+    background-color: rgba(199, 125, 125, 0.03);
+}
+
+/* Cell-specific styling */
+/* 确保代码列和名称列高度完全一致 */
+.signals-table .symbol-cell,
+.signals-table .name-cell {
+    line-height: 1.5;
+    vertical-align: middle;
+}
+
+.symbol-cell {
+    font-weight: 700;
+    color: #374151;
+    font-family: 'Courier New', monospace;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.name-cell {
+    color: #6b7280;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.price-cell {
+    font-weight: 600;
+    color: #374151;
+}
+
+.strategies-cell {
+    font-size: 0.85rem;
+    color: #6b7280;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    line-height: 1.3;
+}
+
+.score-cell {
+    font-weight: 600;
+    text-align: right;
+}
+
+.score-cell.positive {
+    color: #6b8e7e;
+}
+
+.score-cell.negative {
+    color: #c77d7d;
+}
+
+/* Position info in table */
+.position-cell {
+    min-width: 150px;
+}
+
+.position-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    line-height: 1.2;
+}
+
+.position-info .quantity {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.position-info .pnl {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.position-info .pnl.positive {
+    color: #6b8e7e;
+}
+
+.position-info .pnl.negative {
+    color: #c77d7d;
+}
+
+/* Responsive adjustments for tables */
+@media (max-width: 768px) {
+    .signals-table {
+        font-size: 0.8rem;
+    }
+
+    .signals-table th,
+    .signals-table td {
+        padding: 0.5rem 0.4rem;
+    }
+
+    .signals-table-header {
+        font-size: 0.85rem;
+        padding: 0.6rem 0.8rem;
+    }
+
+    .signals-table-wrapper {
+        overflow-x: auto;
+    }
+
+    /* 移动端买入信号表格高度调整 */
+    .signals-table-wrapper.buy-signals-table {
+        max-height: 400px;
+    }
+    
+    .signals-table-wrapper.buy-signals-table .signals-table tbody {
+        max-height: calc(400px - 90px);
+    }
+}
+
+/* 平板和桌面端优化 */
+@media (min-width: 769px) and (max-width: 1440px) {
+    .signals-table-wrapper.buy-signals-table {
+        max-height: 450px;
+    }
+    
+    .signals-table-wrapper.buy-signals-table .signals-table tbody {
+        max-height: calc(450px - 90px);
+    }
+}
+
+/* 大屏幕优化 */
+@media (min-width: 1441px) {
+    .signals-table-wrapper.buy-signals-table {
+        max-height: 600px;
+    }
+    
+    .signals-table-wrapper.buy-signals-table .signals-table tbody {
+        max-height: calc(600px - 90px);
+    }
+}
+
 .section-header {
     display: flex;
     justify-content: space-between;
@@ -704,6 +1057,8 @@ button:hover {
     display: flex;
     flex-direction: column;
     gap: 20px;
+    /* 确保列高度对齐 */
+    min-height: 0;
 }
 
 .trading-column {
@@ -712,6 +1067,9 @@ button:hover {
     gap: 20px;
     position: sticky;
     top: 20px;
+    /* 确保列高度对齐 */
+    min-height: 0;
+    align-self: start;
 }
 
 @media (max-width: 1200px) {
@@ -880,6 +1238,10 @@ button:hover {
     font-weight: 500;
     font-size: 0.95em;
     transition: background 0.2s;
+    box-sizing: border-box;
+    display: inline-block;
+    line-height: 1.4;
+    vertical-align: middle;
 }
 
 .btn-view-backtest:hover {

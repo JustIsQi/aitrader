@@ -43,7 +43,11 @@
       "Bash(ps:*)",
       "Bash(netstat:*)",
       "Bash(docker inspect:*)",
-      "Bash(docker stats:*)"
+      "Bash(docker stats:*)",
+      "Bash(systemctl:*)",
+      "mcp__zai-mcp-server__extract_text_from_screenshot",
+      "Bash(pip show:*)",
+      "mcp__zread__get_repo_structure"
     ]
   }
 }

@@ -28,6 +28,7 @@ class FilterConfig:
     exclude_st: bool = True
     exclude_suspend: bool = True
     exclude_new_ipo_days: int = 60  # 上市60天内
+    exclude_restricted_stocks: bool = True  # 排除限制交易股票（科创板、创业板、北交所）
 
     # 市值筛选
     min_market_cap: Optional[float] = 50  # 最小市值50亿
@@ -125,6 +126,7 @@ class SmartStockFilter:
         - 停牌股票
         - 新上市股票
         - 数据不足股票
+        - 限制交易股票（科创板、创业板、北交所）
         """
         # 如果提供了初始股票列表,使用它
         if initial_symbols:
@@ -134,7 +136,8 @@ class SmartStockFilter:
             base_symbols = self.universe.get_all_stocks(
                 exclude_st=self.config.exclude_st,
                 exclude_suspend=self.config.exclude_suspend,
-                min_data_days=self.config.min_data_days
+                min_data_days=self.config.min_data_days,
+                exclude_restricted_stocks=self.config.exclude_restricted_stocks
             )
 
         # 过滤新上市股票

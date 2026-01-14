@@ -164,7 +164,7 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
         db = get_db()
         with db.get_session() as session:
             from database.models.models import Trader
-            from sqlalchemy import func, and_
+            from sqlalchemy import func, and_, case
 
             # 构建查询条件
             conditions = []
@@ -179,7 +179,16 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
             else:
                 query = session.query(Trader)
 
+            # 卖出信号优先显示，然后是价格<50的股票，再按rank、日期排序
             query = query.order_by(
+                case(
+                    (Trader.signal_type == 'sell', 0),  # 卖出信号优先级为0
+                    else_=1                              # 买入信号优先级为1
+                ).asc(),                                 # 按信号类型优先级升序
+                case(
+                    (Trader.price < 50, 0),      # 价格<50优先级为0
+                    else_=1                       # 价格>=50优先级为1
+                ).asc(),                          # 按价格优先级升序
                 func.coalesce(Trader.rank, 9999).asc(),
                 Trader.signal_date.desc(),
                 Trader.created_at.desc()
@@ -231,8 +240,9 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
                 etf_grouped[date_key] = []
             etf_grouped[date_key].append(signal)
 
+        # Sort by date descending (newest first)
         etf_dates_list = [{"date": date, "signals": signals}
-                         for date, signals in etf_grouped.items()]
+                         for date, signals in sorted(etf_grouped.items(), key=lambda x: x[0], reverse=True)]
 
         # A股信号按周频/月频分组，再按日期分组
         ashare_weekly = []
@@ -256,8 +266,9 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
                 weekly_grouped[date_key] = []
             weekly_grouped[date_key].append(signal)
 
+        # Sort by date descending (newest first)
         weekly_dates_list = [{"date": date, "signals": signals}
-                            for date, signals in weekly_grouped.items()]
+                            for date, signals in sorted(weekly_grouped.items(), key=lambda x: x[0], reverse=True)]
 
         # 月频信号按日期分组
         monthly_grouped = {}
@@ -267,8 +278,9 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
                 monthly_grouped[date_key] = []
             monthly_grouped[date_key].append(signal)
 
+        # Sort by date descending (newest first)
         monthly_dates_list = [{"date": date, "signals": signals}
-                             for date, signals in monthly_grouped.items()]
+                             for date, signals in sorted(monthly_grouped.items(), key=lambda x: x[0], reverse=True)]
 
         return {
             "etf": {"dates": etf_dates_list},
@@ -296,12 +308,21 @@ async def get_latest_etf_signals(limit: int = 50):
         with db.get_session() as session:
             # Query ETF signals using asset_type column
             from database.models.models import Trader
-            from sqlalchemy import func
+            from sqlalchemy import func, case
 
             # ETF信号：使用asset_type字段过滤，按rank排序（rank=1优先）
+            # 卖出信号优先显示，然后是价格<50的ETF
             query = session.query(Trader).filter(
                 Trader.asset_type == 'etf'
             ).order_by(
+                case(
+                    (Trader.signal_type == 'sell', 0),  # 卖出信号优先级为0
+                    else_=1                              # 买入信号优先级为1
+                ).asc(),                                 # 按信号类型优先级升序
+                case(
+                    (Trader.price < 50, 0),      # 价格<50优先级为0
+                    else_=1                       # 价格>=50优先级为1
+                ).asc(),                          # 按价格优先级升序
                 func.coalesce(Trader.rank, 9999).asc(),
                 Trader.signal_date.desc(),
                 Trader.created_at.desc()
@@ -340,8 +361,9 @@ async def get_latest_etf_signals(limit: int = 50):
                 grouped[date_key] = []
             grouped[date_key].append(signal)
 
+        # Sort by date descending (newest first)
         dates_list = [{"date": date, "signals": signals}
-                      for date, signals in grouped.items()]
+                      for date, signals in sorted(grouped.items(), key=lambda x: x[0], reverse=True)]
 
         return {"dates": dates_list}
 
@@ -363,12 +385,21 @@ async def get_latest_ashare_signals(limit: int = 50):
         with db.get_session() as session:
             # Query A-share signals using asset_type column
             from database.models.models import Trader
-            from sqlalchemy import func
+            from sqlalchemy import func, case
 
             # A股信号：使用asset_type字段过滤，按rank排序（rank=1优先）
+            # 卖出信号优先显示，然后是价格<50的股票
             query = session.query(Trader).filter(
                 Trader.asset_type == 'ashare'
             ).order_by(
+                case(
+                    (Trader.signal_type == 'sell', 0),  # 卖出信号优先级为0
+                    else_=1                              # 买入信号优先级为1
+                ).asc(),                                 # 按信号类型优先级升序
+                case(
+                    (Trader.price < 50, 0),      # 价格<50优先级为0
+                    else_=1                       # 价格>=50优先级为1
+                ).asc(),                          # 按价格优先级升序
                 func.coalesce(Trader.rank, 9999).asc(),
                 Trader.signal_date.desc(),
                 Trader.created_at.desc()
@@ -423,8 +454,9 @@ async def get_latest_ashare_signals(limit: int = 50):
                 weekly_grouped[date_key] = []
             weekly_grouped[date_key].append(signal)
 
+        # Sort by date descending (newest first)
         weekly_dates_list = [{"date": date, "signals": signals}
-                             for date, signals in weekly_grouped.items()]
+                             for date, signals in sorted(weekly_grouped.items(), key=lambda x: x[0], reverse=True)]
 
         # Group monthly signals by date
         monthly_grouped = {}
@@ -434,8 +466,9 @@ async def get_latest_ashare_signals(limit: int = 50):
                 monthly_grouped[date_key] = []
             monthly_grouped[date_key].append(signal)
 
+        # Sort by date descending (newest first)
         monthly_dates_list = [{"date": date, "signals": signals}
-                              for date, signals in monthly_grouped.items()]
+                              for date, signals in sorted(monthly_grouped.items(), key=lambda x: x[0], reverse=True)]
 
         return {
             "weekly": weekly_dates_list,
