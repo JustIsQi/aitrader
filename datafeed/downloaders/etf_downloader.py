@@ -16,21 +16,52 @@ class EtfDownloader:
     def __init__(self):
         self.db = get_db()
 
-    def fetch_etf_list(self) -> Optional[pd.DataFrame]:
+    def fetch_etf_list(self) -> Optional[dict]:
         """
         从 AkShare 获取 ETF 列表
 
         Returns:
-            DataFrame: 包含列 ['代码', '名称', '最新价', ...]
+            dict: {formatted_symbol: name} 字典，例如 {'510300.SH': '沪深300ETF'}
         """
         try:
             # 使用AkShare接口获取ETF列表
             df = ak.fund_etf_spot_em()
             logger.info(f'获取到 {len(df)} 个ETF')
-            return df
+
+            # 构建格式化的代码到名称的映射
+            name_map = {}
+            for _, row in df.iterrows():
+                code = str(row['代码']).zfill(6)
+                formatted_symbol = self.format_etf_symbol(code)
+                name = row['名称']
+                name_map[formatted_symbol] = name
+
+            logger.info(f'成功映射 {len(name_map)} 个ETF名称')
+            return name_map
         except Exception as e:
             logger.error(f'获取ETF列表失败: {e}')
             return None
+
+    def update_etf_names(self) -> bool:
+        """
+        从 AkShare 获取 ETF 列表并更新名称到数据库
+
+        Returns:
+            bool: 成功返回 True，失败返回 False
+        """
+        try:
+            name_map = self.fetch_etf_list()
+            if not name_map:
+                logger.error('获取ETF名称失败')
+                return False
+
+            # 更新到数据库
+            updated = self.db.upsert_etf_names(name_map)
+            logger.info(f'成功更新 {updated} 个ETF名称')
+            return True
+        except Exception as e:
+            logger.error(f'更新ETF名称失败: {e}')
+            return False
 
     def format_etf_symbol(self, code: str) -> str:
         """
@@ -84,17 +115,22 @@ class EtfDownloader:
             logger.error(f'获取 ETF {symbol} 数据失败: {e}')
             return None
 
-    def update_etf_data(self, symbol: str) -> bool:
+    def update_etf_data(self, symbol: str, etf_name: str = None) -> bool:
         """
         更新单个 ETF 数据（增量下载）
 
         Args:
             symbol: ETF 代码 (例如: '510300.SH')
+            etf_name: ETF 名称 (可选)
 
         Returns:
             bool: 成功返回 True，失败返回 False
         """
         try:
+            # 如果没有提供名称，从数据库获取
+            if etf_name is None:
+                etf_name = self.db.get_etf_name(symbol)
+
             # 从数据库获取最新日期
             latest_date = self.db.get_latest_date(symbol)
 
@@ -135,8 +171,8 @@ class EtfDownloader:
                 '换手率': 'turnover_rate'
             }, inplace=True)
 
-            # 追加到数据库
-            success = self.db.append_etf_history(df, symbol)
+            # 追加到数据库（包含名称）
+            success = self.db.append_etf_history(df, symbol, name=etf_name)
 
             if success:
                 logger.info(f'成功更新 {symbol}，新增 {len(df)} 条数据')
@@ -147,17 +183,22 @@ class EtfDownloader:
             logger.error(f'更新 ETF {symbol} 失败: {e}')
             return False
 
-    def update_etf_data_qfq(self, symbol: str) -> bool:
+    def update_etf_data_qfq(self, symbol: str, etf_name: str = None) -> bool:
         """
         更新单个 ETF 前复权数据（增量下载）
 
         Args:
             symbol: ETF 代码 (例如: '510300.SH')
+            etf_name: ETF 名称 (可选)
 
         Returns:
             bool: 成功返回 True，失败返回 False
         """
         try:
+            # 如果没有提供名称，从数据库获取
+            if etf_name is None:
+                etf_name = self.db.get_etf_name(symbol)
+
             # 从数据库获取最新日期
             latest_date = self.db.get_etf_qfq_latest_date(symbol)
 
@@ -198,8 +239,8 @@ class EtfDownloader:
                 '换手率': 'turnover_rate'
             }, inplace=True)
 
-            # 追加到前复权数据表
-            success = self.db.append_etf_history_qfq(df, symbol)
+            # 追加到前复权数据表（包含名称）
+            success = self.db.append_etf_history_qfq(df, symbol, name=etf_name)
 
             if success:
                 logger.info(f'成功更新 {symbol} 前复权数据，新增 {len(df)} 条数据')
@@ -217,7 +258,13 @@ class EtfDownloader:
         Returns:
             dict: 统计信息
         """
-        symbols = self.db.get_etf_codes()
+        # 首先更新ETF名称
+        logger.info('开始更新ETF名称...')
+        self.update_etf_names()
+
+        # 获取所有ETF及其名称
+        name_map = self.db.get_all_etf_names()
+        symbols = list(name_map.keys())
 
         stats = {
             'total': len(symbols),
@@ -228,7 +275,8 @@ class EtfDownloader:
         logger.info(f'开始更新 {len(symbols)} 个 ETF')
 
         for symbol in symbols:
-            if self.update_etf_data(symbol):
+            etf_name = name_map.get(symbol)
+            if self.update_etf_data(symbol, etf_name=etf_name):
                 stats['success'] += 1
             else:
                 stats['failed'] += 1

@@ -13,6 +13,7 @@ class EtfHistory(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False)
+    name = Column(String(100))
     date = Column(Date, nullable=False)
     open = Column(Float)
     high = Column(Float)
@@ -178,6 +179,7 @@ class EtfCode(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False, unique=True)
+    name = Column(String(100))
 
 
 class StockCode(Base):
@@ -271,6 +273,7 @@ class EtfHistoryQfq(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(20), nullable=False)
+    name = Column(String(100))
     date = Column(Date, nullable=False)
     open = Column(Float)
     high = Column(Float)

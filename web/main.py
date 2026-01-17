@@ -94,34 +94,32 @@ async def dashboard(request: Request):
     # Get ETF signals separately
     from web.routers.signals import get_latest_etf_signals
     etf_result = await get_latest_etf_signals(limit=50)
-    etf_signals_by_date = etf_result.get("dates", [])
+    etf_date = etf_result.get("date")
+    etf_signals = etf_result.get("signals", [])
 
     # Enrich ETF signals with position data
-    for date_group in etf_signals_by_date:
-        for signal in date_group["signals"]:
-            symbol = signal.get('symbol')
-            if symbol and symbol in positions_dict:
-                signal['position'] = positions_dict[symbol]
+    for signal in etf_signals:
+        symbol = signal.get('symbol')
+        if symbol and symbol in positions_dict:
+            signal['position'] = positions_dict[symbol]
 
     # Get A-share signals with backtests (split by weekly/monthly)
     from web.routers.signals import get_latest_ashare_signals
     ashare_result = await get_latest_ashare_signals(limit=50)
-    ashare_weekly_signals = ashare_result.get("weekly", [])
-    ashare_monthly_signals = ashare_result.get("monthly", [])
+    ashare_weekly = ashare_result.get("weekly", {})
+    ashare_monthly = ashare_result.get("monthly", {})
 
     # Enrich A-share weekly signals with position data
-    for date_group in ashare_weekly_signals:
-        for signal in date_group["signals"]:
-            symbol = signal.get('symbol')
-            if symbol and symbol in positions_dict:
-                signal['position'] = positions_dict[symbol]
+    for signal in ashare_weekly.get("signals", []):
+        symbol = signal.get('symbol')
+        if symbol and symbol in positions_dict:
+            signal['position'] = positions_dict[symbol]
 
     # Enrich A-share monthly signals with position data
-    for date_group in ashare_monthly_signals:
-        for signal in date_group["signals"]:
-            symbol = signal.get('symbol')
-            if symbol and symbol in positions_dict:
-                signal['position'] = positions_dict[symbol]
+    for signal in ashare_monthly.get("signals", []):
+        symbol = signal.get('symbol')
+        if symbol and symbol in positions_dict:
+            signal['position'] = positions_dict[symbol]
 
     # Get recent transactions
     transactions = db.get_transactions()[:20]
@@ -130,8 +128,17 @@ async def dashboard(request: Request):
     # Convert to list
     positions_list = []
     if not positions.empty:
+        # Fetch ETF names and stock company abbreviations
+        symbols = positions['symbol'].tolist()
+        etf_name_map = db.batch_get_etf_names(symbols) if symbols else {}
+        stock_name_map = db.batch_get_company_abbr(symbols) if symbols else {}
+
         for record in positions.to_dict('records'):
             cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
+            symbol = record['symbol']
+            # Add ETF name or stock company abbreviation
+            cleaned_record['etf_name'] = etf_name_map.get(symbol, '')
+            cleaned_record['stock_name'] = stock_name_map.get(symbol, '')
             positions_list.append(cleaned_record)
 
     transactions_list = []
@@ -144,9 +151,12 @@ async def dashboard(request: Request):
         "index.html",
         {
             "request": request,
-            "etf_signals_by_date": etf_signals_by_date,
-            "ashare_weekly_signals": ashare_weekly_signals,
-            "ashare_monthly_signals": ashare_monthly_signals,
+            "etf_date": etf_date,
+            "etf_signals": etf_signals,
+            "ashare_weekly_date": ashare_weekly.get("date"),
+            "ashare_weekly_signals": ashare_weekly.get("signals", []),
+            "ashare_monthly_date": ashare_monthly.get("date"),
+            "ashare_monthly_signals": ashare_monthly.get("signals", []),
             "positions": positions_list,
             "transactions": transactions_list
         }
@@ -178,44 +188,6 @@ async def signals_page(request: Request):
             "latest_signals": signals_list,
             "positions": [],
             "transactions": []
-        }
-    )
-
-
-@app.get("/trading", response_class=HTMLResponse)
-async def trading_page(request: Request):
-    """
-    交易页面
-    """
-    # 获取当前持仓
-    positions = db.get_positions()
-
-    # 获取最近交易记录
-    transactions = db.get_transactions()[:50]  # 获取前50条
-
-    # 清理 NaN 值
-    positions, transactions = clean_dataframes(positions, transactions)
-
-    # 转换为字典并清理剩余 NaN
-    positions_list = []
-    if not positions.empty:
-        for record in positions.to_dict('records'):
-            cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
-            positions_list.append(cleaned_record)
-
-    transactions_list = []
-    if not transactions.empty:
-        for record in transactions.to_dict('records'):
-            cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
-            transactions_list.append(cleaned_record)
-
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "latest_signals": [],
-            "positions": positions_list,
-            "transactions": transactions_list
         }
     )
 

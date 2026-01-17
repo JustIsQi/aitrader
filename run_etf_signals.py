@@ -28,6 +28,19 @@ from signals.strategy_parser import StrategyParser
 class ETFSignalGenerator(MultiStrategySignalGenerator):
     """ETF策略信号生成器 - 只处理ETF策略，过滤A股选股策略"""
 
+    def __init__(self, enable_smart_filter=True, filter_config=None, **kwargs):
+        """
+        初始化ETF信号生成器
+
+        Args:
+            enable_smart_filter: 是否启用智能ETF筛选 (默认True)
+            filter_config: ETF筛选配置对象 (默认使用balanced模式)
+            **kwargs: 其他传递给父类的参数
+        """
+        super().__init__(enable_smart_filter=enable_smart_filter,
+                        filter_config=filter_config,
+                        **kwargs)
+
     def generate_signals(self,
                         current_positions=None,
                         target_date=None):
@@ -82,14 +95,13 @@ class ETFSignalGenerator(MultiStrategySignalGenerator):
             strategies = etf_strategies
 
             # 收集所有唯一标的和因子表达式
-            all_symbols = set()
             all_factor_exprs = []
 
             for strategy in strategies:
                 if strategy.task is None:
                     continue
 
-                all_symbols.update(strategy.task.symbols)
+                # 不再从策略文件收集symbols,稍后从数据库动态获取
                 all_factor_exprs.extend(strategy.task.select_buy)
                 all_factor_exprs.extend(strategy.task.select_sell)
 
@@ -103,13 +115,45 @@ class ETFSignalGenerator(MultiStrategySignalGenerator):
             from concurrent.futures import ThreadPoolExecutor, as_completed
             import os
 
-            initial_symbols = list(all_symbols)
+            # initial_symbols = None 表示从数据库全市场动态获取ETF池
+            initial_symbols = None
             all_factor_exprs = list(set(all_factor_exprs))  # 去重
 
-            # ========== ETF不使用智能选股筛选 ==========
-            logger.info("⚠️  ETF策略不使用智能选股筛选，使用完整标的池")
-            all_symbols = initial_symbols
-            # ========== 智能选股结束 ==========
+            # ========== ETF智能筛选 ==========
+            if self.enable_smart_filter:
+                from core.smart_etf_filter import SmartETFFilter, EtfFilterPresets
+
+                # 使用提供的配置或默认balanced配置
+                config = self.filter_config if self.filter_config else EtfFilterPresets.balanced()
+
+                logger.info(f"🚀 启用ETF智能筛选,从数据库动态获取ETF池 (preset={'custom' if self.filter_config else 'balanced'})")
+                smart_filter = SmartETFFilter(config)
+
+                # 执行筛选 - 不传递initial_symbols,让filter从数据库获取全市场ETF
+                filtered_symbols = smart_filter.filter_etfs(initial_symbols=None)
+
+                # 更新策略的ETF池为筛选后的结果 (所有策略使用相同的ETF池)
+                for strategy in strategies:
+                    if strategy.task is None:
+                        continue
+                    # 所有策略使用相同的筛选后ETF池
+                    strategy.task.symbols = filtered_symbols
+                    logger.debug(f"  策略 {strategy.task.name}: 使用筛选后ETF池,共 {len(filtered_symbols)} 只ETF")
+
+                # 使用筛选后的ETF池
+                all_symbols = filtered_symbols
+            else:
+                # 即使禁用智能筛选,也从数据库获取基础ETF池
+                logger.info("⚠️  ETF智能筛选已禁用,从数据库获取基础ETF池")
+                from core.etf_universe import EtfUniverse
+                universe = EtfUniverse()
+                all_symbols = universe.get_all_etfs(min_data_days=180)
+                # 更新所有策略的symbols
+                for strategy in strategies:
+                    if strategy.task is None:
+                        continue
+                    strategy.task.symbols = all_symbols
+            # ========== 智能筛选结束 ==========
 
             print(f"  ✓ {len(strategies)} 个ETF策略, {len(all_symbols)} 个标的, {len(all_factor_exprs)} 个因子")
 
@@ -182,10 +226,15 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 示例:
-  %(prog)s                              # 运行所有ETF策略
-  %(prog)s --date 20251225             # 指定分析日期
-  %(prog)s --output report.txt         # 输出到文件
-  %(prog)s --save-to-db                # 保存信号到数据库
+  %(prog)s                                          # 运行所有ETF策略(默认使用平衡型筛选)
+  %(prog)s --date 20251225                         # 指定分析日期
+  %(prog)s --output report.txt                     # 输出到文件
+  %(prog)s --save-to-db                            # 保存信号到数据库
+  %(prog)s --filter-preset conservative            # 使用保守型筛选(大流动性ETF)
+  %(prog)s --filter-preset aggressive              # 使用激进型筛选(包含小ETF)
+  %(prog)s --filter-min-amount 10000               # 自定义最小成交额为1亿
+  %(prog)s --filter-target-count 50                # 筛选50只ETF
+  %(prog)s --disable-smart-filter                  # 禁用智能筛选(使用策略原始标的)
         '''
     )
 
@@ -238,12 +287,56 @@ def parse_arguments():
         help='不保存信号到数据库'
     )
 
+    # ETF智能筛选控制
+    parser.add_argument(
+        '--enable-smart-filter',
+        action='store_true',
+        default=True,
+        help='启用ETF智能筛选 (默认开启)'
+    )
+
+    parser.add_argument(
+        '--disable-smart-filter',
+        action='store_false',
+        dest='enable_smart_filter',
+        help='禁用ETF智能筛选'
+    )
+
+    parser.add_argument(
+        '--filter-preset',
+        type=str,
+        choices=['conservative', 'balanced', 'aggressive'],
+        default='balanced',
+        help='ETF筛选预设: conservative(保守型), balanced(平衡型), aggressive(激进型) (默认: balanced)'
+    )
+
+    parser.add_argument(
+        '--filter-min-amount',
+        type=float,
+        default=None,
+        help='最小日均成交额(万元), 覆盖预设值 (例如: 5000表示5000万元)'
+    )
+
+    parser.add_argument(
+        '--filter-min-turnover',
+        type=float,
+        default=None,
+        help='最小换手率(%%), 覆盖预设值 (例如: 1.5表示1.5%%)'
+    )
+
+    parser.add_argument(
+        '--filter-target-count',
+        type=int,
+        default=None,
+        help='目标ETF数量, 覆盖预设值 (例如: 100表示筛选100只ETF)'
+    )
+
     return parser.parse_args()
 
 
 def save_signals_to_db(all_signals: dict, db):
     """
-    保存所有策略信号到数据库
+    保存所有策略信号到数据库（仅保存top20买入信号）
 
     Args:
         all_signals: 策略信号字典 {strategy_name: StrategySignals}
@@ -283,6 +376,23 @@ def save_signals_to_db(all_signals: dict, db):
                 'price': sell_signal.current_price
             })
 
+    # 对买入信号排序并只保留top20
+    # 排序规则: 策略数量多的优先，相同时平均分数高的优先
+    total_buy_signals = len(buy_signals_by_symbol)
+    if total_buy_signals > 20:
+        print(f"      注意: 共 {total_buy_signals} 个买入信号，仅保存前 20 个")
+
+        sorted_buy_signals = sorted(
+            buy_signals_by_symbol.items(),
+            key=lambda x: (
+                len(x[1]),  # 策略数量越多越好
+                -sum(s['score'] for s in x[1]) / len(x[1])  # 平均分数越高越好（负号表示降序）
+            ),
+            reverse=True
+        )[:20]  # 只取前20个
+
+        buy_signals_by_symbol = dict(sorted_buy_signals)
+
     # 插入买入信号
     buy_count = 0
     for symbol, signals_list in buy_signals_by_symbol.items():
@@ -321,7 +431,7 @@ def save_signals_to_db(all_signals: dict, db):
         )
         sell_count += 1
 
-    print(f"      ✓ 保存信号: {buy_count}个买入, {sell_count}个卖出")
+    print(f"      ✓ 保存信号: {buy_count}个买入(top20), {sell_count}个卖出")
 
 
 def main():
@@ -342,6 +452,12 @@ def main():
     else:
         print(f"分析日期: 最新可用日期")
     print(f"初始资金: {args.initial_capital:.0f}元")
+
+    # 显示筛选配置
+    if args.enable_smart_filter:
+        print(f"智能筛选: 启用 ({args.filter_preset}模式)")
+    else:
+        print(f"智能筛选: 禁用")
     print("=" * 100)
 
     try:
@@ -350,14 +466,14 @@ def main():
         logger.disable("datafeed.db_dataloader")
         logger.disable("core.stock_universe")  # 禁用股票池相关日志,ETF策略不需要
 
-        print("\n[1/5] 初始化数据库连接...")
+        print("\n[1/6] 初始化数据库连接...")
         db = get_db()
         print("      ✓ 数据库连接成功")
 
         logger.enable("database.db_manager")
 
         # 获取当前持仓
-        print("\n[2/5] 加载当前持仓...")
+        print("\n[2/6] 加载当前持仓...")
         current_positions = db.get_positions()
 
         if current_positions.empty:
@@ -367,13 +483,46 @@ def main():
             print(f"      ✓ 持仓数量: {len(current_positions)}")
             print(f"      ✓ 总市值: {total_value:.2f}元")
 
+        # 构建筛选配置
+        filter_config = None
+        if args.enable_smart_filter:
+            print("\n[3/6] 构建ETF筛选配置...")
+            from core.smart_etf_filter import EtfFilterConfig, EtfFilterPresets
+
+            # 获取预设
+            preset_map = {
+                'conservative': EtfFilterPresets.conservative,
+                'balanced': EtfFilterPresets.balanced,
+                'aggressive': EtfFilterPresets.aggressive
+            }
+            filter_config = preset_map[args.filter_preset]()
+
+            # CLI覆盖
+            if args.filter_min_amount is not None:
+                filter_config.min_avg_amount = args.filter_min_amount
+                print(f"      ✓ 覆盖最小成交额: {args.filter_min_amount}万元")
+            if args.filter_min_turnover is not None:
+                filter_config.min_turnover_rate = args.filter_min_turnover
+                print(f"      ✓ 覆盖最小换手率: {args.filter_min_turnover}%")
+            if args.filter_target_count is not None:
+                filter_config.target_count = args.filter_target_count
+                print(f"      ✓ 覆盖目标数量: {args.filter_target_count}只")
+
+            print(f"      ✓ 预设模式: {args.filter_preset}")
+            print(f"      ✓ 最小成交额: {filter_config.min_avg_amount}万元")
+            print(f"      ✓ 最小换手率: {filter_config.min_turnover_rate}%")
+            print(f"      ✓ 目标数量: {filter_config.target_count}只")
+
         # 初始化信号生成器
-        print("\n[3/5] 初始化ETF信号生成器...")
-        generator = ETFSignalGenerator()
+        print("\n[4/6] 初始化ETF信号生成器...")
+        generator = ETFSignalGenerator(
+            enable_smart_filter=args.enable_smart_filter,
+            filter_config=filter_config
+        )
         print("      ✓ ETF信号生成器初始化完成")
 
         # 生成信号
-        print("\n[4/5] 生成策略信号...")
+        print("\n[5/6] 生成策略信号...")
         print("  加载数据并计算因子...")
         all_signals = generator.generate_signals(
             current_positions=current_positions,
@@ -385,7 +534,7 @@ def main():
             return
 
         # 生成报告
-        print("\n[5/5] 生成分析报告...")
+        print("\n[6/6] 生成分析报告...")
         reporter = SignalReporter(
             initial_capital=args.initial_capital
         )
@@ -403,7 +552,7 @@ def main():
 
         # 保存信号到数据库
         if args.save_to_db:
-            print("\n[6/6] 保存信号到数据库...")
+            print("\n[7/7] 保存信号到数据库...")
             save_signals_to_db(all_signals, db)
 
         print(f"\n分析完成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

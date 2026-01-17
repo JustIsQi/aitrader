@@ -2,12 +2,14 @@
 Signals API endpoints
 """
 from fastapi import APIRouter, HTTPException
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 from database.pg_manager import get_db
 from web.models import SignalResponse
 from loguru import logger
 import numpy as np
 import pandas as pd
+import json
 
 router = APIRouter()
 
@@ -298,10 +300,14 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
 @router.get("/etf/latest")
 async def get_latest_etf_signals(limit: int = 50):
     """
-    获取最新的ETF信号（单独获取）
+    获取最新一天的ETF信号 (仅返回最新日期的信号)
 
     Returns:
-        ETF signals grouped by date
+        Single object with latest date and signals (not grouped by date)
+        {
+            "date": "2024-01-15",
+            "signals": [...]
+        }
     """
     try:
         db = get_db()
@@ -331,14 +337,14 @@ async def get_latest_etf_signals(limit: int = 50):
             signals_df = pd.read_sql(query.statement, session.bind)
 
         if signals_df.empty:
-            return {"dates": []}
+            return {"date": None, "signals": []}
 
-        # Clean and group by date
+        # Clean and process signals
         signals_df = clean_dataframe(signals_df)
 
-        # Batch get company abbreviations for all symbols
+        # Batch get ETF names for all symbols
         symbols = signals_df['symbol'].unique().tolist()
-        company_abbr_map = db.batch_get_company_abbr(symbols)
+        etf_name_map = db.batch_get_etf_names(symbols)
 
         signals_list = []
         for record in signals_df.to_dict('records'):
@@ -348,24 +354,25 @@ async def get_latest_etf_signals(limit: int = 50):
             if 'created_at' in cleaned_record and cleaned_record['created_at']:
                 cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
 
-            # Add company abbreviation
-            cleaned_record['zh_company_abbr'] = company_abbr_map.get(record['symbol'], '')
+            # Add ETF name
+            cleaned_record['zh_company_abbr'] = etf_name_map.get(record['symbol'], '')
 
             signals_list.append(cleaned_record)
 
-        # Group by date
-        grouped = {}
-        for signal in signals_list:
-            date_key = signal['signal_date']
-            if date_key not in grouped:
-                grouped[date_key] = []
-            grouped[date_key].append(signal)
+        # Find the latest date and filter signals
+        if signals_list:
+            dates = [s['signal_date'] for s in signals_list]
+            latest_date = max(dates)
+            latest_signals = [s for s in signals_list if s['signal_date'] == latest_date]
+        else:
+            latest_date = None
+            latest_signals = []
 
-        # Sort by date descending (newest first)
-        dates_list = [{"date": date, "signals": signals}
-                      for date, signals in sorted(grouped.items(), key=lambda x: x[0], reverse=True)]
-
-        return {"dates": dates_list}
+        # Return single date object (not a list)
+        return {
+            "date": latest_date,
+            "signals": latest_signals
+        }
 
     except Exception as e:
         logger.error(f"Error fetching ETF signals: {e}")
@@ -375,10 +382,20 @@ async def get_latest_etf_signals(limit: int = 50):
 @router.get("/ashare/latest")
 async def get_latest_ashare_signals(limit: int = 50):
     """
-    获取最新的A股信号（单独获取），按周频和月频分组
+    获取最新一天的A股信号 (仅返回最新日期的信号)
 
     Returns:
-        A-share signals split into weekly and monthly groups, each grouped by date
+        Weekly and monthly signals from latest date only
+        {
+            "weekly": {
+                "date": "2024-01-15",
+                "signals": [...]
+            },
+            "monthly": {
+                "date": "2024-01-15",
+                "signals": [...]
+            }
+        }
     """
     try:
         db = get_db()
@@ -408,7 +425,7 @@ async def get_latest_ashare_signals(limit: int = 50):
             signals_df = pd.read_sql(query.statement, session.bind)
 
         if signals_df.empty:
-            return {"weekly": [], "monthly": []}
+            return {"weekly": {"date": None, "signals": []}, "monthly": {"date": None, "signals": []}}
 
         signals_df = clean_dataframe(signals_df)
 
@@ -446,33 +463,34 @@ async def get_latest_ashare_signals(limit: int = 50):
                 # Fallback: if no frequency indicator, treat as weekly
                 weekly_signals.append(cleaned_record)
 
-        # Group weekly signals by date
-        weekly_grouped = {}
-        for signal in weekly_signals:
-            date_key = signal['signal_date']
-            if date_key not in weekly_grouped:
-                weekly_grouped[date_key] = []
-            weekly_grouped[date_key].append(signal)
+        # Find latest date for weekly and filter
+        if weekly_signals:
+            weekly_dates = [s['signal_date'] for s in weekly_signals]
+            latest_weekly_date = max(weekly_dates)
+            latest_weekly = [s for s in weekly_signals if s['signal_date'] == latest_weekly_date]
+        else:
+            latest_weekly_date = None
+            latest_weekly = []
 
-        # Sort by date descending (newest first)
-        weekly_dates_list = [{"date": date, "signals": signals}
-                             for date, signals in sorted(weekly_grouped.items(), key=lambda x: x[0], reverse=True)]
+        # Find latest date for monthly and filter
+        if monthly_signals:
+            monthly_dates = [s['signal_date'] for s in monthly_signals]
+            latest_monthly_date = max(monthly_dates)
+            latest_monthly = [s for s in monthly_signals if s['signal_date'] == latest_monthly_date]
+        else:
+            latest_monthly_date = None
+            latest_monthly = []
 
-        # Group monthly signals by date
-        monthly_grouped = {}
-        for signal in monthly_signals:
-            date_key = signal['signal_date']
-            if date_key not in monthly_grouped:
-                monthly_grouped[date_key] = []
-            monthly_grouped[date_key].append(signal)
-
-        # Sort by date descending (newest first)
-        monthly_dates_list = [{"date": date, "signals": signals}
-                              for date, signals in sorted(monthly_grouped.items(), key=lambda x: x[0], reverse=True)]
-
+        # Return single date objects (not lists)
         return {
-            "weekly": weekly_dates_list,
-            "monthly": monthly_dates_list
+            "weekly": {
+                "date": latest_weekly_date,
+                "signals": latest_weekly
+            },
+            "monthly": {
+                "date": latest_monthly_date,
+                "signals": latest_monthly
+            }
         }
 
     except Exception as e:

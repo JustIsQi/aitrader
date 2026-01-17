@@ -2,7 +2,7 @@
 Pydantic models for API request/response validation
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import date
 
 
@@ -59,3 +59,5 @@ class ProfitLossResponse(BaseModel):
     total_market_value: Optional[float] = None
     total_cost: Optional[float] = None
     total_pl: Optional[float] = None
+
+

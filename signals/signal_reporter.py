@@ -327,9 +327,14 @@ class SignalReporter:
             reverse=True
         )
 
-        # 优先级2: 建议买入
+        # 优先级2: 建议买入 (仅显示top20)
         if sorted_buys:
-            lines.append(f"\n【建议买入】 ({len(sorted_buys)}个信号)")
+            total_signals = len(sorted_buys)
+            if total_signals > 20:
+                sorted_buys = sorted_buys[:20]
+                lines.append(f"\n【建议买入】 (共{total_signals}个信号，仅显示前20个)")
+            else:
+                lines.append(f"\n【建议买入】 ({len(sorted_buys)}个信号)")
 
             for rank, (symbol, avg_score) in enumerate(sorted_buys, 1):
                 strategies = buy_counts[symbol]

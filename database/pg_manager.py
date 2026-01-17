@@ -109,17 +109,20 @@ class PostgreSQLManager:
             logger.error(f'插入ETF数据失败: {e}')
             return False
 
-    def append_etf_history(self, df: pd.DataFrame, symbol: str) -> bool:
+    def append_etf_history(self, df: pd.DataFrame, symbol: str, name: str = None) -> bool:
         """
         追加新的历史数据（只插入不存在的记录）
 
         Args:
             df: 新的数据 DataFrame
             symbol: ETF 代码
+            name: ETF 名称 (可选)
         """
         try:
             df = df.copy()
             df['symbol'] = symbol
+            if name is not None:
+                df['name'] = name
             df['date'] = pd.to_datetime(df['date']).dt.date
 
             # 使用唯一的临时表名避免并发冲突
@@ -129,15 +132,27 @@ class PostgreSQLManager:
                 # 使用临时表和 ON CONFLICT DO NOTHING
                 df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
 
-                session.execute(text(f"""
-                    INSERT INTO etf_history
-                    (symbol, date, open, high, low, close, volume, amount,
-                     amplitude, change_pct, change_amount, turnover_rate)
-                    SELECT symbol, date, open, high, low, close, volume, amount,
-                           amplitude, change_pct, change_amount, turnover_rate
-                    FROM {temp_table_name}
-                    ON CONFLICT (symbol, date) DO NOTHING
-                """))
+                # 根据是否有name列选择不同的SQL
+                if name is not None:
+                    session.execute(text(f"""
+                        INSERT INTO etf_history
+                        (symbol, name, date, open, high, low, close, volume, amount,
+                         amplitude, change_pct, change_amount, turnover_rate)
+                        SELECT symbol, name, date, open, high, low, close, volume, amount,
+                               amplitude, change_pct, change_amount, turnover_rate
+                        FROM {temp_table_name}
+                        ON CONFLICT (symbol, date) DO NOTHING
+                    """))
+                else:
+                    session.execute(text(f"""
+                        INSERT INTO etf_history
+                        (symbol, date, open, high, low, close, volume, amount,
+                         amplitude, change_pct, change_amount, turnover_rate)
+                        SELECT symbol, date, open, high, low, close, volume, amount,
+                               amplitude, change_pct, change_amount, turnover_rate
+                        FROM {temp_table_name}
+                        ON CONFLICT (symbol, date) DO NOTHING
+                    """))
 
                 session.execute(text(f"DROP TABLE {temp_table_name}"))
 
@@ -846,17 +861,20 @@ class PostgreSQLManager:
             ).scalar()
             return result
 
-    def append_etf_history_qfq(self, df: pd.DataFrame, symbol: str) -> bool:
+    def append_etf_history_qfq(self, df: pd.DataFrame, symbol: str, name: str = None) -> bool:
         """
         追加新的 ETF 前复权历史数据
 
         Args:
             df: 新的数据 DataFrame
             symbol: ETF 代码
+            name: ETF 名称 (可选)
         """
         try:
             df = df.copy()
             df['symbol'] = symbol
+            if name is not None:
+                df['name'] = name
             df['date'] = pd.to_datetime(df['date']).dt.date
 
             # 使用唯一的临时表名避免并发冲突
@@ -866,15 +884,27 @@ class PostgreSQLManager:
                 # 使用临时表和 ON CONFLICT DO NOTHING
                 df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
 
-                session.execute(text(f"""
-                    INSERT INTO etf_history_qfq
-                    (symbol, date, open, high, low, close, volume, amount,
-                     amplitude, change_pct, change_amount, turnover_rate)
-                    SELECT symbol, date, open, high, low, close, volume, amount,
-                           amplitude, change_pct, change_amount, turnover_rate
-                    FROM {temp_table_name}
-                    ON CONFLICT (symbol, date) DO NOTHING
-                """))
+                # 根据是否有name列选择不同的SQL
+                if name is not None:
+                    session.execute(text(f"""
+                        INSERT INTO etf_history_qfq
+                        (symbol, name, date, open, high, low, close, volume, amount,
+                         amplitude, change_pct, change_amount, turnover_rate)
+                        SELECT symbol, name, date, open, high, low, close, volume, amount,
+                               amplitude, change_pct, change_amount, turnover_rate
+                        FROM {temp_table_name}
+                        ON CONFLICT (symbol, date) DO NOTHING
+                    """))
+                else:
+                    session.execute(text(f"""
+                        INSERT INTO etf_history_qfq
+                        (symbol, date, open, high, low, close, volume, amount,
+                         amplitude, change_pct, change_amount, turnover_rate)
+                        SELECT symbol, date, open, high, low, close, volume, amount,
+                               amplitude, change_pct, change_amount, turnover_rate
+                        FROM {temp_table_name}
+                        ON CONFLICT (symbol, date) DO NOTHING
+                    """))
 
                 session.execute(text(f"DROP TABLE {temp_table_name}"))
 
@@ -1599,6 +1629,9 @@ class PostgreSQLManager:
             # 批量获取公司简称
             company_abbr_map = self.batch_get_company_abbr(symbols)
 
+            # 批量获取ETF名称
+            etf_name_map = self.batch_get_etf_names(symbols)
+
             # 为每个标的获取当前价格并计算未实现盈亏
             results = []
             for symbol, stats in symbol_stats.items():
@@ -1642,7 +1675,7 @@ class PostgreSQLManager:
 
                 results.append({
                     'symbol': symbol,
-                    'zh_name': company_abbr_map.get(symbol, ''),
+                    'zh_name': etf_name_map.get(symbol) or company_abbr_map.get(symbol, ''),
                     'bought_qty': round(stats['bought_qty'], 2),
                     'avg_buy_price': round(avg_buy_price, 3),
                     'total_buy_cost': round(stats['total_buy_cost'], 2),
@@ -1779,6 +1812,32 @@ class PostgreSQLManager:
             ).all()
 
             return {row.symbol: row.zh_company_abbr for row in results}
+
+    def batch_get_etf_names(self, symbols: List[str]) -> dict:
+        """
+        批量查询ETF的名称
+
+        Args:
+            symbols: ETF代码列表
+
+        Returns:
+            dict: {symbol: etf_name} 映射字典
+        """
+        if not symbols:
+            return {}
+
+        with self.get_session() as session:
+            # 从EtfCode表查询ETF名称
+            from database.models.models import EtfCode
+            results = session.query(
+                EtfCode.symbol,
+                EtfCode.name
+            ).filter(
+                EtfCode.symbol.in_(symbols),
+                EtfCode.name.isnot(None)
+            ).all()
+
+            return {row.symbol: row.name for row in results}
 
     def update_stock_metadata(self, symbol: str, **fields):
         """
@@ -2304,6 +2363,90 @@ class PostgreSQLManager:
             if table in ['stock', 'both']:
                 result['stock'] = session.query(StockCode).count()
         return result
+
+    # ==================== ETF 名称管理 ====================
+
+    def migrate_add_etf_name_column(self):
+        """
+        添加 name 列到 ETF 相关表
+        """
+        try:
+            with self.get_session() as session:
+                # 添加列到 etf_codes
+                session.execute(text("""
+                    ALTER TABLE etf_codes ADD COLUMN IF NOT EXISTS name VARCHAR(100)
+                """))
+                # 添加列到 etf_history
+                session.execute(text("""
+                    ALTER TABLE etf_history ADD COLUMN IF NOT EXISTS name VARCHAR(100)
+                """))
+                # 添加列到 etf_history_qfq
+                session.execute(text("""
+                    ALTER TABLE etf_history_qfq ADD COLUMN IF NOT EXISTS name VARCHAR(100)
+                """))
+                logger.info('成功添加 name 列到所有 ETF 表')
+        except Exception as e:
+            logger.error(f'添加 name 列失败: {e}')
+            raise
+
+    def upsert_etf_names(self, name_map: dict) -> int:
+        """
+        批量更新ETF名称
+
+        Args:
+            name_map: {symbol: name} 字典
+
+        Returns:
+            更新或插入的数量
+        """
+        try:
+            with self.get_session() as session:
+                updated = 0
+                for symbol, name in name_map.items():
+                    existing = session.query(EtfCode).filter(
+                        EtfCode.symbol == symbol
+                    ).first()
+                    if existing:
+                        if existing.name != name:
+                            existing.name = name
+                            updated += 1
+                    else:
+                        session.add(EtfCode(symbol=symbol, name=name))
+                        updated += 1
+                logger.info(f'批量更新ETF名称: {updated}条记录')
+                return updated
+        except Exception as e:
+            logger.error(f'批量更新ETF名称失败: {e}')
+            return 0
+
+    def get_etf_name(self, symbol: str) -> Optional[str]:
+        """
+        获取ETF名称
+
+        Args:
+            symbol: ETF 代码
+
+        Returns:
+            ETF 名称，如果不存在返回 None
+        """
+        with self.get_session() as session:
+            result = session.query(EtfCode.name).filter(
+                EtfCode.symbol == symbol
+            ).first()
+            return result[0] if result else None
+
+    def get_all_etf_names(self) -> dict:
+        """
+        获取所有ETF名称
+
+        Returns:
+            {symbol: name} 字典
+        """
+        with self.get_session() as session:
+            results = session.query(EtfCode.symbol, EtfCode.name).filter(
+                EtfCode.name.isnot(None)
+            ).all()
+            return {symbol: name for symbol, name in results}
 
     # ==================== 因子缓存 ====================
 
