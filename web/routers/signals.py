@@ -357,6 +357,10 @@ async def get_latest_etf_signals(limit: int = 50):
             # Add ETF name
             cleaned_record['zh_company_abbr'] = etf_name_map.get(record['symbol'], '')
 
+            # 新增: 获取回测信息
+            backtest_info = db.get_signal_backtest(record['id'])
+            cleaned_record['backtest'] = backtest_info
+
             signals_list.append(cleaned_record)
 
         # Find the latest date and filter signals
@@ -502,6 +506,30 @@ async def get_latest_ashare_signals(limit: int = 50):
 async def get_backtest_detail(backtest_id: int):
     """
     获取回测详情
+
+    Returns:
+        Complete backtest report with equity curve and trades
+    """
+    try:
+        db = get_db()
+        backtest = db.get_backtest_by_id(backtest_id)
+
+        if not backtest:
+            raise HTTPException(status_code=404, detail="Backtest not found")
+
+        return backtest
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching backtest detail: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/backtest/{backtest_id}")
+async def get_backtest_by_id_universal(backtest_id: int):
+    """
+    获取回测详情通用端点(支持ETF和A股)
 
     Returns:
         Complete backtest report with equity curve and trades

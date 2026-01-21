@@ -1216,7 +1216,7 @@ class PostgreSQLManager:
                             strategies: List[str], signal_date: date,
                             price: float = None, score: float = None,
                             rank: int = None, quantity: int = None,
-                            asset_type: str = None):
+                            asset_type: str = None, backtest_metrics: dict = None):
         """
         插入或更新交易信号
 
@@ -1230,6 +1230,7 @@ class PostgreSQLManager:
             rank: 信号排名
             quantity: 建议数量
             asset_type: 资产类型 ('etf' or 'ashare')，如果为None则自动检测
+            backtest_metrics: 回测指标字典 (可选)
         """
         import numpy as np
 

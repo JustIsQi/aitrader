@@ -116,6 +116,7 @@ class Trader(Base):
     rank = Column(Integer)
     quantity = Column(Integer)
     asset_type = Column(String(20), nullable=False)  # 'etf' or 'ashare'
+    backtest_metrics = Column(JSON)  # 回测指标 (可选)
     created_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (
@@ -239,6 +240,22 @@ class StrategyBacktest(Base):
     monthly_returns = Column(JSON)
     trade_list = Column(JSON)  # Array of trade objects
 
+    # Portfolio backtest specific fields (组合回测特有字段)
+    backtest_type = Column(String(20), default='single')  # 'single' (单一标的轮动) or 'portfolio' (组合回测)
+    portfolio_config = Column(JSON)  # 组合配置 {weight_type, rebalance_freq, select_buy, select_sell}
+
+    # Advanced performance metrics (高级绩效指标)
+    sortino_ratio = Column(Float)  # Sortino比率（只考虑下行波动）
+    calmar_ratio = Column(Float)  # Calmar比率（年化收益/最大回撤）
+    var_95 = Column(Float)  # 95% VaR (Value at Risk)
+    cvar_95 = Column(Float)  # 95% CVaR (Conditional VaR)
+    information_ratio = Column(Float)  # 信息比率（相对基准的超额收益/跟踪误差）
+    avg_turnover_rate = Column(Float)  # 平均换手率（滚动20日）
+    win_rates = Column(JSON)  # 胜率 {'daily': 60, 'weekly': 65, 'monthly': 70}
+
+    # Portfolio holdings (组合持仓)
+    final_holdings = Column(JSON)  # 最后一天持仓 [{'symbol': '510300.SH', 'shares': 100, 'weight': 0.25}]
+
     # Metadata
     backtest_date = Column(DateTime, server_default=func.now())
     status = Column(String(20), default='completed')  # 'completed', 'failed', 'running'
@@ -249,6 +266,7 @@ class StrategyBacktest(Base):
                         name='uix_backtest_strategy_period'),
         Index('idx_backtests_strategy', 'strategy_name', 'asset_type'),
         Index('idx_backtests_date', 'backtest_date'),
+        Index('idx_backtests_type', 'backtest_type'),  # 新增索引：按回测类型查询
     )
 
 

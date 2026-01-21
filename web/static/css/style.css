@@ -789,7 +789,7 @@ button:hover {
 .signals-table.etf-table col.symbol-col { width: 15%; }
 .signals-table.etf-table col.name-col { width: 30%; }
 .signals-table.etf-table col.price-col { width: 10%; }
-.signals-table.etf-table col.score-col { width: 12%; }
+.signals-table.etf-table col.backtest-col { width: 14%; }
 .signals-table.etf-table col.position-col { width: 23%; }
 
 /* A股表格（6列）的列宽 */
@@ -1253,14 +1253,14 @@ button:hover {
 .btn-view-backtest {
     width: 100%;
     padding: 10px;
-    background: #6b8387;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     font-weight: 500;
     font-size: 0.95em;
-    transition: background 0.2s;
+    transition: all 0.2s;
     box-sizing: border-box;
     display: inline-block;
     line-height: 1.4;
@@ -1268,7 +1268,9 @@ button:hover {
 }
 
 .btn-view-backtest:hover {
-    background: #5a6e7f;
+    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 /* ========== Modal Styles ========== */

@@ -23,6 +23,7 @@ class BuySignal:
     rank: int
     price: float
     suggested_quantity: int
+    backtest_metrics: Optional[dict] = None  # 近20天回测指标
 
 
 @dataclass
@@ -430,12 +431,15 @@ class MultiStrategySignalGenerator:
         if not task.order_by_signal:
             for symbol in qualified_symbols:
                 if symbol in df_close.columns and symbol not in holding_symbols:
+                    # 计算回测指标
+                    backtest_metrics = self._calculate_backtest_metrics(symbol)
                     buy_signals.append(BuySignal(
                         symbol=symbol,
                         score=buy_condition_counts[symbol],
                         rank=0,
                         price=df_close.iloc[-1][symbol],
-                        suggested_quantity=0
+                        suggested_quantity=0,
+                        backtest_metrics=backtest_metrics
                     ))
             return buy_signals
 
@@ -466,15 +470,45 @@ class MultiStrategySignalGenerator:
 
         for rank, (symbol, score) in enumerate(scored_symbols[start_idx:end_idx], start_idx + 1):
             if symbol in df_close.columns and symbol not in holding_symbols:
+                # 计算回测指标
+                backtest_metrics = self._calculate_backtest_metrics(symbol)
                 buy_signals.append(BuySignal(
                     symbol=symbol,
                     score=score,
                     rank=rank,
                     price=df_close.iloc[-1][symbol],
-                    suggested_quantity=0
+                    suggested_quantity=0,
+                    backtest_metrics=backtest_metrics
                 ))
 
         return buy_signals
+
+    def _calculate_backtest_metrics(self, symbol: str, lookback_days: int = 20) -> Optional[dict]:
+        """
+        计算单个标的的回测指标
+
+        Args:
+            symbol: 标的代码
+            lookback_days: 回测天数（默认20天）
+
+        Returns:
+            回测指标字典，失败返回 None
+        """
+        try:
+            from core.backtest_utils import calculate_symbol_backtest
+
+            # 判断资产类型（基于符号格式）
+            asset_type = 'etf' if '.' in symbol and 'XSHG' in symbol or 'XSHE' in symbol else 'ashare'
+
+            return calculate_symbol_backtest(
+                symbol=symbol,
+                lookback_days=lookback_days,
+                end_date=self.target_date,
+                asset_type=asset_type
+            )
+        except Exception as e:
+            logger.warning(f"计算标的 {symbol} 的回测指标失败: {e}")
+            return None
 
 
 if __name__ == '__main__':

@@ -347,12 +347,13 @@ function initBacktestButtons() {
     buttons.forEach(button => {
         button.addEventListener('click', function() {
             const backtestId = this.getAttribute('data-backtest-id');
-            loadBacktestDetail(backtestId);
+            const assetType = this.getAttribute('data-asset-type') || 'ashare';
+            loadBacktestDetail(backtestId, assetType);
         });
     });
 }
 
-async function loadBacktestDetail(backtestId) {
+async function loadBacktestDetail(backtestId, assetType = 'ashare') {
     const modal = document.getElementById('backtest-modal');
     const modalBody = document.getElementById('backtest-modal-body');
 
@@ -361,8 +362,13 @@ async function loadBacktestDetail(backtestId) {
         modalBody.innerHTML = '<p style="text-align: center; padding: 20px;">Loading backtest data...</p>';
         modal.style.display = 'block';
 
+        // 根据assetType选择API端点
+        const endpoint = assetType === 'etf'
+            ? `/api/signals/backtest/${backtestId}`
+            : `/api/signals/ashare/backtest/${backtestId}`;
+
         // Fetch backtest data
-        const response = await fetch(`/api/signals/ashare/backtest/${backtestId}`);
+        const response = await fetch(endpoint);
         if (!response.ok) throw new Error('Failed to load backtest');
 
         const backtest = await response.json();

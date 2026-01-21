@@ -27,6 +27,9 @@ def safe_dict_value(value):
     """安全处理字典中的 NaN 值"""
     if isinstance(value, float) and (pd.isna(value) or np.isnan(value)):
         return None
+    # 将 NumPy 类型转换为 Python 原生类型
+    if hasattr(value, 'item'):  # NumPy scalar types
+        return value.item()
     return value
 
 
@@ -72,45 +75,45 @@ async def add_trading_record(record: TradingRecord):
             # 买入：更新或创建持仓
             if current_position is not None:
                 # 计算新的平均成本
-                total_quantity = current_position['quantity'] + record.quantity
-                total_cost = (current_position['avg_cost'] * current_position['quantity'] +
-                            record.price * record.quantity)
+                total_quantity = float(current_position['quantity'] + record.quantity)
+                total_cost = (float(current_position['avg_cost']) * float(current_position['quantity']) +
+                            float(record.price) * float(record.quantity))
                 new_avg_cost = total_cost / total_quantity
 
                 db.update_position(
                     symbol=record.symbol,
                     quantity=total_quantity,
-                    avg_cost=new_avg_cost,
-                    current_price=record.price
+                    avg_cost=float(new_avg_cost),
+                    current_price=float(record.price)
                 )
             else:
                 # 创建新持仓
                 db.update_position(
                     symbol=record.symbol,
-                    quantity=record.quantity,
-                    avg_cost=record.price,
-                    current_price=record.price
+                    quantity=float(record.quantity),
+                    avg_cost=float(record.price),
+                    current_price=float(record.price)
                 )
         else:  # sell
             # 卖出：更新持仓
             if current_position is not None:
-                new_quantity = current_position['quantity'] - record.quantity
+                new_quantity = float(current_position['quantity'] - record.quantity)
 
                 if new_quantity > 0:
                     # 部分卖出，保留持仓
                     db.update_position(
                         symbol=record.symbol,
                         quantity=new_quantity,
-                        avg_cost=current_position['avg_cost'],
-                        current_price=record.price
+                        avg_cost=float(current_position['avg_cost']),
+                        current_price=float(record.price)
                     )
                 else:
                     # 全部卖出，移除持仓（设为0）
                     db.update_position(
                         symbol=record.symbol,
-                        quantity=0,
-                        avg_cost=current_position['avg_cost'],
-                        current_price=record.price
+                        quantity=0.0,
+                        avg_cost=float(current_position['avg_cost']),
+                        current_price=float(record.price)
                     )
 
         return {

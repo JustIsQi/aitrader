@@ -248,7 +248,7 @@ def parse_arguments():
     parser.add_argument(
         '--initial-capital',
         type=float,
-        default=20000,
+        default=40000,
         help='初始资金 (默认: 20000)'
     )
 
@@ -334,13 +334,93 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def save_signals_to_db(all_signals: dict, db):
+def run_etf_strategy_backtest(strategy_task, lookback_days=20):
+    """
+    运行单个ETF策略的近N天回测
+
+    Args:
+        strategy_task: 策略Task对象
+        lookback_days: 回测天数(默认20天)
+
+    Returns:
+        dict: 回测指标字典
+    """
+    from datetime import datetime, timedelta
+    from core.backtrader_engine import Engine
+    from core.backtest_utils import extract_backtest_metrics
+    import copy
+
+    # 计算回测日期范围
+    end_date = datetime.now().strftime('%Y%m%d')
+    start_date = (datetime.now() - timedelta(days=lookback_days)).strftime('%Y%m%d')
+
+    # 复制task并设置日期范围
+    backtest_task = copy.deepcopy(strategy_task)
+    backtest_task.start_date = start_date
+    backtest_task.end_date = end_date
+
+    # 运行回测
+    engine = Engine()
+    result = engine.run(backtest_task)
+
+    # 提取指标（传递engine对象而不是result列表）
+    # 因为engine.perf、engine.hist_trades等属性在engine对象上
+    metrics = extract_backtest_metrics(engine, backtest_task)
+    metrics['strategy_name'] = backtest_task.name
+    metrics['strategy_version'] = None  # ETF策略暂无版本
+    metrics['asset_type'] = 'etf'
+
+    return metrics
+
+
+def run_etf_backtests(etf_strategies, lookback_days=20, max_workers=2):
+    """
+    批量运行ETF策略回测(并发)
+
+    Args:
+        etf_strategies: ETF策略列表(ParsedStrategy对象)
+        lookback_days: 回测天数
+        max_workers: 最大并发数
+
+    Returns:
+        dict: {strategy_name: backtest_id}
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    backtest_results = {}
+    db = get_db()
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(run_etf_strategy_backtest, strategy.task, lookback_days): strategy.task.name
+            for strategy in etf_strategies if strategy.task is not None
+        }
+
+        for future in as_completed(futures):
+            strategy_name = futures[future]
+            try:
+                metrics = future.result()
+
+                # 保存到数据库
+                backtest_id = db.save_backtest_result(**metrics)
+                backtest_results[strategy_name] = backtest_id
+
+                print(f"  ✓ 回测完成: {strategy_name} (ID: {backtest_id})")
+            except Exception as e:
+                logger.error(f"回测失败 {strategy_name}: {e}")
+                backtest_results[strategy_name] = None
+
+    return backtest_results
+
+
+def save_signals_to_db(all_signals: dict, db, backtest_results: dict = None):
     """
     保存所有策略信号到数据库（仅保存top20买入信号）
 
     Args:
         all_signals: 策略信号字典 {strategy_name: StrategySignals}
         db: 数据库管理器实例
+        backtest_results: 策略回测结果 {strategy_name: backtest_id}
     """
     from signals.multi_strategy_signals import StrategySignals
     from datetime import datetime
@@ -402,7 +482,8 @@ def save_signals_to_db(all_signals: dict, db):
         price = signals_list[0]['price']
         quantity = signals_list[0]['quantity']
 
-        db.insert_trader_signal(
+        # 插入信号
+        trader_id = db.insert_trader_signal(
             symbol=symbol,
             signal_type='buy',
             strategies=strategies,
@@ -413,6 +494,18 @@ def save_signals_to_db(all_signals: dict, db):
             quantity=quantity,
             asset_type='etf'
         )
+
+        # 关联回测结果
+        if backtest_results and strategies and trader_id:
+            first_strategy = strategies[0]
+            backtest_id = backtest_results.get(first_strategy)
+            if backtest_id:
+                db.associate_signal_with_backtest(
+                    trader_id=trader_id,
+                    backtest_id=backtest_id,
+                    strategy_name=first_strategy
+                )
+
         buy_count += 1
 
     # 插入卖出信号
@@ -466,14 +559,14 @@ def main():
         logger.disable("datafeed.db_dataloader")
         logger.disable("core.stock_universe")  # 禁用股票池相关日志,ETF策略不需要
 
-        print("\n[1/6] 初始化数据库连接...")
+        print("\n[1/7] 初始化数据库连接...")
         db = get_db()
         print("      ✓ 数据库连接成功")
 
         logger.enable("database.db_manager")
 
         # 获取当前持仓
-        print("\n[2/6] 加载当前持仓...")
+        print("\n[2/7] 加载当前持仓...")
         current_positions = db.get_positions()
 
         if current_positions.empty:
@@ -486,7 +579,7 @@ def main():
         # 构建筛选配置
         filter_config = None
         if args.enable_smart_filter:
-            print("\n[3/6] 构建ETF筛选配置...")
+            print("\n[3/7] 构建ETF筛选配置...")
             from core.smart_etf_filter import EtfFilterConfig, EtfFilterPresets
 
             # 获取预设
@@ -514,7 +607,7 @@ def main():
             print(f"      ✓ 目标数量: {filter_config.target_count}只")
 
         # 初始化信号生成器
-        print("\n[4/6] 初始化ETF信号生成器...")
+        print("\n[4/7] 初始化ETF信号生成器...")
         generator = ETFSignalGenerator(
             enable_smart_filter=args.enable_smart_filter,
             filter_config=filter_config
@@ -522,7 +615,7 @@ def main():
         print("      ✓ ETF信号生成器初始化完成")
 
         # 生成信号
-        print("\n[5/6] 生成策略信号...")
+        print("\n[5/7] 生成策略信号...")
         print("  加载数据并计算因子...")
         all_signals = generator.generate_signals(
             current_positions=current_positions,
@@ -533,8 +626,36 @@ def main():
             print("\n⚠️  没有生成任何策略信号")
             return
 
+        # 运行策略回测
+        backtest_results = None
+        if args.save_to_db:
+            print("\n[6/7] 运行策略回测(近20天)...")
+
+            # 从生成的信号中获取策略列表
+            from signals.strategy_parser import StrategyParser
+            parser = StrategyParser(strategy_dir="strategies")
+            all_strategies = parser.parse_all_strategies()
+            etf_strategies = [s for s in all_strategies if not s.filename.startswith('stocks_')]
+
+            # 只回测有信号的策略
+            strategy_names_with_signals = set(all_signals.keys())
+            valid_strategies = [s for s in etf_strategies if s.task is not None and s.task.name in strategy_names_with_signals]
+
+            print(f"  发现 {len(valid_strategies)} 个策略需要回测")
+
+            # 运行回测(并发)
+            if valid_strategies:
+                backtest_results = run_etf_backtests(
+                    etf_strategies=valid_strategies,
+                    lookback_days=20,
+                    max_workers=2
+                )
+            else:
+                print("  ⚠️  没有需要回测的策略")
+                backtest_results = {}
+
         # 生成报告
-        print("\n[6/6] 生成分析报告...")
+        print("\n[7/7] 生成分析报告...")
         reporter = SignalReporter(
             initial_capital=args.initial_capital
         )
@@ -552,8 +673,8 @@ def main():
 
         # 保存信号到数据库
         if args.save_to_db:
-            print("\n[7/7] 保存信号到数据库...")
-            save_signals_to_db(all_signals, db)
+            print("\n保存信号到数据库...")
+            save_signals_to_db(all_signals, db, backtest_results)
 
         print(f"\n分析完成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 100)

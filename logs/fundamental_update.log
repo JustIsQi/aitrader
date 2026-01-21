@@ -1,780 +1,156 @@
-2026-01-12 16:30:02.557 | INFO     | database.pg_manager:__init__:55 - PostgreSQL 数据库已连接
-2026-01-12 16:30:02.557 | INFO     | __main__:unified_data_update:223 - 
-2026-01-12 16:30:02.557 | INFO     | __main__:unified_data_update:224 - ************************************************************
-2026-01-12 16:30:02.557 | INFO     | __main__:unified_data_update:225 - 统一数据更新流程启动 - 2026-01-12 16:30:02
-2026-01-12 16:30:02.557 | INFO     | __main__:unified_data_update:226 - ************************************************************
-2026-01-12 16:30:02.557 | INFO     | __main__:unified_data_update:227 - 
-2026-01-12 16:30:02.557 | INFO     | __main__:check_and_init_codes:55 - [阶段0] 检查代码表状态...
-2026-01-12 16:30:02.585 | INFO     | __main__:check_and_init_codes:61 -   etf_codes:   1335 条
-2026-01-12 16:30:02.585 | INFO     | __main__:check_and_init_codes:62 -   stock_codes: 5446 条
-2026-01-12 16:30:02.585 | INFO     | __main__:check_and_init_codes:83 - ✓ 代码表状态正常
-2026-01-12 16:30:02.585 | INFO     | __main__:check_and_init_codes:84 - 
-2026-01-12 16:30:04.585 | INFO     | __main__:update_fundamental_stage:136 - ============================================================
-2026-01-12 16:30:04.586 | INFO     | __main__:update_fundamental_stage:137 - [阶段2] 更新基本面数据
-2026-01-12 16:30:04.586 | INFO     | __main__:update_fundamental_stage:138 - ============================================================
-2026-01-12 16:30:04.586 | INFO     | __main__:update_fundamental_stage:139 - 
-2026-01-12 16:30:04.595 | INFO     | __main__:update_fundamental_stage:150 - 待更新: 5446 只股票
-2026-01-12 16:30:04.595 | INFO     | __main__:update_fundamental_stage:151 - 
-2026-01-12 16:30:04.595 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:96 - 正在从 AkShare 获取全市场A股实时行情(含基本面数据)...
-  0%|          | 0/57 [00:00<?, ?it/s]  2%|▏         | 1/57 [00:00<00:09,  6.10it/s]  5%|▌         | 3/57 [00:00<00:07,  7.44it/s]  7%|▋         | 4/57 [00:00<00:07,  6.75it/s]  9%|▉         | 5/57 [00:00<00:07,  6.55it/s] 11%|█         | 6/57 [00:00<00:08,  6.23it/s] 14%|█▍        | 8/57 [00:01<00:06,  8.01it/s] 16%|█▌        | 9/57 [00:01<00:06,  7.31it/s] 18%|█▊        | 10/57 [00:01<00:06,  7.33it/s] 19%|█▉        | 11/57 [00:01<00:06,  6.67it/s] 23%|██▎       | 13/57 [00:01<00:05,  8.70it/s] 25%|██▍       | 14/57 [00:01<00:05,  7.69it/s] 26%|██▋       | 15/57 [00:02<00:05,  7.06it/s] 28%|██▊       | 16/57 [00:02<00:05,  6.86it/s] 30%|██▉       | 17/57 [00:02<00:06,  6.37it/s] 33%|███▎      | 19/57 [00:02<00:05,  7.32it/s] 35%|███▌      | 20/57 [00:02<00:05,  7.31it/s] 39%|███▊      | 22/57 [00:02<00:03,  9.26it/s] 42%|████▏     | 24/57 [00:03<00:02, 11.02it/s] 46%|████▌     | 26/57 [00:03<00:03,  9.84it/s] 49%|████▉     | 28/57 [00:03<00:03,  9.24it/s] 53%|█████▎    | 30/57 [00:03<00:03,  8.91it/s] 56%|█████▌    | 32/57 [00:03<00:02,  9.98it/s] 60%|█████▉    | 34/57 [00:04<00:02,  8.04it/s] 61%|██████▏   | 35/57 [00:04<00:02,  7.53it/s] 65%|██████▍   | 37/57 [00:04<00:02,  7.89it/s] 67%|██████▋   | 38/57 [00:04<00:02,  7.68it/s] 70%|███████   | 40/57 [00:05<00:02,  7.80it/s] 72%|███████▏  | 41/57 [00:05<00:02,  7.22it/s] 75%|███████▌  | 43/57 [00:05<00:01,  8.85it/s] 77%|███████▋  | 44/57 [00:05<00:01,  8.01it/s] 79%|███████▉  | 45/57 [00:05<00:01,  7.87it/s] 81%|████████  | 46/57 [00:05<00:01,  7.36it/s] 84%|████████▍ | 48/57 [00:06<00:01,  7.91it/s] 88%|████████▊ | 50/57 [00:06<00:00,  7.97it/s] 89%|████████▉ | 51/57 [00:06<00:00,  6.39it/s] 91%|█████████ | 52/57 [00:06<00:00,  6.28it/s] 95%|█████████▍| 54/57 [00:06<00:00,  8.18it/s] 96%|█████████▋| 55/57 [00:07<00:00,  7.60it/s] 98%|█████████▊| 56/57 [00:07<00:00,  7.46it/s]100%|██████████| 57/57 [00:07<00:00,  7.26it/s]                                               2026-01-12 16:30:12.125 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:98 - 获取到 5796 只A股
-2026-01-12 16:30:12.135 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:109 - 过滤后剩余 5449 只A股
-2026-01-12 16:30:12.135 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:300 - 开始更新 5449 只股票的基本面数据...
-2026-01-12 16:30:12.135 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:357 - 正在更新股票元数据...
-2026-01-12 16:30:12.527 | INFO     | database.pg_manager:batch_upsert_stock_metadata:1835 - 批量更新股票元数据: 5449条
-2026-01-12 16:30:12.540 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:372 - 成功更新 5449 条元数据
-2026-01-12 16:30:12.540 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:306 - 更新最新实时数据...
-2026-01-12 16:30:12.625 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:12.963 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:13.025 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:13.283 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:13.346 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:13.627 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:13.692 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:13.941 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:14.004 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:14.246 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:14.304 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:14.552 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:14.615 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:14.865 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:14.929 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:15.175 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:15.239 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:15.479 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:15.543 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:15.782 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:15.844 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:16.083 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:16.147 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:16.396 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:16.457 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:16.717 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:16.780 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:17.030 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:17.100 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:17.349 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:17.424 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:17.673 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:17.738 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:17.988 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:18.052 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:18.297 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:18.360 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:18.609 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:18.667 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:18.917 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:18.980 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:19.229 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:19.292 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:19.541 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:19.605 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:19.847 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:19.926 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:20.185 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:20.264 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:20.507 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:20.585 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:20.830 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:20.909 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:21.149 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:21.229 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:21.477 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:21.557 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:21.816 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:21.899 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:22.166 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:22.247 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:22.510 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:22.589 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:22.840 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:22.919 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:23.185 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:23.262 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:23.536 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:23.615 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:23.864 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:23.961 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:24.216 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:24.307 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:24.557 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:24.636 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:24.881 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:24.959 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:25.200 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:25.280 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:25.532 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:25.612 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:25.857 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:25.940 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:26.193 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:26.272 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:26.520 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:26.600 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:26.857 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:26.904 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:27.152 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:27.227 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:27.483 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:27.564 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:27.811 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:27.866 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:28.123 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:28.178 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:28.427 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:28.481 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:28.732 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:28.786 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:29.041 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:29.096 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:29.353 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:29.407 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:29.657 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:29.712 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-12 16:30:29.961 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:30.002 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 49条
-2026-01-12 16:30:30.244 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 49 条基本面数据（仅PE和PB有效）
-2026-01-12 16:30:30.244 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:338 - 基本面数据更新完成:
-2026-01-12 16:30:30.244 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:339 -   总计: 5449
-2026-01-12 16:30:30.244 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:340 -   成功: 5449
-2026-01-12 16:30:30.244 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:341 -   失败: 0
-2026-01-12 16:30:30.257 | INFO     | __main__:update_fundamental_stage:161 - 
-2026-01-12 16:30:30.258 | INFO     | __main__:update_fundamental_stage:162 - ✓ 基本面更新完成!
-2026-01-12 16:30:30.258 | INFO     | __main__:update_fundamental_stage:163 -   成功: 5449
-2026-01-12 16:30:30.258 | INFO     | __main__:update_fundamental_stage:164 -   失败: 0
-2026-01-12 16:30:30.258 | INFO     | __main__:update_fundamental_stage:165 -   耗时: 25.67 秒 (0.4 分钟)
-2026-01-12 16:30:30.258 | INFO     | __main__:update_fundamental_stage:166 - 
-2026-01-12 16:30:30.259 | INFO     | __main__:_print_summary:262 - 
-2026-01-12 16:30:30.259 | INFO     | __main__:_print_summary:263 - ************************************************************
-2026-01-12 16:30:30.260 | INFO     | __main__:_print_summary:264 - 更新完成统计
-2026-01-12 16:30:30.260 | INFO     | __main__:_print_summary:265 - ************************************************************
-2026-01-12 16:30:30.260 | INFO     | __main__:_print_summary:276 - [基本面]
-2026-01-12 16:30:30.260 | INFO     | __main__:_print_summary:277 -   成功: 5449,  失败: 0
-2026-01-12 16:30:30.260 | INFO     | __main__:_print_summary:278 -   耗时: 25.67 秒 (0.4 分钟)
-2026-01-12 16:30:30.260 | INFO     | __main__:_print_summary:279 - 
-2026-01-12 16:30:30.260 | INFO     | __main__:_print_summary:281 - 总耗时: 27.70 秒 (0.5 分钟)
-2026-01-12 16:30:30.260 | INFO     | __main__:_print_summary:282 - ************************************************************
-2026-01-12 16:30:30.260 | INFO     | __main__:_print_summary:283 - 
-2026-01-13 16:30:02.277 | INFO     | database.pg_manager:__init__:55 - PostgreSQL 数据库已连接
-2026-01-13 16:30:02.277 | INFO     | __main__:unified_data_update:223 - 
-2026-01-13 16:30:02.277 | INFO     | __main__:unified_data_update:224 - ************************************************************
-2026-01-13 16:30:02.277 | INFO     | __main__:unified_data_update:225 - 统一数据更新流程启动 - 2026-01-13 16:30:02
-2026-01-13 16:30:02.277 | INFO     | __main__:unified_data_update:226 - ************************************************************
-2026-01-13 16:30:02.277 | INFO     | __main__:unified_data_update:227 - 
-2026-01-13 16:30:02.277 | INFO     | __main__:check_and_init_codes:55 - [阶段0] 检查代码表状态...
-2026-01-13 16:30:02.305 | INFO     | __main__:check_and_init_codes:61 -   etf_codes:   1335 条
-2026-01-13 16:30:02.305 | INFO     | __main__:check_and_init_codes:62 -   stock_codes: 5446 条
-2026-01-13 16:30:02.305 | INFO     | __main__:check_and_init_codes:83 - ✓ 代码表状态正常
-2026-01-13 16:30:02.305 | INFO     | __main__:check_and_init_codes:84 - 
-2026-01-13 16:30:04.305 | INFO     | __main__:update_fundamental_stage:136 - ============================================================
-2026-01-13 16:30:04.306 | INFO     | __main__:update_fundamental_stage:137 - [阶段2] 更新基本面数据
-2026-01-13 16:30:04.306 | INFO     | __main__:update_fundamental_stage:138 - ============================================================
-2026-01-13 16:30:04.306 | INFO     | __main__:update_fundamental_stage:139 - 
-2026-01-13 16:30:04.318 | INFO     | __main__:update_fundamental_stage:150 - 待更新: 5446 只股票
-2026-01-13 16:30:04.319 | INFO     | __main__:update_fundamental_stage:151 - 
-2026-01-13 16:30:04.319 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:96 - 正在从 AkShare 获取全市场A股实时行情(含基本面数据)...
-  0%|          | 0/57 [00:00<?, ?it/s]  4%|▎         | 2/57 [00:00<00:04, 13.40it/s]  7%|▋         | 4/57 [00:00<00:03, 13.75it/s] 11%|█         | 6/57 [00:00<00:03, 13.70it/s] 14%|█▍        | 8/57 [00:00<00:03, 13.64it/s] 18%|█▊        | 10/57 [00:00<00:03, 14.01it/s] 21%|██        | 12/57 [00:00<00:03, 14.37it/s] 25%|██▍       | 14/57 [00:01<00:03, 14.02it/s] 28%|██▊       | 16/57 [00:01<00:03, 13.56it/s] 32%|███▏      | 18/57 [00:01<00:02, 14.12it/s] 35%|███▌      | 20/57 [00:01<00:02, 14.72it/s] 39%|███▊      | 22/57 [00:01<00:02, 14.84it/s] 42%|████▏     | 24/57 [00:01<00:02, 15.06it/s] 46%|████▌     | 26/57 [00:01<00:02, 15.23it/s] 49%|████▉     | 28/57 [00:01<00:01, 14.57it/s] 53%|█████▎    | 30/57 [00:02<00:01, 14.48it/s] 56%|█████▌    | 32/57 [00:02<00:01, 14.31it/s] 60%|█████▉    | 34/57 [00:02<00:01, 14.14it/s] 63%|██████▎   | 36/57 [00:02<00:01, 14.25it/s] 67%|██████▋   | 38/57 [00:02<00:01, 14.36it/s] 70%|███████   | 40/57 [00:02<00:01, 14.43it/s] 74%|███████▎  | 42/57 [00:02<00:01, 14.13it/s] 77%|███████▋  | 44/57 [00:03<00:00, 14.47it/s] 81%|████████  | 46/57 [00:03<00:00, 14.71it/s] 84%|████████▍ | 48/57 [00:03<00:00, 14.87it/s] 88%|████████▊ | 50/57 [00:03<00:00, 14.46it/s] 91%|█████████ | 52/57 [00:03<00:00, 14.59it/s] 95%|█████████▍| 54/57 [00:03<00:00, 15.00it/s] 98%|█████████▊| 56/57 [00:03<00:00, 15.03it/s]                                               2026-01-13 16:30:08.469 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:98 - 获取到 5797 只A股
-2026-01-13 16:30:08.479 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:109 - 过滤后剩余 5451 只A股
-2026-01-13 16:30:08.479 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:300 - 开始更新 5451 只股票的基本面数据...
-2026-01-13 16:30:08.479 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:357 - 正在更新股票元数据...
-2026-01-13 16:30:08.851 | INFO     | database.pg_manager:batch_upsert_stock_metadata:1835 - 批量更新股票元数据: 5451条
-2026-01-13 16:30:08.856 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:372 - 成功更新 5451 条元数据
-2026-01-13 16:30:08.856 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:306 - 更新最新实时数据...
-2026-01-13 16:30:08.934 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:09.303 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:09.355 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:09.602 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:09.657 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:09.906 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:09.962 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:10.210 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:10.267 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:10.520 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:10.581 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:10.826 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:10.881 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:11.135 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:11.191 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:11.443 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:11.498 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:11.750 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:11.772 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:12.013 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:12.035 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:12.286 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:12.307 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:12.562 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:12.588 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:12.834 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:12.856 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:13.108 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:13.130 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:13.377 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:13.403 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:13.656 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:13.677 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:13.921 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:13.943 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:14.190 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:14.212 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:14.462 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:14.484 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:14.735 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:14.757 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:15.013 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:15.035 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:15.281 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:15.303 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:15.549 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:15.572 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:15.818 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:15.877 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:16.126 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:16.149 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:16.399 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:16.420 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:16.674 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:16.696 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:16.947 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:16.970 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:17.211 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:17.233 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:17.479 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:17.501 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:17.753 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:17.774 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:18.025 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:18.046 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:18.294 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:18.315 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:18.563 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:18.584 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:18.832 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:18.854 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:19.101 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:19.122 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:19.365 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:19.388 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:19.634 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:19.656 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:19.902 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:19.924 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:20.171 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:20.193 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:20.445 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:20.467 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:20.714 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:20.735 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:20.987 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:21.011 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:21.257 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:21.279 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:21.535 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:21.557 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:21.805 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:21.827 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:22.084 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:22.106 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:22.358 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:22.379 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:22.626 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:22.648 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:22.899 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:22.921 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:23.169 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:23.191 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:23.443 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:23.464 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:23.716 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:23.736 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-13 16:30:23.993 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:24.010 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 51条
-2026-01-13 16:30:24.263 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 51 条基本面数据（仅PE和PB有效）
-2026-01-13 16:30:24.263 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:338 - 基本面数据更新完成:
-2026-01-13 16:30:24.263 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:339 -   总计: 5451
-2026-01-13 16:30:24.263 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:340 -   成功: 5451
-2026-01-13 16:30:24.263 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:341 -   失败: 0
-2026-01-13 16:30:24.265 | INFO     | __main__:update_fundamental_stage:161 - 
-2026-01-13 16:30:24.265 | INFO     | __main__:update_fundamental_stage:162 - ✓ 基本面更新完成!
-2026-01-13 16:30:24.265 | INFO     | __main__:update_fundamental_stage:163 -   成功: 5451
-2026-01-13 16:30:24.265 | INFO     | __main__:update_fundamental_stage:164 -   失败: 0
-2026-01-13 16:30:24.265 | INFO     | __main__:update_fundamental_stage:165 -   耗时: 19.96 秒 (0.3 分钟)
-2026-01-13 16:30:24.265 | INFO     | __main__:update_fundamental_stage:166 - 
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:262 - 
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:263 - ************************************************************
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:264 - 更新完成统计
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:265 - ************************************************************
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:276 - [基本面]
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:277 -   成功: 5451,  失败: 0
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:278 -   耗时: 19.96 秒 (0.3 分钟)
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:279 - 
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:281 - 总耗时: 21.99 秒 (0.4 分钟)
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:282 - ************************************************************
-2026-01-13 16:30:24.265 | INFO     | __main__:_print_summary:283 - 
-2026-01-14 16:30:02.799 | INFO     | database.pg_manager:__init__:55 - PostgreSQL 数据库已连接
-2026-01-14 16:30:02.799 | INFO     | __main__:unified_data_update:223 - 
-2026-01-14 16:30:02.799 | INFO     | __main__:unified_data_update:224 - ************************************************************
-2026-01-14 16:30:02.799 | INFO     | __main__:unified_data_update:225 - 统一数据更新流程启动 - 2026-01-14 16:30:02
-2026-01-14 16:30:02.799 | INFO     | __main__:unified_data_update:226 - ************************************************************
-2026-01-14 16:30:02.799 | INFO     | __main__:unified_data_update:227 - 
-2026-01-14 16:30:02.799 | INFO     | __main__:check_and_init_codes:55 - [阶段0] 检查代码表状态...
-2026-01-14 16:30:02.828 | INFO     | __main__:check_and_init_codes:61 -   etf_codes:   1335 条
-2026-01-14 16:30:02.828 | INFO     | __main__:check_and_init_codes:62 -   stock_codes: 5446 条
-2026-01-14 16:30:02.828 | INFO     | __main__:check_and_init_codes:83 - ✓ 代码表状态正常
-2026-01-14 16:30:02.828 | INFO     | __main__:check_and_init_codes:84 - 
-2026-01-14 16:30:04.828 | INFO     | __main__:update_fundamental_stage:136 - ============================================================
-2026-01-14 16:30:04.828 | INFO     | __main__:update_fundamental_stage:137 - [阶段2] 更新基本面数据
-2026-01-14 16:30:04.828 | INFO     | __main__:update_fundamental_stage:138 - ============================================================
-2026-01-14 16:30:04.828 | INFO     | __main__:update_fundamental_stage:139 - 
-2026-01-14 16:30:04.838 | INFO     | __main__:update_fundamental_stage:150 - 待更新: 5446 只股票
-2026-01-14 16:30:04.838 | INFO     | __main__:update_fundamental_stage:151 - 
-2026-01-14 16:30:04.838 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:96 - 正在从 AkShare 获取全市场A股实时行情(含基本面数据)...
-  0%|          | 0/57 [00:00<?, ?it/s]  2%|▏         | 1/57 [00:01<01:25,  1.53s/it]  4%|▎         | 2/57 [00:02<01:18,  1.43s/it]  5%|▌         | 3/57 [00:03<01:00,  1.13s/it]  7%|▋         | 4/57 [00:04<00:55,  1.05s/it]  9%|▉         | 5/57 [00:05<00:46,  1.12it/s] 11%|█         | 6/57 [00:06<00:49,  1.03it/s] 12%|█▏        | 7/57 [00:07<00:46,  1.08it/s] 14%|█▍        | 8/57 [00:07<00:42,  1.15it/s] 16%|█▌        | 9/57 [00:09<00:46,  1.04it/s] 18%|█▊        | 10/57 [00:10<00:50,  1.08s/it] 19%|█▉        | 11/57 [00:11<00:51,  1.13s/it] 21%|██        | 12/57 [00:12<00:46,  1.02s/it] 23%|██▎       | 13/57 [00:13<00:46,  1.05s/it] 25%|██▍       | 14/57 [00:14<00:41,  1.03it/s] 26%|██▋       | 15/57 [00:14<00:36,  1.14it/s] 28%|██▊       | 16/57 [00:16<00:42,  1.03s/it] 30%|██▉       | 17/57 [00:17<00:44,  1.11s/it] 32%|███▏      | 18/57 [00:18<00:39,  1.00s/it] 33%|███▎      | 19/57 [00:19<00:34,  1.10it/s] 35%|███▌      | 20/57 [00:20<00:33,  1.11it/s] 37%|███▋      | 21/57 [00:20<00:30,  1.17it/s] 39%|███▊      | 22/57 [00:21<00:30,  1.14it/s] 40%|████      | 23/57 [00:23<00:34,  1.02s/it] 42%|████▏     | 24/57 [00:23<00:31,  1.04it/s] 44%|████▍     | 25/57 [00:25<00:34,  1.08s/it] 46%|████▌     | 26/57 [00:26<00:34,  1.10s/it] 47%|████▋     | 27/57 [00:27<00:34,  1.14s/it] 49%|████▉     | 28/57 [00:28<00:28,  1.00it/s] 51%|█████     | 29/57 [00:29<00:26,  1.07it/s] 53%|█████▎    | 30/57 [00:30<00:26,  1.03it/s] 54%|█████▍    | 31/57 [00:31<00:26,  1.03s/it] 56%|█████▌    | 32/57 [00:32<00:27,  1.09s/it] 58%|█████▊    | 33/57 [00:33<00:23,  1.01it/s] 60%|█████▉    | 34/57 [00:33<00:20,  1.13it/s] 61%|██████▏   | 35/57 [00:35<00:22,  1.02s/it] 63%|██████▎   | 36/57 [00:36<00:20,  1.03it/s] 65%|██████▍   | 37/57 [00:37<00:22,  1.14s/it] 67%|██████▋   | 38/57 [00:38<00:20,  1.07s/it] 68%|██████▊   | 39/57 [00:39<00:19,  1.07s/it] 70%|███████   | 40/57 [00:40<00:19,  1.16s/it] 72%|███████▏  | 41/57 [00:41<00:17,  1.07s/it] 74%|███████▎  | 42/57 [00:42<00:14,  1.05it/s] 75%|███████▌  | 43/57 [00:44<00:15,  1.11s/it] 77%|███████▋  | 44/57 [00:44<00:12,  1.02it/s] 79%|███████▉  | 45/57 [00:46<00:13,  1.15s/it] 81%|████████  | 46/57 [00:47<00:12,  1.12s/it] 82%|████████▏ | 47/57 [00:48<00:11,  1.10s/it] 84%|████████▍ | 48/57 [00:49<00:10,  1.12s/it] 86%|████████▌ | 49/57 [00:50<00:08,  1.09s/it] 88%|████████▊ | 50/57 [00:51<00:07,  1.02s/it] 89%|████████▉ | 51/57 [00:52<00:06,  1.03s/it] 91%|█████████ | 52/57 [00:53<00:04,  1.03it/s] 93%|█████████▎| 53/57 [00:54<00:03,  1.01it/s] 95%|█████████▍| 54/57 [00:55<00:02,  1.04it/s] 96%|█████████▋| 55/57 [00:56<00:01,  1.02it/s] 98%|█████████▊| 56/57 [00:57<00:01,  1.15s/it]100%|██████████| 57/57 [00:59<00:00,  1.17s/it]                                               2026-01-14 16:31:04.011 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:98 - 获取到 5797 只A股
-2026-01-14 16:31:04.021 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:109 - 过滤后剩余 5452 只A股
-2026-01-14 16:31:04.021 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:300 - 开始更新 5452 只股票的基本面数据...
-2026-01-14 16:31:04.022 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:357 - 正在更新股票元数据...
-2026-01-14 16:31:04.259 | INFO     | database.pg_manager:batch_upsert_stock_metadata:1835 - 批量更新股票元数据: 5452条
-2026-01-14 16:31:04.262 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:372 - 成功更新 5452 条元数据
-2026-01-14 16:31:04.262 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:306 - 更新最新实时数据...
-2026-01-14 16:31:04.386 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:04.390 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:04.475 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:04.479 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:04.570 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:04.573 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:04.662 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:04.665 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:04.750 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:04.753 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:04.838 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:04.841 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:04.923 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:04.926 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.017 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.021 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.115 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.118 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.202 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.205 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.293 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.296 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.382 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.385 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.474 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.478 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.560 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.563 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.644 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.648 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.725 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.728 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.810 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.814 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.893 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.897 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:05.972 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:05.976 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.053 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.056 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.131 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.135 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.210 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.214 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.289 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.292 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.369 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.372 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.437 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.440 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.516 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.520 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.596 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.601 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.678 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.681 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.737 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.740 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.800 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.803 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.862 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.865 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.931 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.934 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:06.987 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:06.990 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.050 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.053 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.104 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.107 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.153 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.156 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.207 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.210 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.259 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.262 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.311 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.315 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.371 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.374 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.422 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.426 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.471 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.474 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.523 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.526 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.576 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.579 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.630 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.633 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.681 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.684 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.731 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.734 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.780 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.784 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.837 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.840 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.892 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.895 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:07.948 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:07.952 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:08.006 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:08.009 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:08.066 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:08.069 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:08.122 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-14 16:31:08.126 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:08.154 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 52条
-2026-01-14 16:31:08.156 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 52 条基本面数据（仅PE和PB有效）
-2026-01-14 16:31:08.157 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:338 - 基本面数据更新完成:
-2026-01-14 16:31:08.157 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:339 -   总计: 5452
-2026-01-14 16:31:08.157 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:340 -   成功: 5452
-2026-01-14 16:31:08.157 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:341 -   失败: 0
-2026-01-14 16:31:08.160 | INFO     | __main__:update_fundamental_stage:161 - 
-2026-01-14 16:31:08.160 | INFO     | __main__:update_fundamental_stage:162 - ✓ 基本面更新完成!
-2026-01-14 16:31:08.160 | INFO     | __main__:update_fundamental_stage:163 -   成功: 5452
-2026-01-14 16:31:08.160 | INFO     | __main__:update_fundamental_stage:164 -   失败: 0
-2026-01-14 16:31:08.160 | INFO     | __main__:update_fundamental_stage:165 -   耗时: 63.33 秒 (1.1 分钟)
-2026-01-14 16:31:08.160 | INFO     | __main__:update_fundamental_stage:166 - 
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:262 - 
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:263 - ************************************************************
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:264 - 更新完成统计
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:265 - ************************************************************
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:276 - [基本面]
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:277 -   成功: 5452,  失败: 0
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:278 -   耗时: 63.33 秒 (1.1 分钟)
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:279 - 
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:281 - 总耗时: 65.36 秒 (1.1 分钟)
-2026-01-14 16:31:08.160 | INFO     | __main__:_print_summary:282 - ************************************************************
-2026-01-14 16:31:08.161 | INFO     | __main__:_print_summary:283 - 
-2026-01-15 16:30:02.925 | INFO     | database.pg_manager:__init__:55 - PostgreSQL 数据库已连接
-2026-01-15 16:30:02.926 | INFO     | __main__:unified_data_update:223 - 
-2026-01-15 16:30:02.926 | INFO     | __main__:unified_data_update:224 - ************************************************************
-2026-01-15 16:30:02.926 | INFO     | __main__:unified_data_update:225 - 统一数据更新流程启动 - 2026-01-15 16:30:02
-2026-01-15 16:30:02.926 | INFO     | __main__:unified_data_update:226 - ************************************************************
-2026-01-15 16:30:02.926 | INFO     | __main__:unified_data_update:227 - 
-2026-01-15 16:30:02.926 | INFO     | __main__:check_and_init_codes:55 - [阶段0] 检查代码表状态...
-2026-01-15 16:30:02.955 | INFO     | __main__:check_and_init_codes:61 -   etf_codes:   1335 条
-2026-01-15 16:30:02.955 | INFO     | __main__:check_and_init_codes:62 -   stock_codes: 5446 条
-2026-01-15 16:30:02.955 | INFO     | __main__:check_and_init_codes:83 - ✓ 代码表状态正常
-2026-01-15 16:30:02.955 | INFO     | __main__:check_and_init_codes:84 - 
-2026-01-15 16:30:04.955 | INFO     | __main__:update_fundamental_stage:136 - ============================================================
-2026-01-15 16:30:04.956 | INFO     | __main__:update_fundamental_stage:137 - [阶段2] 更新基本面数据
-2026-01-15 16:30:04.956 | INFO     | __main__:update_fundamental_stage:138 - ============================================================
-2026-01-15 16:30:04.956 | INFO     | __main__:update_fundamental_stage:139 - 
-2026-01-15 16:30:04.966 | INFO     | __main__:update_fundamental_stage:150 - 待更新: 5446 只股票
-2026-01-15 16:30:04.966 | INFO     | __main__:update_fundamental_stage:151 - 
-2026-01-15 16:30:04.966 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:96 - 正在从 AkShare 获取全市场A股实时行情(含基本面数据)...
-  0%|          | 0/57 [00:00<?, ?it/s]  2%|▏         | 1/57 [00:01<01:12,  1.29s/it]  4%|▎         | 2/57 [00:02<01:01,  1.11s/it]  5%|▌         | 3/57 [00:03<01:04,  1.19s/it]  7%|▋         | 4/57 [00:04<01:05,  1.23s/it]  9%|▉         | 5/57 [00:06<01:07,  1.30s/it] 11%|█         | 6/57 [00:07<01:08,  1.34s/it] 12%|█▏        | 7/57 [00:08<00:55,  1.10s/it] 14%|█▍        | 8/57 [00:09<00:49,  1.01s/it] 16%|█▌        | 9/57 [00:10<00:56,  1.18s/it] 18%|█▊        | 10/57 [00:12<01:00,  1.28s/it] 19%|█▉        | 11/57 [00:13<00:56,  1.23s/it] 21%|██        | 12/57 [00:14<00:56,  1.26s/it] 23%|██▎       | 13/57 [00:15<00:50,  1.15s/it] 25%|██▍       | 14/57 [00:17<00:54,  1.26s/it] 26%|██▋       | 15/57 [00:18<00:55,  1.33s/it] 28%|██▊       | 16/57 [00:19<00:45,  1.12s/it] 30%|██▉       | 17/57 [00:20<00:45,  1.13s/it] 32%|███▏      | 18/57 [00:21<00:46,  1.19s/it] 33%|███▎      | 19/57 [00:23<00:49,  1.30s/it] 35%|███▌      | 20/57 [00:24<00:45,  1.23s/it] 37%|███▋      | 21/57 [00:25<00:41,  1.17s/it] 39%|███▊      | 22/57 [00:26<00:39,  1.12s/it] 40%|████      | 23/57 [00:26<00:32,  1.04it/s] 42%|████▏     | 24/57 [00:28<00:36,  1.12s/it] 44%|████▍     | 25/57 [00:29<00:33,  1.04s/it] 46%|████▌     | 26/57 [00:30<00:35,  1.15s/it] 47%|████▋     | 27/57 [00:31<00:34,  1.16s/it] 49%|████▉     | 28/57 [00:32<00:30,  1.04s/it] 51%|█████     | 29/57 [00:33<00:26,  1.06it/s] 53%|█████▎    | 30/57 [00:34<00:24,  1.08it/s] 54%|█████▍    | 31/57 [00:34<00:22,  1.16it/s] 56%|█████▌    | 32/57 [00:35<00:21,  1.16it/s] 58%|█████▊    | 33/57 [00:37<00:24,  1.04s/it] 60%|█████▉    | 34/57 [00:38<00:24,  1.08s/it] 61%|██████▏   | 35/57 [00:39<00:23,  1.07s/it] 63%|██████▎   | 36/57 [00:40<00:21,  1.02s/it] 65%|██████▍   | 37/57 [00:41<00:21,  1.09s/it] 67%|██████▋   | 38/57 [00:42<00:18,  1.04it/s] 68%|██████▊   | 39/57 [00:43<00:17,  1.02it/s] 70%|███████   | 40/57 [00:43<00:14,  1.14it/s] 72%|███████▏  | 41/57 [00:45<00:17,  1.08s/it] 74%|███████▎  | 42/57 [00:46<00:17,  1.14s/it] 75%|███████▌  | 43/57 [00:48<00:17,  1.23s/it] 77%|███████▋  | 44/57 [00:49<00:16,  1.24s/it] 79%|███████▉  | 45/57 [00:50<00:15,  1.31s/it] 81%|████████  | 46/57 [00:51<00:12,  1.15s/it] 82%|████████▏ | 47/57 [00:53<00:12,  1.27s/it] 84%|████████▍ | 48/57 [00:54<00:12,  1.34s/it] 86%|████████▌ | 49/57 [00:56<00:11,  1.41s/it] 88%|████████▊ | 50/57 [00:57<00:10,  1.47s/it] 89%|████████▉ | 51/57 [00:58<00:07,  1.27s/it] 91%|█████████ | 52/57 [00:59<00:06,  1.22s/it] 93%|█████████▎| 53/57 [01:01<00:04,  1.24s/it] 95%|█████████▍| 54/57 [01:02<00:03,  1.20s/it] 96%|█████████▋| 55/57 [01:03<00:02,  1.13s/it] 98%|█████████▊| 56/57 [01:03<00:00,  1.00it/s]100%|██████████| 57/57 [01:04<00:00,  1.01s/it]                                               2026-01-15 16:31:10.096 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:98 - 获取到 5798 只A股
-2026-01-15 16:31:10.106 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:109 - 过滤后剩余 5453 只A股
-2026-01-15 16:31:10.106 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:300 - 开始更新 5453 只股票的基本面数据...
-2026-01-15 16:31:10.106 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:357 - 正在更新股票元数据...
-2026-01-15 16:31:10.335 | INFO     | database.pg_manager:batch_upsert_stock_metadata:1835 - 批量更新股票元数据: 5453条
-2026-01-15 16:31:10.339 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:372 - 成功更新 5453 条元数据
-2026-01-15 16:31:10.339 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:306 - 更新最新实时数据...
-2026-01-15 16:31:10.377 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.381 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.406 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.410 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.437 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.440 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.465 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.469 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.493 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.497 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.522 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.526 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.549 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.553 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.578 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.582 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.605 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.608 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.634 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.637 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.660 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.664 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.686 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.689 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.713 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.716 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.739 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.742 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.765 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.768 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.792 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.796 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.818 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.822 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.843 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.847 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.870 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.874 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.899 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.903 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.927 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.931 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.953 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.957 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:10.979 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:10.983 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.006 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.010 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.033 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.037 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.059 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.063 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.088 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.092 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.118 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.122 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.145 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.149 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.172 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.176 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.198 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.201 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.224 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.228 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.250 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.254 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.276 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.279 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.302 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.305 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.328 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.331 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.354 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.357 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.381 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.384 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.407 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.411 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.436 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.440 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.463 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.466 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.489 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.493 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.516 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.519 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.542 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.545 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.568 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.572 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.595 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.599 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.627 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.631 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.658 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.662 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.688 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.692 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.718 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.722 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.747 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.750 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.773 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.777 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.800 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.803 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.825 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-15 16:31:11.829 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.845 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 53条
-2026-01-15 16:31:11.849 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 53 条基本面数据（仅PE和PB有效）
-2026-01-15 16:31:11.849 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:338 - 基本面数据更新完成:
-2026-01-15 16:31:11.849 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:339 -   总计: 5453
-2026-01-15 16:31:11.849 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:340 -   成功: 5453
-2026-01-15 16:31:11.849 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:341 -   失败: 0
-2026-01-15 16:31:11.850 | INFO     | __main__:update_fundamental_stage:161 - 
-2026-01-15 16:31:11.850 | INFO     | __main__:update_fundamental_stage:162 - ✓ 基本面更新完成!
-2026-01-15 16:31:11.850 | INFO     | __main__:update_fundamental_stage:163 -   成功: 5453
-2026-01-15 16:31:11.850 | INFO     | __main__:update_fundamental_stage:164 -   失败: 0
-2026-01-15 16:31:11.850 | INFO     | __main__:update_fundamental_stage:165 -   耗时: 66.89 秒 (1.1 分钟)
-2026-01-15 16:31:11.850 | INFO     | __main__:update_fundamental_stage:166 - 
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:262 - 
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:263 - ************************************************************
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:264 - 更新完成统计
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:265 - ************************************************************
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:276 - [基本面]
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:277 -   成功: 5453,  失败: 0
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:278 -   耗时: 66.89 秒 (1.1 分钟)
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:279 - 
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:281 - 总耗时: 68.92 秒 (1.1 分钟)
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:282 - ************************************************************
-2026-01-15 16:31:11.851 | INFO     | __main__:_print_summary:283 - 
-2026-01-16 16:30:02.037 | INFO     | database.pg_manager:__init__:55 - PostgreSQL 数据库已连接
-2026-01-16 16:30:02.037 | INFO     | __main__:unified_data_update:223 - 
-2026-01-16 16:30:02.037 | INFO     | __main__:unified_data_update:224 - ************************************************************
-2026-01-16 16:30:02.037 | INFO     | __main__:unified_data_update:225 - 统一数据更新流程启动 - 2026-01-16 16:30:02
-2026-01-16 16:30:02.037 | INFO     | __main__:unified_data_update:226 - ************************************************************
-2026-01-16 16:30:02.037 | INFO     | __main__:unified_data_update:227 - 
-2026-01-16 16:30:02.037 | INFO     | __main__:check_and_init_codes:55 - [阶段0] 检查代码表状态...
-2026-01-16 16:30:02.067 | INFO     | __main__:check_and_init_codes:61 -   etf_codes:   1335 条
-2026-01-16 16:30:02.067 | INFO     | __main__:check_and_init_codes:62 -   stock_codes: 5446 条
-2026-01-16 16:30:02.067 | INFO     | __main__:check_and_init_codes:83 - ✓ 代码表状态正常
-2026-01-16 16:30:02.067 | INFO     | __main__:check_and_init_codes:84 - 
-2026-01-16 16:30:04.067 | INFO     | __main__:update_fundamental_stage:136 - ============================================================
-2026-01-16 16:30:04.068 | INFO     | __main__:update_fundamental_stage:137 - [阶段2] 更新基本面数据
-2026-01-16 16:30:04.068 | INFO     | __main__:update_fundamental_stage:138 - ============================================================
-2026-01-16 16:30:04.068 | INFO     | __main__:update_fundamental_stage:139 - 
-2026-01-16 16:30:04.077 | INFO     | __main__:update_fundamental_stage:150 - 待更新: 5446 只股票
-2026-01-16 16:30:04.077 | INFO     | __main__:update_fundamental_stage:151 - 
-2026-01-16 16:30:04.078 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:96 - 正在从 AkShare 获取全市场A股实时行情(含基本面数据)...
-  0%|          | 0/57 [00:00<?, ?it/s]  2%|▏         | 1/57 [00:00<00:47,  1.19it/s]  4%|▎         | 2/57 [00:01<00:46,  1.19it/s]  5%|▌         | 3/57 [00:03<00:58,  1.08s/it]  7%|▋         | 4/57 [00:03<00:50,  1.06it/s]  9%|▉         | 5/57 [00:04<00:44,  1.16it/s] 11%|█         | 6/57 [00:05<00:51,  1.00s/it] 12%|█▏        | 7/57 [00:06<00:48,  1.03it/s] 14%|█▍        | 8/57 [00:07<00:47,  1.03it/s] 16%|█▌        | 9/57 [00:08<00:49,  1.03s/it] 18%|█▊        | 10/57 [00:10<00:51,  1.09s/it] 19%|█▉        | 11/57 [00:11<00:56,  1.23s/it] 21%|██        | 12/57 [00:12<00:48,  1.08s/it] 23%|██▎       | 13/57 [00:13<00:54,  1.24s/it] 25%|██▍       | 14/57 [00:15<00:55,  1.28s/it] 26%|██▋       | 15/57 [00:16<00:48,  1.16s/it] 28%|██▊       | 16/57 [00:16<00:41,  1.00s/it] 30%|██▉       | 17/57 [00:18<00:46,  1.17s/it] 32%|███▏      | 18/57 [00:19<00:48,  1.24s/it] 33%|███▎      | 19/57 [00:20<00:46,  1.22s/it] 35%|███▌      | 20/57 [00:21<00:40,  1.08s/it] 37%|███▋      | 21/57 [00:23<00:42,  1.17s/it] 39%|███▊      | 22/57 [00:24<00:39,  1.13s/it] 40%|████      | 23/57 [00:24<00:33,  1.03it/s] 42%|████▏     | 24/57 [00:25<00:32,  1.00it/s] 44%|████▍     | 25/57 [00:27<00:35,  1.11s/it] 46%|████▌     | 26/57 [00:28<00:39,  1.26s/it] 47%|████▋     | 27/57 [00:29<00:32,  1.08s/it] 49%|████▉     | 28/57 [00:30<00:29,  1.03s/it] 51%|█████     | 29/57 [00:31<00:31,  1.12s/it] 53%|█████▎    | 30/57 [00:33<00:33,  1.23s/it] 54%|█████▍    | 31/57 [00:34<00:34,  1.33s/it] 56%|█████▌    | 32/57 [00:36<00:35,  1.40s/it] 58%|█████▊    | 33/57 [00:37<00:29,  1.23s/it] 60%|█████▉    | 34/57 [00:38<00:26,  1.17s/it] 61%|██████▏   | 35/57 [00:39<00:24,  1.12s/it] 63%|██████▎   | 36/57 [00:40<00:22,  1.09s/it] 65%|██████▍   | 37/57 [00:40<00:19,  1.04it/s] 67%|██████▋   | 38/57 [00:42<00:19,  1.03s/it] 68%|██████▊   | 39/57 [00:43<00:20,  1.15s/it] 70%|███████   | 40/57 [00:44<00:19,  1.12s/it] 72%|███████▏  | 41/57 [00:45<00:19,  1.19s/it] 74%|███████▎  | 42/57 [00:46<00:16,  1.13s/it] 75%|███████▌  | 43/57 [00:48<00:17,  1.24s/it] 77%|███████▋  | 44/57 [00:49<00:16,  1.30s/it] 79%|███████▉  | 45/57 [00:51<00:15,  1.33s/it] 81%|████████  | 46/57 [00:51<00:12,  1.14s/it] 82%|████████▏ | 47/57 [00:53<00:11,  1.15s/it] 84%|████████▍ | 48/57 [00:54<00:10,  1.16s/it] 86%|████████▌ | 49/57 [00:54<00:08,  1.03s/it] 88%|████████▊ | 50/57 [00:56<00:07,  1.08s/it] 89%|████████▉ | 51/57 [00:57<00:06,  1.03s/it] 91%|█████████ | 52/57 [00:58<00:05,  1.01s/it] 93%|█████████▎| 53/57 [00:58<00:03,  1.11it/s] 95%|█████████▍| 54/57 [01:00<00:03,  1.07s/it] 96%|█████████▋| 55/57 [01:01<00:02,  1.07s/it] 98%|█████████▊| 56/57 [01:02<00:01,  1.11s/it]100%|██████████| 57/57 [01:03<00:00,  1.09s/it]                                               2026-01-16 16:31:07.724 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:98 - 获取到 5800 只A股
-2026-01-16 16:31:07.734 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:109 - 过滤后剩余 5455 只A股
-2026-01-16 16:31:07.734 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:300 - 开始更新 5455 只股票的基本面数据...
-2026-01-16 16:31:07.734 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:357 - 正在更新股票元数据...
-2026-01-16 16:31:07.966 | INFO     | database.pg_manager:batch_upsert_stock_metadata:1835 - 批量更新股票元数据: 5455条
-2026-01-16 16:31:07.970 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:372 - 成功更新 5455 条元数据
-2026-01-16 16:31:07.970 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:306 - 更新最新实时数据...
-2026-01-16 16:31:08.018 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.022 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.050 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.054 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.080 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.084 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.108 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.112 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.136 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.140 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.162 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.166 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.191 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.194 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.218 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.222 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.245 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.248 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.276 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.280 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.308 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.312 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.335 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.339 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.363 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.367 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.391 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.394 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.421 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.426 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.453 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.457 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.481 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.484 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.508 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.511 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.535 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.539 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.562 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.566 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.592 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.596 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.623 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.626 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.649 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.653 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.680 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.683 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.706 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.710 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.733 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.736 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.760 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.763 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.786 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.789 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.812 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.816 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.842 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.846 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.873 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.877 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.901 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.904 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.928 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.931 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.954 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.957 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:08.981 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:08.985 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.008 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.012 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.036 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.039 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.062 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.066 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.090 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.093 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.117 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.121 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.143 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.147 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.170 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.174 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.197 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.201 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.224 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.228 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.252 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.255 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.281 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.286 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.317 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.322 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.350 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.354 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.383 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.386 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.416 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.419 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.444 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.447 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.470 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.473 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.496 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.499 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.521 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 100条
-2026-01-16 16:31:09.524 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.541 | INFO     | database.pg_manager:batch_upsert_fundamental:1938 - 批量更新基本面数据: 55条
-2026-01-16 16:31:09.544 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 55 条基本面数据（仅PE和PB有效）
-2026-01-16 16:31:09.544 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:338 - 基本面数据更新完成:
-2026-01-16 16:31:09.544 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:339 -   总计: 5455
-2026-01-16 16:31:09.544 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:340 -   成功: 5455
-2026-01-16 16:31:09.544 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:341 -   失败: 0
-2026-01-16 16:31:09.546 | INFO     | __main__:update_fundamental_stage:161 - 
-2026-01-16 16:31:09.546 | INFO     | __main__:update_fundamental_stage:162 - ✓ 基本面更新完成!
-2026-01-16 16:31:09.546 | INFO     | __main__:update_fundamental_stage:163 -   成功: 5455
-2026-01-16 16:31:09.546 | INFO     | __main__:update_fundamental_stage:164 -   失败: 0
-2026-01-16 16:31:09.546 | INFO     | __main__:update_fundamental_stage:165 -   耗时: 65.48 秒 (1.1 分钟)
-2026-01-16 16:31:09.546 | INFO     | __main__:update_fundamental_stage:166 - 
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:262 - 
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:263 - ************************************************************
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:264 - 更新完成统计
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:265 - ************************************************************
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:276 - [基本面]
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:277 -   成功: 5455,  失败: 0
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:278 -   耗时: 65.48 秒 (1.1 分钟)
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:279 - 
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:281 - 总耗时: 67.51 秒 (1.1 分钟)
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:282 - ************************************************************
-2026-01-16 16:31:09.546 | INFO     | __main__:_print_summary:283 - 
+2026-01-20 16:30:02.087 | INFO     | database.pg_manager:__init__:55 - PostgreSQL 数据库已连接
+2026-01-20 16:30:02.087 | INFO     | __main__:unified_data_update:223 - 
+2026-01-20 16:30:02.087 | INFO     | __main__:unified_data_update:224 - ************************************************************
+2026-01-20 16:30:02.087 | INFO     | __main__:unified_data_update:225 - 统一数据更新流程启动 - 2026-01-20 16:30:02
+2026-01-20 16:30:02.087 | INFO     | __main__:unified_data_update:226 - ************************************************************
+2026-01-20 16:30:02.087 | INFO     | __main__:unified_data_update:227 - 
+2026-01-20 16:30:02.087 | INFO     | __main__:check_and_init_codes:55 - [阶段0] 检查代码表状态...
+2026-01-20 16:30:02.117 | INFO     | __main__:check_and_init_codes:61 -   etf_codes:   1352 条
+2026-01-20 16:30:02.117 | INFO     | __main__:check_and_init_codes:62 -   stock_codes: 5446 条
+2026-01-20 16:30:02.117 | INFO     | __main__:check_and_init_codes:83 - ✓ 代码表状态正常
+2026-01-20 16:30:02.117 | INFO     | __main__:check_and_init_codes:84 - 
+2026-01-20 16:30:04.117 | INFO     | __main__:update_fundamental_stage:136 - ============================================================
+2026-01-20 16:30:04.117 | INFO     | __main__:update_fundamental_stage:137 - [阶段2] 更新基本面数据
+2026-01-20 16:30:04.117 | INFO     | __main__:update_fundamental_stage:138 - ============================================================
+2026-01-20 16:30:04.117 | INFO     | __main__:update_fundamental_stage:139 - 
+2026-01-20 16:30:04.127 | INFO     | __main__:update_fundamental_stage:150 - 待更新: 5446 只股票
+2026-01-20 16:30:04.128 | INFO     | __main__:update_fundamental_stage:151 - 
+2026-01-20 16:30:04.128 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:96 - 正在从 AkShare 获取全市场A股实时行情(含基本面数据)...
+  0%|          | 0/58 [00:00<?, ?it/s]  2%|▏         | 1/58 [00:01<01:14,  1.31s/it]  3%|▎         | 2/58 [00:01<00:49,  1.14it/s]  5%|▌         | 3/58 [00:02<00:48,  1.14it/s]  7%|▋         | 4/58 [00:04<00:55,  1.03s/it]  9%|▊         | 5/58 [00:05<00:53,  1.01s/it] 10%|█         | 6/58 [00:05<00:47,  1.10it/s] 12%|█▏        | 7/58 [00:06<00:45,  1.13it/s] 14%|█▍        | 8/58 [00:07<00:52,  1.04s/it] 16%|█▌        | 9/58 [00:08<00:49,  1.02s/it] 17%|█▋        | 10/58 [00:10<00:56,  1.17s/it] 19%|█▉        | 11/58 [00:11<01:00,  1.29s/it] 21%|██        | 12/58 [00:13<01:01,  1.34s/it] 22%|██▏       | 13/58 [00:14<00:58,  1.30s/it] 24%|██▍       | 14/58 [00:15<00:54,  1.24s/it] 26%|██▌       | 15/58 [00:17<00:53,  1.25s/it] 28%|██▊       | 16/58 [00:17<00:49,  1.17s/it] 29%|██▉       | 17/58 [00:18<00:44,  1.08s/it] 31%|███       | 18/58 [00:19<00:38,  1.05it/s] 33%|███▎      | 19/58 [00:20<00:39,  1.02s/it] 34%|███▍      | 20/58 [00:21<00:41,  1.08s/it] 36%|███▌      | 21/58 [00:22<00:39,  1.07s/it] 38%|███▊      | 22/58 [00:23<00:35,  1.02it/s] 40%|███▉      | 23/58 [00:24<00:35,  1.00s/it] 41%|████▏     | 24/58 [00:26<00:37,  1.11s/it] 43%|████▎     | 25/58 [00:27<00:36,  1.09s/it] 45%|████▍     | 26/58 [00:28<00:39,  1.24s/it] 47%|████▋     | 27/58 [00:30<00:41,  1.33s/it] 48%|████▊     | 28/58 [00:31<00:39,  1.30s/it] 50%|█████     | 29/58 [00:32<00:33,  1.16s/it] 52%|█████▏    | 30/58 [00:33<00:29,  1.05s/it] 53%|█████▎    | 31/58 [00:34<00:26,  1.01it/s] 55%|█████▌    | 32/58 [00:34<00:24,  1.06it/s] 57%|█████▋    | 33/58 [00:35<00:21,  1.16it/s] 59%|█████▊    | 34/58 [00:36<00:23,  1.02it/s] 60%|██████    | 35/58 [00:37<00:22,  1.02it/s] 62%|██████▏   | 36/58 [00:39<00:23,  1.07s/it] 64%|██████▍   | 37/58 [00:40<00:24,  1.18s/it] 66%|██████▌   | 38/58 [00:41<00:21,  1.07s/it] 67%|██████▋   | 39/58 [00:42<00:19,  1.02s/it] 69%|██████▉   | 40/58 [00:43<00:17,  1.01it/s] 71%|███████   | 41/58 [00:44<00:19,  1.16s/it] 72%|███████▏  | 42/58 [00:46<00:20,  1.26s/it] 74%|███████▍  | 43/58 [00:47<00:18,  1.23s/it] 76%|███████▌  | 44/58 [00:48<00:15,  1.13s/it] 78%|███████▊  | 45/58 [00:49<00:15,  1.16s/it] 79%|███████▉  | 46/58 [00:50<00:12,  1.08s/it] 81%|████████  | 47/58 [00:51<00:12,  1.09s/it] 83%|████████▎ | 48/58 [00:52<00:12,  1.20s/it] 84%|████████▍ | 49/58 [00:53<00:09,  1.06s/it] 86%|████████▌ | 50/58 [00:54<00:07,  1.06it/s] 88%|████████▊ | 51/58 [00:55<00:07,  1.12s/it] 90%|████████▉ | 52/58 [00:57<00:07,  1.25s/it] 91%|█████████▏| 53/58 [00:58<00:05,  1.13s/it] 93%|█████████▎| 54/58 [00:59<00:04,  1.13s/it] 95%|█████████▍| 55/58 [01:00<00:03,  1.19s/it] 97%|█████████▋| 56/58 [01:01<00:02,  1.07s/it] 98%|█████████▊| 57/58 [01:02<00:01,  1.04s/it]100%|██████████| 58/58 [01:03<00:00,  1.07s/it]                                               2026-01-20 16:31:07.866 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:98 - 获取到 5801 只A股
+2026-01-20 16:31:07.876 | INFO     | datafeed.downloaders.fundamental_downloader:get_all_a_stocks_with_fundamentals:109 - 过滤后剩余 5455 只A股
+2026-01-20 16:31:07.876 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:300 - 开始更新 5455 只股票的基本面数据...
+2026-01-20 16:31:07.876 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:357 - 正在更新股票元数据...
+2026-01-20 16:31:08.100 | INFO     | database.pg_manager:batch_upsert_stock_metadata:1895 - 批量更新股票元数据: 5455条
+2026-01-20 16:31:08.104 | INFO     | datafeed.downloaders.fundamental_downloader:_update_metadata_from_spot:372 - 成功更新 5455 条元数据
+2026-01-20 16:31:08.104 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:306 - 更新最新实时数据...
+2026-01-20 16:31:08.143 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.149 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.178 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.181 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.205 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.208 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.232 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.236 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.259 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.263 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.286 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.289 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.313 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.317 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.340 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.344 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.367 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.370 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.394 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.398 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.420 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.424 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.446 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.450 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.474 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.478 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.503 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.507 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.531 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.535 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.559 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.562 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.585 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.589 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.612 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.616 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.640 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.643 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.668 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.671 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.695 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.699 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.723 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.726 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.751 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.754 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.777 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.781 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.805 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.808 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.833 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.837 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.861 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.865 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.889 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.893 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.916 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.920 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.943 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.947 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.970 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:08.974 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:08.998 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.002 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.027 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.030 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.054 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.058 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.082 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.085 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.109 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.112 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.142 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.147 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.182 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.185 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.209 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.213 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.238 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.241 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.268 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.273 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.300 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.304 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.328 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.332 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.356 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.360 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.384 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.388 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.412 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.416 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.440 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.444 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.471 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.475 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.499 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.502 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.527 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.530 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.554 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.570 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.593 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.597 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.621 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.624 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.647 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 100条
+2026-01-20 16:31:09.650 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 100 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.668 | INFO     | database.pg_manager:batch_upsert_fundamental:1998 - 批量更新基本面数据: 55条
+2026-01-20 16:31:09.671 | DEBUG    | datafeed.downloaders.fundamental_downloader:_batch_insert:431 - 批量插入 55 条基本面数据（仅PE和PB有效）
+2026-01-20 16:31:09.671 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:338 - 基本面数据更新完成:
+2026-01-20 16:31:09.671 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:339 -   总计: 5455
+2026-01-20 16:31:09.671 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:340 -   成功: 5455
+2026-01-20 16:31:09.671 | INFO     | datafeed.downloaders.fundamental_downloader:update_fundamental_data:341 -   失败: 0
+2026-01-20 16:31:09.673 | INFO     | __main__:update_fundamental_stage:161 - 
+2026-01-20 16:31:09.673 | INFO     | __main__:update_fundamental_stage:162 - ✓ 基本面更新完成!
+2026-01-20 16:31:09.673 | INFO     | __main__:update_fundamental_stage:163 -   成功: 5455
+2026-01-20 16:31:09.673 | INFO     | __main__:update_fundamental_stage:164 -   失败: 0
+2026-01-20 16:31:09.674 | INFO     | __main__:update_fundamental_stage:165 -   耗时: 65.56 秒 (1.1 分钟)
+2026-01-20 16:31:09.674 | INFO     | __main__:update_fundamental_stage:166 - 
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:262 - 
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:263 - ************************************************************
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:264 - 更新完成统计
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:265 - ************************************************************
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:276 - [基本面]
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:277 -   成功: 5455,  失败: 0
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:278 -   耗时: 65.56 秒 (1.1 分钟)
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:279 - 
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:281 - 总耗时: 67.59 秒 (1.1 分钟)
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:282 - ************************************************************
+2026-01-20 16:31:09.674 | INFO     | __main__:_print_summary:283 - 

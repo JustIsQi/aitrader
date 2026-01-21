@@ -49,7 +49,8 @@
       "Bash(pip show:*)",
       "mcp__zread__get_repo_structure",
       "Bash(pip install:*)",
-      "mcp__zai-mcp-server__analyze_image"
+      "mcp__zai-mcp-server__analyze_image",
+      "mcp__zai-mcp-server__diagnose_error_screenshot"
     ]
   }
 }

@@ -40,7 +40,6 @@
                                     <col class="symbol-col">
                                     <col class="name-col">
                                     <col class="price-col">
-                                    <col class="score-col">
                                     <col class="position-col">
                                 </colgroup>
                                 <thead>
@@ -48,7 +47,6 @@
                                         <th>代码</th>
                                         <th>名称</th>
                                         <th>价格</th>
-                                        <th>得分</th>
                                         <th>持仓</th>
                                     </tr>
                                 </thead>
@@ -58,7 +56,6 @@
                                         <td class="symbol-cell">{{ signal.symbol }}</td>
                                         <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
                                         <td class="price-cell">{{ signal.price }}</td>
-                                        <td class="score-cell">{{ "%.4f"|format(signal.score) if signal.score is not none else '-' }}</td>
                                         <td class="position-cell">
                                             {% if signal.position is defined and signal.position %}
                                             <div class="position-info">
@@ -88,7 +85,6 @@
                                     <col class="symbol-col">
                                     <col class="name-col">
                                     <col class="price-col">
-                                    <col class="score-col">
                                     <col class="position-col">
                                 </colgroup>
                                 <thead>
@@ -96,7 +92,6 @@
                                         <th>代码</th>
                                         <th>名称</th>
                                         <th>价格</th>
-                                        <th>得分</th>
                                         <th>持仓</th>
                                     </tr>
                                 </thead>
@@ -106,7 +101,6 @@
                                         <td class="symbol-cell">{{ signal.symbol }}</td>
                                         <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
                                         <td class="price-cell">{{ signal.price }}</td>
-                                        <td class="score-cell">{{ "%.4f"|format(signal.score) if signal.score is not none else '-' }}</td>
                                         <td class="position-cell">
                                             {% if signal.position is defined and signal.position %}
                                             <div class="position-info">
