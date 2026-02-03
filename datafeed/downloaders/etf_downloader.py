@@ -89,7 +89,8 @@ class EtfDownloader:
             return f'{code}.SH'
 
     def fetch_etf_history(self, symbol: str, start_date: str = None,
-                         end_date: str = None, adjust: str = "hfq") -> Optional[pd.DataFrame]:
+                         end_date: str = None, adjust: str = "hfq",
+                         max_retries: int = 3) -> Optional[pd.DataFrame]:
         """
         从 AkShare 获取 ETF 历史数据
 
@@ -98,22 +99,35 @@ class EtfDownloader:
             start_date: 开始日期 (YYYYMMDD 格式)
             end_date: 结束日期 (YYYYMMDD 格式)
             adjust: 复权类型 ('qfq'前复权, 'hfq'后复权, ''不复权)
+            max_retries: 最大重试次数
 
         Returns:
             DataFrame: 历史数据
         """
-        try:
-            result = ak.fund_etf_hist_em(
-                symbol=symbol,
-                period="daily",
-                adjust=adjust,
-                start_date=start_date,
-                end_date=end_date
-            )
-            return result
-        except Exception as e:
-            logger.error(f'获取 ETF {symbol} 数据失败: {e}')
-            return None
+        import time
+        from requests.exceptions import ConnectionError, Timeout
+
+        for attempt in range(max_retries):
+            try:
+                result = ak.fund_etf_hist_em(
+                    symbol=symbol,
+                    period="daily",
+                    adjust=adjust,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                return result
+            except (ConnectionError, Timeout) as e:
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2  # 递增等待时间: 2s, 4s, 6s
+                    logger.warning(f'获取 ETF {symbol} 数据时网络错误 ({attempt+1}/{max_retries}): {e}，{wait_time}秒后重试...')
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f'获取 ETF {symbol} 数据失败，已达最大重试次数: {e}')
+                    return None
+            except Exception as e:
+                logger.error(f'获取 ETF {symbol} 数据失败: {e}')
+                return None
 
     def update_etf_data(self, symbol: str, etf_name: str = None) -> bool:
         """
@@ -139,9 +153,13 @@ class EtfDownloader:
             end_date = datetime.now().strftime('%Y%m%d')
 
             if latest_date:
-                # 增量更新
+                # 增量更新，从最新日期的下一天开始
                 next_day = latest_date + timedelta(days=1)
                 start_date = next_day.strftime('%Y%m%d')
+                # 如果起始日期已经超过了今天，说明数据已是最新
+                if start_date > end_date:
+                    logger.info(f'{symbol} 数据已是最新，最新日期: {latest_date.strftime("%Y-%m-%d")}')
+                    return True
                 logger.info(f'增量更新 {symbol}，从 {start_date} 开始')
             else:
                 # 首次下载,从2020年开始
@@ -207,9 +225,13 @@ class EtfDownloader:
             end_date = datetime.now().strftime('%Y%m%d')
 
             if latest_date:
-                # 增量更新
+                # 增量更新，从最新日期的下一天开始
                 next_day = latest_date + timedelta(days=1)
                 start_date = next_day.strftime('%Y%m%d')
+                # 如果起始日期已经超过了今天，说明数据已是最新
+                if start_date > end_date:
+                    logger.info(f'{symbol} 前复权数据已是最新，最新日期: {latest_date.strftime("%Y-%m-%d")}')
+                    return True
                 logger.info(f'增量更新前复权数据 {symbol}，从 {start_date} 开始')
             else:
                 # 首次下载,从2020年开始

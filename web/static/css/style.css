@@ -574,14 +574,89 @@ button:hover {
     color: #c77d7d;
 }
 
-/* Historical P&L Summary */
-.pl-summary-cards {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
-    margin-bottom: 1rem;
+/* ========== Historical P&L Summary (Split Layout) ========== */
+
+/* Total P&L Card at top */
+.pl-total-summary {
+    margin-bottom: 1.5rem;
 }
 
+.pl-card-total {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    padding: 1.5rem;
+}
+
+.pl-card-total .pl-card-label {
+    color: #ffffff;
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.pl-card-total .pl-card-value {
+    color: #ffffff;
+    font-size: 2rem;
+}
+
+/* Split Summary Cards */
+.pl-summary-cards-split {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.pl-section {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.pl-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.pl-section-title {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #374151;
+}
+
+.pl-section-count {
+    background-color: #f3f4f6;
+    color: #6b7280;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+/* Section-specific styling */
+.sold-section .pl-section-header {
+    border-bottom-color: #c77d7d;
+}
+
+.sold-section .pl-section-title {
+    color: #c77d7d;
+}
+
+.holding-section .pl-section-header {
+    border-bottom-color: #6b8e7e;
+}
+
+.holding-section .pl-section-title {
+    color: #6b8e7e;
+}
+
+/* Common P&L card styles */
 .pl-card {
     background: #ffffff;
     border: 1px solid #e5e7eb;
@@ -610,6 +685,28 @@ button:hover {
 
 .pl-card-value.negative {
     color: #c77d7d;
+}
+
+/* Split Tables Layout */
+.pl-tables-split {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+.pl-table-section {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.pl-table-header {
+    background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+    color: #ffffff;
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
 }
 
 .pl-table-container {
@@ -681,6 +778,8 @@ button:hover {
     color: #6b7280;
     margin-left: 0.5rem;
 }
+
+/* Responsive adjustments */
 
 /* ========== Signal Tables ========== */
 
@@ -1444,4 +1543,121 @@ button:hover {
         width: 95%;
         margin: 10% auto;
     }
+}
+
+/* ========== Short-Term Signals Styles ========== */
+
+.short-term-panel {
+    margin-top: 20px;
+}
+
+.short-term-panel .module-header {
+    background: linear-gradient(135deg, #7b68ee 0%, #6a5acd 100%);
+    color: #ffffff;
+}
+
+.short-term-panel .module-header:hover {
+    background: linear-gradient(135deg, #6a5acd 0%, #5a4abd 100%);
+}
+
+/* Short-term table specific column widths */
+.signals-table.short-term-table col.symbol-col { width: 12%; }
+.signals-table.short-term-table col.name-col { width: 16%; }
+.signals-table.short-term-table col.sector-col { width: 18%; }
+.signals-table.short-term-table col.strategy-col { width: 10%; }
+.signals-table.short-term-table col.position-ratio-col { width: 8%; }
+.signals-table.short-term-table col.price-levels-col { width: 18%; }
+.signals-table.short-term-table col.position-col { width: 18%; }
+
+/* Strategy tags */
+.strategy-tag {
+    display: inline-block;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.strategy-tag.chase {
+    background-color: #6b8e7e;
+    color: white;
+}
+
+.strategy-tag.dip {
+    background-color: #8b7355;
+    color: white;
+}
+
+/* Sector badge */
+.sector-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.sector-badge {
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.85rem;
+}
+
+.rank-badge {
+    font-size: 0.75rem;
+    color: #6b7280;
+    background-color: #f3f4f6;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    display: inline-block;
+    width: fit-content;
+}
+
+/* Position ratio cell */
+.position-ratio-cell {
+    font-weight: 600;
+    text-align: center;
+    color: #374151;
+}
+
+/* Price levels cell */
+.price-levels-cell {
+    font-size: 0.8rem;
+}
+
+.price-levels {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.price-levels .stop-loss {
+    color: #c77d7d;
+    font-weight: 500;
+}
+
+.price-levels .take-profit {
+    color: #6b8e7e;
+    font-weight: 500;
+}
+
+/* Strategy-specific row styling */
+.signals-table tbody tr.signal-row.chase {
+    border-left: 3px solid #6b8e7e;
+}
+
+.signals-table tbody tr.signal-row.dip {
+    border-left: 3px solid #8b7355;
+}
+
+/* Dip table styling */
+.signals-table.dip-table {
+    background-color: #faf8f5;
+}
+
+.signals-table.dip-table tbody tr:hover {
+    background-color: #f5f0eb;
+}
+
+.signals-table.dip-table td {
+    background-color: rgba(139, 115, 85, 0.03);
 }

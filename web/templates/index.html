@@ -392,6 +392,154 @@
                     {% endif %}
                 </div>
             </section>
+
+            <!-- Short-Term Trading Signals Module -->
+            <section class="signals-panel short-term-panel">
+                <div class="module-header" id="short-term-module-header">
+                    <span class="module-title">Short-Term Trading Signals (股票短线信号)</span>
+                    <span class="expand-icon">&#9662;</span>
+                </div>
+
+                <div id="short-term-signals-container" class="signals-container">
+                    {% if short_term_date %}
+                        <div class="latest-date-header">{{ short_term_date }}</div>
+
+                        <!-- Chase Strategy Signals -->
+                        {% set chase_signals = short_term_signals|selectattr('strategy_type', 'equalto', 'chase')|list %}
+                        {% if chase_signals %}
+                        <div class="signals-table-wrapper buy-signals-table">
+                            <div class="signals-table-header">
+                                追涨策略 ({{ chase_signals|length }})
+                            </div>
+                            <table class="signals-table short-term-table">
+                                <colgroup>
+                                    <col class="symbol-col">
+                                    <col class="name-col">
+                                    <col class="sector-col">
+                                    <col class="strategy-col">
+                                    <col class="position-ratio-col">
+                                    <col class="price-levels-col">
+                                    <col class="position-col">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>代码</th>
+                                        <th>名称</th>
+                                        <th>板块</th>
+                                        <th>策略</th>
+                                        <th>仓位</th>
+                                        <th>止损/止盈</th>
+                                        <th>持仓</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for signal in chase_signals %}
+                                    <tr class="signal-row chase" data-symbol="{{ signal.stock_code }}">
+                                        <td class="symbol-cell">{{ signal.stock_code }}</td>
+                                        <td class="name-cell">{{ signal.stock_name or '-' }}</td>
+                                        <td class="sector-cell">
+                                            <span class="sector-badge">{{ signal.sector_name }}</span>
+                                            <span class="rank-badge">#{{ signal.sector_rank }}</span>
+                                        </td>
+                                        <td class="strategy-cell">
+                                            <span class="strategy-tag chase">追涨</span>
+                                        </td>
+                                        <td class="position-ratio-cell">{{ signal.position_ratio }}%</td>
+                                        <td class="price-levels-cell">
+                                            <div class="price-levels">
+                                                <span class="stop-loss">止损: {{ "%.2f"|format(signal.stop_loss_price) }}</span>
+                                                <span class="take-profit">止盈: {{ "%.2f"|format(signal.take_profit_price) }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="position-cell">
+                                            {% if signal.position is defined and signal.position %}
+                                            <div class="position-info">
+                                                <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
+                                                <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                    {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
+                                                </span>
+                                            </div>
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+
+                        <!-- Dip Strategy Signals -->
+                        {% set dip_signals = short_term_signals|selectattr('strategy_type', 'equalto', 'dip')|list %}
+                        {% if dip_signals %}
+                        <div class="signals-table-wrapper sell-signals-table">
+                            <div class="signals-table-header">
+                                低吸策略 ({{ dip_signals|length }})
+                            </div>
+                            <table class="signals-table short-term-table dip-table">
+                                <colgroup>
+                                    <col class="symbol-col">
+                                    <col class="name-col">
+                                    <col class="sector-col">
+                                    <col class="strategy-col">
+                                    <col class="position-ratio-col">
+                                    <col class="price-levels-col">
+                                    <col class="position-col">
+                                </colgroup>
+                                <thead>
+                                    <tr>
+                                        <th>代码</th>
+                                        <th>名称</th>
+                                        <th>板块</th>
+                                        <th>策略</th>
+                                        <th>仓位</th>
+                                        <th>止损/止盈</th>
+                                        <th>持仓</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for signal in dip_signals %}
+                                    <tr class="signal-row dip" data-symbol="{{ signal.stock_code }}">
+                                        <td class="symbol-cell">{{ signal.stock_code }}</td>
+                                        <td class="name-cell">{{ signal.stock_name or '-' }}</td>
+                                        <td class="sector-cell">
+                                            <span class="sector-badge">{{ signal.sector_name }}</span>
+                                            <span class="rank-badge">#{{ signal.sector_rank }}</span>
+                                        </td>
+                                        <td class="strategy-cell">
+                                            <span class="strategy-tag dip">低吸</span>
+                                        </td>
+                                        <td class="position-ratio-cell">{{ signal.position_ratio }}%</td>
+                                        <td class="price-levels-cell">
+                                            <div class="price-levels">
+                                                <span class="stop-loss">止损: {{ "%.2f"|format(signal.stop_loss_price) }}</span>
+                                                <span class="take-profit">止盈: {{ "%.2f"|format(signal.take_profit_price) }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="position-cell">
+                                            {% if signal.position is defined and signal.position %}
+                                            <div class="position-info">
+                                                <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
+                                                <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
+                                                    {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
+                                                </span>
+                                            </div>
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                        <p class="no-data">No short-term signals available</p>
+                    {% endif %}
+                </div>
+            </section>
             </div>
 
             <!-- Right Column: Trading Records, Positions, P&L -->
@@ -493,42 +641,101 @@
                         <button id="refresh-pl-btn" class="btn-secondary">Refresh</button>
                     </div>
 
-                    <!-- Summary Cards -->
-                    <div id="pl-summary-cards" class="pl-summary-cards">
-                        <div class="pl-card">
-                            <span class="pl-card-label">Realized P&L</span>
-                            <span id="pl-realized" class="pl-card-value">--</span>
-                        </div>
-                        <div class="pl-card">
-                            <span class="pl-card-label">Unrealized P&L</span>
-                            <span id="pl-unrealized" class="pl-card-value">--</span>
-                        </div>
-                        <div class="pl-card">
-                            <span class="pl-card-label">Total P&L</span>
-                            <span id="pl-total" class="pl-card-value">--</span>
+                    <!-- Total P&L Card (Top) -->
+                    <div class="pl-total-summary">
+                        <div class="pl-card pl-card-total">
+                            <span class="pl-card-label">总盈亏</span>
+                            <span id="pl-grand-total" class="pl-card-value">--</span>
                         </div>
                     </div>
 
-                    <!-- Historical P&L Table -->
-                    <div id="pl-table-container" class="pl-table-container">
-                        <table class="data-table pl-table">
-                            <thead>
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Bought</th>
-                                    <th>Sold</th>
-                                    <th>Current Holdings</th>
-                                    <th>Realized P&L</th>
-                                    <th>Unrealized P&L</th>
-                                    <th>Total P&L</th>
-                                </tr>
-                            </thead>
-                            <tbody id="pl-table-body">
-                                <tr>
-                                    <td colspan="7" class="loading-cell">Loading...</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <!-- Split Summary Cards -->
+                    <div id="pl-summary-cards" class="pl-summary-cards-split">
+                        <!-- Sold Section -->
+                        <div class="pl-section sold-section">
+                            <div class="pl-section-header">
+                                <span class="pl-section-title">已卖出</span>
+                                <span id="sold-count" class="pl-section-count">0</span>
+                            </div>
+                            <div class="pl-card">
+                                <span class="pl-card-label">Realized P&L</span>
+                                <span id="pl-sold-realized" class="pl-card-value">--</span>
+                            </div>
+                            <div class="pl-card">
+                                <span class="pl-card-label">Total P&L</span>
+                                <span id="pl-sold-total" class="pl-card-value">--</span>
+                            </div>
+                        </div>
+
+                        <!-- Holding Section -->
+                        <div class="pl-section holding-section">
+                            <div class="pl-section-header">
+                                <span class="pl-section-title">持有中</span>
+                                <span id="holding-count" class="pl-section-count">0</span>
+                            </div>
+                            <div class="pl-card">
+                                <span class="pl-card-label">Realized P&L</span>
+                                <span id="pl-holding-realized" class="pl-card-value">--</span>
+                            </div>
+                            <div class="pl-card">
+                                <span class="pl-card-label">Unrealized P&L</span>
+                                <span id="pl-holding-unrealized" class="pl-card-value">--</span>
+                            </div>
+                            <div class="pl-card">
+                                <span class="pl-card-label">Total P&L</span>
+                                <span id="pl-holding-total" class="pl-card-value">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Historical P&L Tables -->
+                    <div class="pl-tables-split">
+                        <!-- Sold Symbols Table -->
+                        <div class="pl-table-section">
+                            <div class="pl-table-header">已卖出标的</div>
+                            <div id="pl-sold-table-container" class="pl-table-container">
+                                <table class="data-table pl-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Symbol</th>
+                                            <th>Bought</th>
+                                            <th>Sold</th>
+                                            <th>Realized P&L</th>
+                                            <th>Total P&L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="pl-sold-table-body">
+                                        <tr>
+                                            <td colspan="5" class="loading-cell">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Holding Symbols Table -->
+                        <div class="pl-table-section">
+                            <div class="pl-table-header">持有标的</div>
+                            <div id="pl-holding-table-container" class="pl-table-container">
+                                <table class="data-table pl-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Symbol</th>
+                                            <th>Bought</th>
+                                            <th>Current Holdings</th>
+                                            <th>Realized P&L</th>
+                                            <th>Unrealized P&L</th>
+                                            <th>Total P&L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="pl-holding-table-body">
+                                        <tr>
+                                            <td colspan="6" class="loading-cell">Loading...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>

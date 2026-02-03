@@ -47,25 +47,35 @@ def init_stock_qfq_data(symbols=None, limit=None):
     logger.info(f'开始下载前复权数据，共 {len(symbols)} 只股票')
 
     for i, symbol in enumerate(symbols, 1):
-        try:
-            if i % 10 == 0:
-                logger.info(f'进度: {i}/{len(symbols)} - 成功: {stats["success"]}, 失败: {stats["failed"]}, 跳过: {stats["skipped"]}')
+        retry_count = 0
+        max_retries = 3
 
-            # 下载前复权数据
-            result = downloader.update_stock_data_qfq(symbol)
+        while retry_count < max_retries:
+            try:
+                if i % 10 == 0:
+                    logger.info(f'进度: {i}/{len(symbols)} - 成功: {stats["success"]}, 失败: {stats["failed"]}, 跳过: {stats["skipped"]}')
 
-            if result:
-                stats['success'] += 1
-            else:
-                stats['failed'] += 1
+                # 下载前复权数据
+                result = downloader.update_stock_data_qfq(symbol)
 
-            # 避免请求过快
-            time.sleep(0.5)
+                if result:
+                    stats['success'] += 1
+                    # 避免请求过快
+                    time.sleep(0.5)
+                else:
+                    stats['failed'] += 1
 
-        except Exception as e:
-            logger.error(f'处理股票 {symbol} 时出错: {e}')
-            stats['failed'] += 1
-            continue
+                # 成功或失败（非异常）都跳出重试循环
+                break
+
+            except Exception as e:
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.warning(f'处理股票 {symbol} 失败 ({retry_count}/{max_retries}): {e}，等待5秒后重试...')
+                    time.sleep(5)
+                else:
+                    logger.error(f'处理股票 {symbol} 失败，已达最大重试次数: {e}')
+                    stats['failed'] += 1
 
     logger.success(f'股票前复权数据初始化完成!')
     logger.info(f'总计: {stats["total"]}, 成功: {stats["success"]}, 失败: {stats["failed"]}, 跳过: {stats["skipped"]}')
@@ -103,25 +113,35 @@ def init_etf_qfq_data(symbols=None, limit=None):
     logger.info(f'开始下载ETF前复权数据，共 {len(symbols)} 只ETF')
 
     for i, symbol in enumerate(symbols, 1):
-        try:
-            if i % 10 == 0:
-                logger.info(f'进度: {i}/{len(symbols)} - 成功: {stats["success"]}, 失败: {stats["failed"]}, 跳过: {stats["skipped"]}')
+        retry_count = 0
+        max_retries = 3
 
-            # 下载前复权数据
-            result = downloader.update_etf_data_qfq(symbol)
+        while retry_count < max_retries:
+            try:
+                if i % 10 == 0:
+                    logger.info(f'进度: {i}/{len(symbols)} - 成功: {stats["success"]}, 失败: {stats["failed"]}, 跳过: {stats["skipped"]}')
 
-            if result:
-                stats['success'] += 1
-            else:
-                stats['failed'] += 1
+                # 下载前复权数据
+                result = downloader.update_etf_data_qfq(symbol)
 
-            # 避免请求过快
-            time.sleep(0.5)
+                if result:
+                    stats['success'] += 1
+                    # 避免请求过快
+                    time.sleep(0.5)
+                else:
+                    stats['failed'] += 1
 
-        except Exception as e:
-            logger.error(f'处理ETF {symbol} 时出错: {e}')
-            stats['failed'] += 1
-            continue
+                # 成功或失败（非异常）都跳出重试循环
+                break
+
+            except Exception as e:
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.warning(f'处理ETF {symbol} 失败 ({retry_count}/{max_retries}): {e}，等待5秒后重试...')
+                    time.sleep(5)
+                else:
+                    logger.error(f'处理ETF {symbol} 失败，已达最大重试次数: {e}')
+                    stats['failed'] += 1
 
     logger.success(f'ETF前复权数据初始化完成!')
     logger.info(f'总计: {stats["total"]}, 成功: {stats["success"]}, 失败: {stats["failed"]}, 跳过: {stats["skipped"]}')

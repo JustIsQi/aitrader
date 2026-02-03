@@ -115,27 +115,57 @@ async def get_performance_metrics():
 @router.get("/historical-pl")
 async def get_historical_pl():
     """
-    获取按标的分组的历史盈亏
+    获取按标的分组的历史盈亏，分离已卖出和持有
 
     Returns:
-        按symbol分组的盈亏统计，包含买入、卖出、当前持仓等信息
+        分离后的盈亏数据
     """
     try:
         db = get_db()
         symbols_data = db.calculate_historical_pl_by_symbol()
 
-        # 计算汇总统计
-        total_symbols = len(symbols_data)
+        # 分离已卖出和持有的标的
+        sold_symbols = [s for s in symbols_data if s['current_qty'] == 0]
+        holding_symbols = [s for s in symbols_data if s['current_qty'] > 0]
+
+        # 计算已卖出统计
+        sold_realized_pl = sum(s['realized_pl'] for s in sold_symbols)
+        sold_unrealized_pl = 0  # 已卖出没有未实现盈亏
+        sold_total_pl = sold_realized_pl
+
+        # 计算持有中统计
+        holding_realized_pl = sum(s['realized_pl'] for s in holding_symbols)
+        holding_unrealized_pl = sum(s['unrealized_pl'] for s in holding_symbols)
+        holding_total_pl = holding_realized_pl + holding_unrealized_pl
+
+        # 总计
         total_realized_pl = sum(s['realized_pl'] for s in symbols_data)
         total_unrealized_pl = sum(s['unrealized_pl'] for s in symbols_data)
         total_pl = total_realized_pl + total_unrealized_pl
 
         return {
-            "symbols": symbols_data,
-            "summary": {
-                "total_symbols": total_symbols,
-                "total_realized_pl": safe_float(total_realized_pl),
-                "total_unrealized_pl": safe_float(total_unrealized_pl),
+            "sold": {
+                "symbols": sold_symbols,
+                "summary": {
+                    "count": len(sold_symbols),
+                    "realized_pl": safe_float(sold_realized_pl),
+                    "unrealized_pl": safe_float(sold_unrealized_pl),
+                    "total_pl": safe_float(sold_total_pl)
+                }
+            },
+            "holding": {
+                "symbols": holding_symbols,
+                "summary": {
+                    "count": len(holding_symbols),
+                    "realized_pl": safe_float(holding_realized_pl),
+                    "unrealized_pl": safe_float(holding_unrealized_pl),
+                    "total_pl": safe_float(holding_total_pl)
+                }
+            },
+            "total": {
+                "total_symbols": len(symbols_data),
+                "realized_pl": safe_float(total_realized_pl),
+                "unrealized_pl": safe_float(total_unrealized_pl),
                 "total_pl": safe_float(total_pl)
             }
         }

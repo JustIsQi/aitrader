@@ -308,6 +308,16 @@ function initModuleToggles() {
             _toggleIcon(this);
         });
     }
+
+    // Add short-term signals toggle
+    const shortTermHeader = document.getElementById('short-term-module-header');
+    if (shortTermHeader) {
+        shortTermHeader.addEventListener('click', function() {
+            const container = document.getElementById('short-term-signals-container');
+            container.classList.toggle('collapsed');
+            _toggleIcon(this);
+        });
+    }
 }
 
 function _toggleIcon(header) {
@@ -486,87 +496,161 @@ function initRefreshPLButton() {
     }
 }
 
-// Load Historical P&L data
+// Load Historical P&L data (split layout)
 async function loadHistoricalPL() {
-    const tableBody = document.getElementById('pl-table-body');
-    const realizedEl = document.getElementById('pl-realized');
-    const unrealizedEl = document.getElementById('pl-unrealized');
-    const totalEl = document.getElementById('pl-total');
+    const formatCurrency = (value) => {
+        return new Intl.NumberFormat('zh-CN', {
+            style: 'currency',
+            currency: 'CNY'
+        }).format(value);
+    };
 
-    if (!tableBody) return;
+    const getValueClass = (value) => {
+        if (value > 0) return 'positive';
+        if (value < 0) return 'negative';
+        return '';
+    };
 
     try {
         const response = await fetch('/api/analytics/historical-pl');
         const data = await response.json();
 
-        const formatCurrency = (value) => {
-            return new Intl.NumberFormat('zh-CN', {
-                style: 'currency',
-                currency: 'CNY'
-            }).format(value);
-        };
-
-        const getValueClass = (value) => {
-            if (value > 0) return 'positive';
-            if (value < 0) return 'negative';
-            return '';
-        };
-
-        // Update summary cards
-        if (data.summary) {
-            realizedEl.textContent = formatCurrency(data.summary.total_realized_pl);
-            realizedEl.className = 'pl-card-value ' + getValueClass(data.summary.total_realized_pl);
-
-            unrealizedEl.textContent = formatCurrency(data.summary.total_unrealized_pl);
-            unrealizedEl.className = 'pl-card-value ' + getValueClass(data.summary.total_unrealized_pl);
-
-            totalEl.textContent = formatCurrency(data.summary.total_pl);
-            totalEl.className = 'pl-card-value ' + getValueClass(data.summary.total_pl);
+        // Update total P&L card (top)
+        const grandTotalEl = document.getElementById('pl-grand-total');
+        if (grandTotalEl && data.total) {
+            grandTotalEl.textContent = formatCurrency(data.total.total_pl);
+            grandTotalEl.className = 'pl-card-value ' + getValueClass(data.total.total_pl);
         }
 
-        // Render table
-        if (!data.symbols || data.symbols.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="7" class="no-data">No historical P&L data available</td></tr>';
-            return;
+        // Update sold section
+        const soldCountEl = document.getElementById('sold-count');
+        const soldRealizedEl = document.getElementById('pl-sold-realized');
+        const soldTotalEl = document.getElementById('pl-sold-total');
+        const soldTableBody = document.getElementById('pl-sold-table-body');
+
+        if (data.sold) {
+            if (soldCountEl) soldCountEl.textContent = data.sold.summary.count;
+
+            if (soldRealizedEl) {
+                soldRealizedEl.textContent = formatCurrency(data.sold.summary.realized_pl);
+                soldRealizedEl.className = 'pl-card-value ' + getValueClass(data.sold.summary.realized_pl);
+            }
+
+            if (soldTotalEl) {
+                soldTotalEl.textContent = formatCurrency(data.sold.summary.total_pl);
+                soldTotalEl.className = 'pl-card-value ' + getValueClass(data.sold.summary.total_pl);
+            }
+
+            // Render sold table
+            if (soldTableBody) {
+                if (!data.sold.symbols || data.sold.symbols.length === 0) {
+                    soldTableBody.innerHTML = '<tr><td colspan="5" class="no-data">No sold symbols</td></tr>';
+                } else {
+                    soldTableBody.innerHTML = data.sold.symbols.map(symbol => {
+                        const boughtStr = symbol.bought_qty > 0
+                            ? `${symbol.bought_qty} × ¥${symbol.avg_buy_price}`
+                            : '-';
+
+                        const soldStr = symbol.sold_qty > 0
+                            ? `${symbol.sold_qty} × ¥${symbol.avg_sell_price}`
+                            : '-';
+
+                        return `
+                            <tr>
+                                <td>
+                                    <div class="symbol-cell">
+                                        <span class="symbol-name">${symbol.symbol}</span>
+                                        ${symbol.zh_name ? `<span class="symbol-name-cn">${symbol.zh_name}</span>` : ''}
+                                    </div>
+                                </td>
+                                <td>${boughtStr}</td>
+                                <td>${soldStr}</td>
+                                <td class="${getValueClass(symbol.realized_pl)}">${formatCurrency(symbol.realized_pl)}</td>
+                                <td class="${getValueClass(symbol.total_pl)}">
+                                    ${formatCurrency(symbol.total_pl)}
+                                    <span class="pl-pct">(${symbol.total_pl_pct}%)</span>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
         }
 
-        tableBody.innerHTML = data.symbols.map(symbol => {
-            const boughtStr = symbol.bought_qty > 0
-                ? `${symbol.bought_qty} × ¥${symbol.avg_buy_price}`
-                : '-';
+        // Update holding section
+        const holdingCountEl = document.getElementById('holding-count');
+        const holdingRealizedEl = document.getElementById('pl-holding-realized');
+        const holdingUnrealizedEl = document.getElementById('pl-holding-unrealized');
+        const holdingTotalEl = document.getElementById('pl-holding-total');
+        const holdingTableBody = document.getElementById('pl-holding-table-body');
 
-            const soldStr = symbol.sold_qty > 0
-                ? `${symbol.sold_qty} × ¥${symbol.avg_sell_price}`
-                : '-';
+        if (data.holding) {
+            if (holdingCountEl) holdingCountEl.textContent = data.holding.summary.count;
 
-            const holdingsStr = symbol.current_qty > 0
-                ? `${symbol.current_qty} × ¥${symbol.current_price || '-'}`
-                : '-';
+            if (holdingRealizedEl) {
+                holdingRealizedEl.textContent = formatCurrency(data.holding.summary.realized_pl);
+                holdingRealizedEl.className = 'pl-card-value ' + getValueClass(data.holding.summary.realized_pl);
+            }
 
-            return `
-                <tr>
-                    <td>
-                        <div class="symbol-cell">
-                            <span class="symbol-name">${symbol.symbol}</span>
-                            ${symbol.zh_name ? `<span class="symbol-name-cn">${symbol.zh_name}</span>` : ''}
-                        </div>
-                    </td>
-                    <td>${boughtStr}</td>
-                    <td>${soldStr}</td>
-                    <td>${holdingsStr}</td>
-                    <td class="${getValueClass(symbol.realized_pl)}">${formatCurrency(symbol.realized_pl)}</td>
-                    <td class="${getValueClass(symbol.unrealized_pl)}">${formatCurrency(symbol.unrealized_pl)}</td>
-                    <td class="${getValueClass(symbol.total_pl)}">
-                        ${formatCurrency(symbol.total_pl)}
-                        <span class="pl-pct">(${symbol.total_pl_pct}%)</span>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+            if (holdingUnrealizedEl) {
+                holdingUnrealizedEl.textContent = formatCurrency(data.holding.summary.unrealized_pl);
+                holdingUnrealizedEl.className = 'pl-card-value ' + getValueClass(data.holding.summary.unrealized_pl);
+            }
+
+            if (holdingTotalEl) {
+                holdingTotalEl.textContent = formatCurrency(data.holding.summary.total_pl);
+                holdingTotalEl.className = 'pl-card-value ' + getValueClass(data.holding.summary.total_pl);
+            }
+
+            // Render holding table
+            if (holdingTableBody) {
+                if (!data.holding.symbols || data.holding.symbols.length === 0) {
+                    holdingTableBody.innerHTML = '<tr><td colspan="6" class="no-data">No holdings</td></tr>';
+                } else {
+                    holdingTableBody.innerHTML = data.holding.symbols.map(symbol => {
+                        const boughtStr = symbol.bought_qty > 0
+                            ? `${symbol.bought_qty} × ¥${symbol.avg_buy_price}`
+                            : '-';
+
+                        const holdingsStr = symbol.current_qty > 0
+                            ? `${symbol.current_qty} × ¥${symbol.current_price || '-'}`
+                            : '-';
+
+                        return `
+                            <tr>
+                                <td>
+                                    <div class="symbol-cell">
+                                        <span class="symbol-name">${symbol.symbol}</span>
+                                        ${symbol.zh_name ? `<span class="symbol-name-cn">${symbol.zh_name}</span>` : ''}
+                                    </div>
+                                </td>
+                                <td>${boughtStr}</td>
+                                <td>${holdingsStr}</td>
+                                <td class="${getValueClass(symbol.realized_pl)}">${formatCurrency(symbol.realized_pl)}</td>
+                                <td class="${getValueClass(symbol.unrealized_pl)}">${formatCurrency(symbol.unrealized_pl)}</td>
+                                <td class="${getValueClass(symbol.total_pl)}">
+                                    ${formatCurrency(symbol.total_pl)}
+                                    <span class="pl-pct">(${symbol.total_pl_pct}%)</span>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            }
+        }
 
     } catch (error) {
         console.error('Failed to load historical P&L:', error);
-        tableBody.innerHTML = '<tr><td colspan="7" class="error-cell">Error loading P&L data: ' + error.message + '</td></tr>';
+
+        const soldTableBody = document.getElementById('pl-sold-table-body');
+        const holdingTableBody = document.getElementById('pl-holding-table-body');
+
+        if (soldTableBody) {
+            soldTableBody.innerHTML = '<tr><td colspan="5" class="error-cell">Error loading P&L data: ' + error.message + '</td></tr>';
+        }
+        if (holdingTableBody) {
+            holdingTableBody.innerHTML = '<tr><td colspan="6" class="error-cell">Error loading P&L data: ' + error.message + '</td></tr>';
+        }
     }
 }
 

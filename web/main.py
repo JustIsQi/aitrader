@@ -10,7 +10,7 @@ from loguru import logger
 import numpy as np
 
 from database.pg_manager import get_db
-from web.routers import signals, trading, analytics
+from web.routers import signals, trading, analytics, short_term_signals
 import pandas as pd
 
 
@@ -50,6 +50,7 @@ templates = Jinja2Templates(directory=str(templates_dir))
 app.include_router(signals.router, prefix="/api/signals", tags=["signals"])
 app.include_router(trading.router, prefix="/api/trading", tags=["trading"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
+app.include_router(short_term_signals.router, prefix="/api", tags=["short-term"])
 
 # 初始化数据库
 db = get_db()
@@ -121,6 +122,20 @@ async def dashboard(request: Request):
         if symbol and symbol in positions_dict:
             signal['position'] = positions_dict[symbol]
 
+    # Get short-term signals
+    from web.routers.short_term_signals import get_latest_daily_operation_list
+    short_term_result = await get_latest_daily_operation_list(limit=50)
+    short_term_signals = short_term_result if isinstance(short_term_result, list) else []
+
+    # Extract date from first signal
+    short_term_date = short_term_signals[0].get('date') if short_term_signals else None
+
+    # Enrich short-term signals with position data
+    for signal in short_term_signals:
+        symbol = signal.get('stock_code')
+        if symbol and symbol in positions_dict:
+            signal['position'] = positions_dict[symbol]
+
     # Get recent transactions
     transactions = db.get_transactions()[:20]
     positions, transactions = clean_dataframes(positions, transactions)
@@ -157,6 +172,8 @@ async def dashboard(request: Request):
             "ashare_weekly_signals": ashare_weekly.get("signals", []),
             "ashare_monthly_date": ashare_monthly.get("date"),
             "ashare_monthly_signals": ashare_monthly.get("signals", []),
+            "short_term_date": short_term_date,
+            "short_term_signals": short_term_signals,
             "positions": positions_list,
             "transactions": transactions_list
         }
