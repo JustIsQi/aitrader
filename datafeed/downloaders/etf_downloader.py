@@ -157,7 +157,10 @@ class EtfDownloader:
                 next_day = latest_date + timedelta(days=1)
                 start_date = next_day.strftime('%Y%m%d')
                 # 如果起始日期已经超过了今天，说明数据已是最新
-                if start_date > end_date:
+                # 使用datetime对象进行比较，而不是字符串比较
+                start_date_dt = datetime.strptime(start_date, '%Y%m%d')
+                end_date_dt = datetime.strptime(end_date, '%Y%m%d')
+                if start_date_dt > end_date_dt:
                     logger.info(f'{symbol} 数据已是最新，最新日期: {latest_date.strftime("%Y-%m-%d")}')
                     return True
                 logger.info(f'增量更新 {symbol}，从 {start_date} 开始')
@@ -229,7 +232,10 @@ class EtfDownloader:
                 next_day = latest_date + timedelta(days=1)
                 start_date = next_day.strftime('%Y%m%d')
                 # 如果起始日期已经超过了今天，说明数据已是最新
-                if start_date > end_date:
+                # 使用datetime对象进行比较，而不是字符串比较
+                start_date_dt = datetime.strptime(start_date, '%Y%m%d')
+                end_date_dt = datetime.strptime(end_date, '%Y%m%d')
+                if start_date_dt > end_date_dt:
                     logger.info(f'{symbol} 前复权数据已是最新，最新日期: {latest_date.strftime("%Y-%m-%d")}')
                     return True
                 logger.info(f'增量更新前复权数据 {symbol}，从 {start_date} 开始')

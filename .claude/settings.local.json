@@ -54,7 +54,11 @@
       "Bash(git remote set-url:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(claude:*)",
+      "Bash(env:*)",
+      "Bash(pg_lsclusters)",
+      "Bash(PGPASSWORD=Yy882388lsls psql -h localhost -U postgres -d aitrader -c \"\\\\dt\")"
     ]
   }
 }

@@ -371,19 +371,33 @@ class StrategyTemplate(bt.Strategy):
             data = trade.data
             dtopen = data.num2date(trade.dtopen)
             dtclose = data.num2date(trade.dtclose)
+            exit_price = self.getdatabyname(trade.getdataname()).close[0]
+            holding_days = (dtclose - dtopen).days
 
             # 收集交易信息
             trade_info = {
                 'symbol': trade.getdataname(),
-                #'size': trade.size,
+                'action': 'roundtrip',
+                'date': dtclose.strftime('%Y-%m-%d'),
+                'shares': abs(int(trade.size)) if trade.size else 0,
+                'price': exit_price,
+                'amount': abs(int(trade.size)) * exit_price if trade.size else 0,
+                'commission': trade.commission,
+                'pnl': trade.pnl,
+                'pnl_comm': trade.pnlcomm,
+                'buy_price': trade.price,
+                'sell_price': exit_price,
+                'buy_date': dtopen.strftime('%Y-%m-%d'),
+                'sell_date': dtclose.strftime('%Y-%m-%d'),
+                'holding_days': holding_days,
                 '买入价': trade.price,
-                '卖出价':self.getdatabyname(trade.getdataname()).close[0],
+                '卖出价': exit_price,
                 '盈亏': trade.pnl,
                 '盈亏（含佣金）': trade.pnlcomm,
                 '佣金': trade.commission,
                 '买入日期': dtopen,
                 '卖出日期': dtclose,
-                '持仓天数': (data.num2date(trade.dtclose) - data.num2date(trade.dtopen)).days,
+                '持仓天数': holding_days,
             }
             self.trade_list.append(trade_info)
 

@@ -483,13 +483,17 @@ def generate_daily_signals(date: str = None, config: ShortTermConfig = None,
 
     stock_selector = StockSelector(
         chase_config=ChaseStrategyConfig(
-            require_5d_high_close=config.chase.require_5d_high_close,
-            require_limit_up=config.chase.require_limit_up,
-            max_consecutive_boards=config.chase.max_consecutive_boards,
-            min_main_net_inflow=config.chase.min_main_net_inflow,
+            min_change_pct=config.chase.min_change_pct,
+            max_change_pct=config.chase.max_change_pct,
+            allow_failed_limit_up=config.chase.allow_failed_limit_up,
+            min_turnover_rate=config.chase.min_turnover_rate,
+            max_turnover_rate=config.chase.max_turnover_rate,
             min_volume_ratio=config.chase.min_volume_ratio,
-            max_stocks_per_sector=config.chase.max_stocks_per_sector,
-            min_change_pct=config.chase.min_change_pct
+            require_volume_step_up=config.chase.require_volume_step_up,
+            breakout_lookback_days=config.chase.breakout_lookback_days,
+            require_breakout_or_ma_diverge=config.chase.require_breakout_or_ma_diverge,
+            ma_diverge_max_spread=config.chase.ma_diverge_max_spread,
+            max_stocks_per_sector=config.chase.max_stocks_per_sector
         ),
         dip_config=DipStrategyConfig(
             max_close_ma_deviation=config.dip.max_close_ma_deviation,
@@ -505,7 +509,8 @@ def generate_daily_signals(date: str = None, config: ShortTermConfig = None,
             exclude_reduction=config.risk.exclude_reduction,
             exclude_suspend=config.risk.exclude_suspend,
             min_market_cap=config.risk.min_market_cap,
-            max_market_cap=config.risk.max_market_cap
+            max_market_cap=config.risk.max_market_cap,
+            exclude_non_main_board=config.risk.exclude_non_main_board
         )
     )
 
@@ -538,14 +543,20 @@ def generate_daily_signals(date: str = None, config: ShortTermConfig = None,
         ),
         stop_loss_config=StopLossConfig(
             stop_loss_pct_close=config.stop_loss.stop_loss_pct_close,
-            use_ma5_stop=config.stop_loss.use_ma5_stop
+            use_ma5_stop=config.stop_loss.use_ma5_stop,
+            use_atr_stop=config.stop_loss.use_atr_stop,
+            atr_multiplier=config.stop_loss.atr_multiplier,
+            atr_period=config.stop_loss.atr_period,
+            max_loss_pct=config.stop_loss.max_loss_pct
         ),
         take_profit_config=TakeProfitConfig(
             use_10d_high=config.take_profit.use_10d_high,
             take_profit_pct_close=config.take_profit.take_profit_pct_close,
             enable_gradient=config.take_profit.enable_gradient,
             gradient_10pct_sell_ratio=config.take_profit.gradient_10pct_sell_ratio,
-            gradient_20pct_sell_ratio=config.take_profit.gradient_20pct_sell_ratio
+            gradient_20pct_sell_ratio=config.take_profit.gradient_20pct_sell_ratio,
+            use_atr_tp=config.take_profit.use_atr_tp,
+            atr_tp_multiplier=config.take_profit.atr_tp_multiplier
         ),
         open_trigger_config=OpenTriggerConfig(
             min_high_open_pct=config.open_trigger.min_high_open_pct,

@@ -35,14 +35,26 @@ class SectorThresholds:
 
 @dataclass
 class ChaseThresholds:
-    """追涨策略阈值"""
-    require_5d_high_close: bool = True  # 收盘价创5日新高
-    require_limit_up: bool = True  # 要求涨停或1-2连板
-    max_consecutive_boards: int = 2  # 最多2连板
-    min_main_net_inflow: float = 50.0  # 主力净流入≥5000万(万元)
-    min_volume_ratio: float = 1.0  # 量比≥1.0（从1.2降低）
-    max_stocks_per_sector: int = 5  # 每板块最多选5只股票
-    min_change_pct: float = 8.0  # 最小涨幅要求（从涨停9.5%降到8%）
+    """追涨策略阈值 (动量突破5步Pipeline)"""
+    # 第1步：涨幅筛选
+    min_change_pct: float = 5.0         # 最小涨幅5%
+    max_change_pct: float = 7.0         # 最大涨幅7%
+    allow_failed_limit_up: bool = True  # 允许曾涨停未封住（盘中触板回落）
+    limit_up_threshold: float = 9.5    # 涨停判定阈值（主板9.5%，创业板/科创板可调至19.5%）
+
+    # 第2步：量能验证
+    min_turnover_rate: float = 5.0      # 最小换手率5%
+    max_turnover_rate: float = 10.0     # 最大换手率10%
+    min_volume_ratio: float = 1.0       # 量比>1
+    require_volume_step_up: bool = True # 要求成交量阶梯放大
+
+    # 第4步：形态关键
+    breakout_lookback_days: int = 20    # 突破回看天数
+    require_breakout_or_ma_diverge: bool = True  # 突破平台或均线发散
+    ma_diverge_max_spread: float = 8.0  # 均线发散最大价差%（超过视为高位）
+
+    # 通用
+    max_stocks_per_sector: int = 5      # 每板块最多选5只股票
 
 
 @dataclass
@@ -53,7 +65,7 @@ class DipThresholds:
     max_volume_ratio_5d: float = 0.9  # 成交额≤5日均值的0.9（从0.8放宽）
     require_sector_inflow: bool = True  # 要求板块资金净流入
     max_stocks_per_sector: int = 5  # 每板块最多选5只股票
-    enable_rsi_oversold: bool = False  # 启用RSI超卖条件
+    enable_rsi_oversold: bool = True  # 启用RSI超卖条件
     rsi_oversold_threshold: float = 40.0  # RSI超卖阈值
 
 
@@ -64,7 +76,7 @@ class RiskThresholds:
     exclude_reduction: bool = True  # 排除减持公告
     exclude_suspend: bool = True  # 排除停牌
     min_market_cap: float = 50.0  # 最小市值50亿(亿元)
-    max_market_cap: float = 500.0  # 最大市值500亿(亿元)
+    max_market_cap: float = 200.0  # 最大市值200亿(亿元)
     exclude_non_main_board: bool = True  # 排除非主板股票（科创板、创业板、北交所）
 
 
@@ -85,6 +97,10 @@ class StopLossThresholds:
     """止损阈值"""
     stop_loss_pct_close: float = -0.03  # 前一日收盘价-3%
     use_ma5_stop: bool = True  # 使用5日线止损
+    use_atr_stop: bool = True  # 使用ATR自适应止损
+    atr_multiplier: float = 2.0  # ATR止损倍数
+    atr_period: int = 14  # ATR计算周期
+    max_loss_pct: float = -0.10  # 绝对最大止损幅度（10%）
 
 
 @dataclass
@@ -92,16 +108,18 @@ class TakeProfitThresholds:
     """止盈阈值"""
     use_10d_high: bool = True  # 使用10日高点
     take_profit_pct_close: float = 0.10  # 收盘价+10%
-    enable_gradient: bool = False  # 启用梯度止盈
+    enable_gradient: bool = True  # 启用梯度止盈（默认开启）
     gradient_10pct_sell_ratio: float = 0.50  # 10%时卖出50%
     gradient_20pct_sell_ratio: float = 1.00  # 20%时全部卖出
+    use_atr_tp: bool = True  # 使用ATR止盈
+    atr_tp_multiplier: float = 3.0  # ATR止盈倍数
 
 
 @dataclass
 class OpenTriggerThresholds:
     """开盘触发阈值"""
-    min_high_open_pct: float = 3.0  # 最小高开幅度(%)
-    max_high_open_pct: float = 5.0  # 最大高开幅度(%)
+    min_high_open_pct: float = 2.0  # 最小高开幅度(%) - 高开2%
+    max_high_open_pct: float = 4.0  # 最大高开幅度(%) - 不超过4%
     min_seal_ratio: float = 0.01  # 封单量占流通盘比例≥1%
     min_auction_amount: float = 500.0  # 竞价成交额≥500万(万元)
 
@@ -132,25 +150,35 @@ class ShortTermConfig:
         """
         从JSON文件加载配置
 
+        兼容旧版JSON: 自动忽略已废弃的字段，缺失的新字段使用默认值
+
         Args:
             file_path: JSON配置文件路径
 
         Returns:
             ShortTermConfig实例
         """
+        import dataclasses
+
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
+        def _safe_init(dc_class, raw_dict):
+            """安全初始化dataclass，忽略未知字段"""
+            valid_fields = {f.name for f in dataclasses.fields(dc_class)}
+            filtered = {k: v for k, v in raw_dict.items() if k in valid_fields}
+            return dc_class(**filtered)
+
         return cls(
-            sector=SectorThresholds(**data.get('sector', {})),
-            chase=ChaseThresholds(**data.get('chase', {})),
-            dip=DipThresholds(**data.get('dip', {})),
-            risk=RiskThresholds(**data.get('risk', {})),
-            position=PositionThresholds(**data.get('position', {})),
-            stop_loss=StopLossThresholds(**data.get('stop_loss', {})),
-            take_profit=TakeProfitThresholds(**data.get('take_profit', {})),
-            open_trigger=OpenTriggerThresholds(**data.get('open_trigger', {})),
-            backtest=BacktestThresholds(**data.get('backtest', {}))
+            sector=_safe_init(SectorThresholds, data.get('sector', {})),
+            chase=_safe_init(ChaseThresholds, data.get('chase', {})),
+            dip=_safe_init(DipThresholds, data.get('dip', {})),
+            risk=_safe_init(RiskThresholds, data.get('risk', {})),
+            position=_safe_init(PositionThresholds, data.get('position', {})),
+            stop_loss=_safe_init(StopLossThresholds, data.get('stop_loss', {})),
+            take_profit=_safe_init(TakeProfitThresholds, data.get('take_profit', {})),
+            open_trigger=_safe_init(OpenTriggerThresholds, data.get('open_trigger', {})),
+            backtest=_safe_init(BacktestThresholds, data.get('backtest', {}))
         )
 
     def to_json(self, file_path: str):
@@ -185,6 +213,10 @@ class ShortTermConfig:
             logger.error("板块1-2名单股仓位不能超过单股最大仓位")
             return False
 
+        if self.position.sector_rank_3_5_position > self.position.max_stock_position:
+            logger.error("板块3-5名单股仓位不能超过单股最大仓位")
+            return False
+
         # 验证止损止盈
         if self.stop_loss.stop_loss_pct_close >= 0:
             logger.error("止损比例必须为负数")
@@ -195,8 +227,21 @@ class ShortTermConfig:
             return False
 
         # 验证追涨策略
-        if self.chase.max_consecutive_boards < 1 or self.chase.max_consecutive_boards > 2:
-            logger.error("连板数必须在1-2之间")
+        if self.chase.min_change_pct >= self.chase.max_change_pct:
+            logger.error("追涨策略: 最小涨幅必须小于最大涨幅")
+            return False
+
+        if self.chase.min_turnover_rate >= self.chase.max_turnover_rate:
+            logger.error("追涨策略: 最小换手率必须小于最大换手率")
+            return False
+
+        if self.chase.min_volume_ratio <= 0:
+            logger.error("追涨策略: 量比阈值必须为正数")
+            return False
+
+        # 验证开盘触发
+        if self.open_trigger.min_high_open_pct >= self.open_trigger.max_high_open_pct:
+            logger.error("开盘触发: 最小高开幅度必须小于最大高开幅度")
             return False
 
         logger.info("配置验证通过")

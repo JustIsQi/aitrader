@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime
 from loguru import logger
 
+from core.backtest_result import BacktestResult
+
 
 def extract_backtest_metrics(result, task):
     """
@@ -18,27 +20,30 @@ def extract_backtest_metrics(result, task):
         dict: 包含所有回测指标的字典
     """
     try:
-        # 获取性能统计
-        perf_stats = result.perf.stats
+        normalized = _ensure_backtest_result(result)
 
-        # perf.stats 是一个 DataFrame，索引是统计指标名称，列是'策略'和'benchmark'
-        def get_stat(stat_name, default=0.0):
-            """从perf.stats中获取统计指标"""
-            try:
-                # 通过索引和列名访问
-                val = perf_stats.loc[stat_name, '策略']
-                # 处理NaN值
-                if pd.isna(val):
-                    return default
-                return float(val)
-            except (KeyError, TypeError):
+        def get_stat(stat_name, default=0.0, column='策略'):
+            value = normalized.statistics.get(stat_name)
+            if value is None:
                 return default
+            if isinstance(value, dict):
+                if column in value and not pd.isna(value[column]):
+                    return float(value[column])
+                if 'strategy' in value and not pd.isna(value['strategy']):
+                    return float(value['strategy'])
+                for item in value.values():
+                    if not pd.isna(item):
+                        return float(item)
+                return default
+            if pd.isna(value):
+                return default
+            return float(value)
 
         # 提取基础指标
         metrics = {
             'start_date': task.start_date,
             'end_date': task.end_date,
-            'initial_capital': task.initial_cash if hasattr(task, 'initial_cash') else 1000000,
+            'initial_capital': getattr(task, 'initial_capital', 1000000),
 
             # 收益指标
             'total_return': get_stat('total_return', 0.0) * 100,  # 转为百分比
@@ -49,19 +54,20 @@ def extract_backtest_metrics(result, task):
             'max_drawdown': get_stat('max_drawdown', 0.0) * 100,  # 转为百分比
 
             # 交易统计
-            'total_trades': len(result.hist_trades) if hasattr(result, 'hist_trades') else 0,
-            'win_rate': _calculate_win_rate(result),
-            'profit_factor': _calculate_profit_factor(result),
+            'total_trades': len(normalized.trades),
+            'win_rate': _calculate_win_rate(normalized),
+            'profit_factor': _calculate_profit_factor(normalized),
 
             # 基准比较
-            'benchmark_return': get_stat('total_return', 0.0) * 100,  # 暂时使用策略收益
+            'benchmark_return': get_stat('total_return', 0.0, column='benchmark') * 100,
+            'excess_return': (get_stat('total_return', 0.0) - get_stat('total_return', 0.0, column='benchmark')) * 100,
         }
 
         # 提取权益曲线
-        metrics['equity_curve'] = _extract_equity_curve(result)
+        metrics['equity_curve'] = _extract_equity_curve(normalized)
 
         # 提取交易列表
-        metrics['trade_list'] = _extract_trade_list(result)
+        metrics['trade_list'] = _extract_trade_list(normalized)
 
         return metrics
 
@@ -75,31 +81,52 @@ def extract_backtest_metrics(result, task):
             'annual_return': 0.0,
             'sharpe_ratio': 0.0,
             'max_drawdown': 0.0,
+            'benchmark_return': 0.0,
+            'excess_return': 0.0,
+            'win_rate': 0.0,
+            'profit_factor': 0.0,
+            'total_trades': 0,
             'equity_curve': [],
             'trade_list': [],
         }
 
 
-def _calculate_win_rate(result):
+def _ensure_backtest_result(result) -> BacktestResult:
+    if isinstance(result, BacktestResult):
+        return result
+
+    if hasattr(result, 'backtest_result') and isinstance(result.backtest_result, BacktestResult):
+        return result.backtest_result
+
+    if hasattr(result, 'perf') or hasattr(result, 'hist_trades'):
+        return BacktestResult.from_backtrader_engine(result)
+
+    if isinstance(result, dict):
+        return BacktestResult.from_mapping(result)
+
+    raise TypeError(f"Unsupported backtest result type: {type(result)!r}")
+
+
+def _calculate_win_rate(result: BacktestResult):
     """计算胜率"""
     try:
-        if not hasattr(result, 'hist_trades') or len(result.hist_trades) == 0:
+        if not result.trades:
             return 0.0
 
-        winning_trades = [t for t in result.hist_trades if t.get('pnl', 0) > 0]
-        return len(winning_trades) / len(result.hist_trades) * 100
+        winning_trades = [t for t in result.trades if (t.pnl_comm or t.pnl) > 0]
+        return len(winning_trades) / len(result.trades) * 100
     except:
         return 0.0
 
 
-def _calculate_profit_factor(result):
+def _calculate_profit_factor(result: BacktestResult):
     """计算盈亏比"""
     try:
-        if not hasattr(result, 'hist_trades') or len(result.hist_trades) == 0:
+        if not result.trades:
             return 0.0
 
-        total_profit = sum([t.get('pnl', 0) for t in result.hist_trades if t.get('pnl', 0) > 0])
-        total_loss = abs(sum([t.get('pnl', 0) for t in result.hist_trades if t.get('pnl', 0) < 0]))
+        total_profit = sum([(t.pnl_comm or t.pnl) for t in result.trades if (t.pnl_comm or t.pnl) > 0])
+        total_loss = abs(sum([(t.pnl_comm or t.pnl) for t in result.trades if (t.pnl_comm or t.pnl) < 0]))
 
         if total_loss == 0:
             return 0.0
@@ -109,45 +136,19 @@ def _calculate_profit_factor(result):
         return 0.0
 
 
-def _extract_equity_curve(result):
+def _extract_equity_curve(result: BacktestResult):
     """提取权益曲线数据"""
     try:
-        if hasattr(result, 'perf') and hasattr(result.perf, 'prices'):
-            # perf.prices 是一个 DataFrame，包含 '策略' 和 'benchmark' 列
-            equity_df = result.perf.prices[['策略']].copy()  # 只取策略列
-
-            # 重置索引，将日期变成列
-            equity_df = equity_df.reset_index()
-            equity_df.columns = ['date', 'value']
-
-            # 转换日期为字符串格式
-            equity_df['date'] = pd.to_datetime(equity_df['date']).dt.strftime('%Y-%m-%d')
-
-            return equity_df.to_dict('records')
-        return []
+        return result.equity_curve
     except Exception as e:
         logger.error(f"Failed to extract equity curve: {e}")
         return []
 
 
-def _extract_trade_list(result):
+def _extract_trade_list(result: BacktestResult):
     """提取交易列表"""
     try:
-        if hasattr(result, 'hist_trades'):
-            # 转换交易记录为字典列表
-            trades = []
-            for trade in result.hist_trades:
-                trade_dict = {
-                    'date': str(trade.get('date', '')),
-                    'symbol': trade.get('symbol', ''),
-                    'type': trade.get('type', ''),  # 'buy' or 'sell'
-                    'price': float(trade.get('price', 0)),
-                    'quantity': int(trade.get('quantity', 0)),
-                    'pnl': float(trade.get('pnl', 0)),
-                }
-                trades.append(trade_dict)
-            return trades
-        return []
+        return [trade.to_dict() for trade in result.trades]
     except Exception as e:
         logger.error(f"Failed to extract trade list: {e}")
         return []

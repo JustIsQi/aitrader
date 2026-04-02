@@ -10,13 +10,18 @@
     "top_sectors": 5
   },
   "chase": {
-    "require_5d_high_close": true,
-    "require_limit_up": true,
-    "max_consecutive_boards": 2,
-    "min_main_net_inflow": 50.0,
+    "min_change_pct": 5.0,
+    "max_change_pct": 7.0,
+    "allow_failed_limit_up": true,
+    "limit_up_threshold": 9.5,
+    "min_turnover_rate": 5.0,
+    "max_turnover_rate": 10.0,
     "min_volume_ratio": 1.0,
-    "max_stocks_per_sector": 5,
-    "min_change_pct": 8.0
+    "require_volume_step_up": true,
+    "breakout_lookback_days": 20,
+    "require_breakout_or_ma_diverge": true,
+    "ma_diverge_max_spread": 8.0,
+    "max_stocks_per_sector": 5
   },
   "dip": {
     "max_close_ma_deviation": 5.0,
@@ -32,7 +37,7 @@
     "exclude_reduction": true,
     "exclude_suspend": true,
     "min_market_cap": 50.0,
-    "max_market_cap": 500.0,
+    "max_market_cap": 200.0,
     "exclude_non_main_board": true
   },
   "position": {
@@ -44,18 +49,24 @@
   },
   "stop_loss": {
     "stop_loss_pct_close": -0.03,
-    "use_ma5_stop": true
+    "use_ma5_stop": true,
+    "use_atr_stop": true,
+    "atr_multiplier": 2.0,
+    "atr_period": 14,
+    "max_loss_pct": -0.10
   },
   "take_profit": {
     "use_10d_high": true,
     "take_profit_pct_close": 0.10,
-    "enable_gradient": false,
+    "enable_gradient": true,
     "gradient_10pct_sell_ratio": 0.50,
-    "gradient_20pct_sell_ratio": 1.00
+    "gradient_20pct_sell_ratio": 1.00,
+    "use_atr_tp": true,
+    "atr_tp_multiplier": 3.0
   },
   "open_trigger": {
-    "min_high_open_pct": 3.0,
-    "max_high_open_pct": 5.0,
+    "min_high_open_pct": 2.0,
+    "max_high_open_pct": 4.0,
     "min_seal_ratio": 0.01,
     "min_auction_amount": 500.0
   },

@@ -29,7 +29,48 @@ class PortfolioMetrics:
         """
         self.daily_states = daily_states
         self.risk_free_rate = risk_free_rate
+        self.daily_df = self._to_daily_df(daily_states)
         self.returns = self._extract_returns()
+
+    def _to_daily_df(self, daily_states) -> pd.DataFrame:
+        """将输入规范化为逐日结果 DataFrame。"""
+        if isinstance(daily_states, pd.DataFrame):
+            df = daily_states.copy()
+        else:
+            df = pd.DataFrame(daily_states or [])
+
+        if df.empty:
+            return df
+
+        if 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date').reset_index(drop=True)
+
+        if 'equity' not in df.columns:
+            if 'portfolio_value' in df.columns:
+                df['equity'] = df['portfolio_value']
+            elif 'value' in df.columns:
+                df['equity'] = df['value']
+
+        if 'portfolio_value' not in df.columns and 'equity' in df.columns:
+            df['portfolio_value'] = df['equity']
+
+        if 'daily_return' not in df.columns and 'equity' in df.columns:
+            df['daily_return'] = df['equity'].pct_change().fillna(0.0)
+
+        if 'cumulative_return' not in df.columns and 'equity' in df.columns and len(df) > 0:
+            initial = float(df['equity'].iloc[0]) if float(df['equity'].iloc[0]) != 0 else 1.0
+            df['cumulative_return'] = df['equity'] / initial - 1.0
+
+        if 'running_max_drawdown' not in df.columns and 'equity' in df.columns:
+            running_max = df['equity'].cummax().replace(0, np.nan)
+            df['running_max_drawdown'] = (df['equity'] - running_max) / running_max
+            df['running_max_drawdown'] = df['running_max_drawdown'].fillna(0.0)
+
+        if 'turnover_rate' not in df.columns:
+            df['turnover_rate'] = 0.0
+
+        return df
 
     def _extract_returns(self) -> np.ndarray:
         """
@@ -38,14 +79,9 @@ class PortfolioMetrics:
         Returns:
             每日收益率数组
         """
-        if not self.daily_states:
+        if self.daily_df.empty:
             return np.array([])
-
-        returns = []
-        for state in self.daily_states:
-            returns.append(state.get('daily_return', 0.0))
-
-        return np.array(returns)
+        return self.daily_df['daily_return'].fillna(0.0).to_numpy(dtype=float)
 
     def calculate_sortino_ratio(self) -> float:
         """
@@ -81,14 +117,14 @@ class PortfolioMetrics:
         Returns:
             Calmar比率
         """
-        if not self.daily_states:
+        if self.daily_df.empty:
             return 0.0
 
         # 年化收益
         annual_return = self._calculate_annual_return()
 
         # 最大回撤
-        max_dd = min(s['running_max_drawdown'] for s in self.daily_states)
+        max_dd = float(self.daily_df['running_max_drawdown'].min())
 
         if max_dd == 0:
             return 0.0
@@ -148,26 +184,13 @@ class PortfolioMetrics:
         Returns:
             月度收益字典 {'2024-01': 0.05, '2024-02': -0.03, ...}
         """
-        if not self.daily_states:
+        if self.daily_df.empty:
             return {}
-
-        monthly_returns = {}
-
-        for state in self.daily_states:
-            date = pd.to_datetime(state['date'])
-            month_key = f"{date.year}-{date.month:02d}"
-
-            if month_key not in monthly_returns:
-                monthly_returns[month_key] = []
-
-            monthly_returns[month_key].append(state['daily_return'])
-
-        # 计算每月累计收益
+        df = self.daily_df[['date', 'daily_return']].copy()
+        df['month'] = df['date'].dt.strftime('%Y-%m')
         monthly_cumulative = {}
-        for month, returns in monthly_returns.items():
-            # (1 + r1) * (1 + r2) * ... * (1 + rn) - 1
-            monthly_cumulative[month] = (np.array(returns) + 1).prod() - 1
-
+        for month, group in df.groupby('month'):
+            monthly_cumulative[month] = (group['daily_return'].to_numpy(dtype=float) + 1).prod() - 1
         return monthly_cumulative
 
     def calculate_win_rate(self) -> Dict[str, float]:
@@ -241,16 +264,10 @@ class PortfolioMetrics:
         Returns:
             年化收益率
         """
-        if not self.daily_states:
+        if self.daily_df.empty:
             return 0.0
-
-        first_state = self.daily_states[0]
-        last_state = self.daily_states[-1]
-
-        total_return = last_state['cumulative_return']
-
-        # 计算天数
-        days = len(self.daily_states)
+        total_return = float(self.daily_df['cumulative_return'].iloc[-1])
+        days = len(self.daily_df)
 
         # 年化收益: (1 + total_return) ^ (252 / days) - 1
         annual_return = (1 + total_return) ** (252 / days) - 1 if days > 0 else 0
@@ -264,7 +281,7 @@ class PortfolioMetrics:
         Returns:
             所有指标的字典
         """
-        if not self.daily_states:
+        if self.daily_df.empty:
             return {}
 
         annual_return = self._calculate_annual_return()
@@ -276,7 +293,7 @@ class PortfolioMetrics:
         sharpe_ratio = (annual_return - self.risk_free_rate) / volatility if volatility > 0 else 0
 
         # 最大回撤
-        max_drawdown = min(s['running_max_drawdown'] for s in self.daily_states)
+        max_drawdown = float(self.daily_df['running_max_drawdown'].min())
 
         # 高级指标
         sortino_ratio = self.calculate_sortino_ratio()
@@ -291,7 +308,7 @@ class PortfolioMetrics:
         monthly_returns = self.calculate_monthly_returns()
 
         # 平均换手率
-        avg_turnover_rate = np.mean([s['turnover_rate'] for s in self.daily_states])
+        avg_turnover_rate = float(self.daily_df['turnover_rate'].fillna(0.0).mean())
 
         return {
             'annual_return': annual_return,
@@ -314,15 +331,20 @@ class PortfolioMetrics:
         Returns:
             净值曲线列表 [{'date': '2024-01-01', 'value': 1000000}, ...]
         """
-        if not self.daily_states:
+        if self.daily_df.empty:
             return []
 
         return [
             {
-                'date': state['date'],
-                'value': state['portfolio_value']
+                'date': row['date'].strftime('%Y-%m-%d') if hasattr(row['date'], 'strftime') else str(row['date']),
+                'value': float(row['equity']),
+                'equity': float(row['equity']),
+                'cash': float(row['cash']) if 'cash' in row else None,
+                'holdings_value': float(row['holdings_value']) if 'holdings_value' in row else None,
+                'net_pnl': float(row['net_pnl']) if 'net_pnl' in row else None,
+                'turnover': float(row['turnover']) if 'turnover' in row else None,
             }
-            for state in self.daily_states
+            for _, row in self.daily_df.iterrows()
         ]
 
     def get_drawdown_series(self) -> List[Dict]:
@@ -332,15 +354,15 @@ class PortfolioMetrics:
         Returns:
             回撤序列列表 [{'date': '2024-01-01', 'drawdown': -0.05}, ...]
         """
-        if not self.daily_states:
+        if self.daily_df.empty:
             return []
 
         return [
             {
-                'date': state['date'],
-                'drawdown': state['running_max_drawdown']
+                'date': row['date'].strftime('%Y-%m-%d') if hasattr(row['date'], 'strftime') else str(row['date']),
+                'drawdown': float(row['running_max_drawdown'])
             }
-            for state in self.daily_states
+            for _, row in self.daily_df.iterrows()
         ]
 
     def get_returns_distribution(self) -> Dict:

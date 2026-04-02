@@ -15,6 +15,8 @@ from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 from loguru import logger
 
+from core.portfolio_daily_result import PortfolioDailyLedger
+
 
 class PortfolioStateTracker:
     """组合状态追踪器"""
@@ -31,6 +33,7 @@ class PortfolioStateTracker:
         self.holdings = {}  # 当前持仓 {symbol: {'shares': int, 'avg_cost': float}}
         self.daily_states = []  # 每日状态记录
         self.transaction_history = []  # 交易历史 [{'date', 'symbol', 'action', 'shares', 'price', 'amount'}]
+        self.daily_ledger = PortfolioDailyLedger()
 
     def get_previous_value(self) -> float:
         """获取前一日的组合市值"""
@@ -53,6 +56,7 @@ class PortfolioStateTracker:
         # 1. 计算持仓市值
         portfolio_value = self.cash
         holdings_detail = []
+        holdings_snapshot = {}
 
         for symbol, position in self.holdings.items():
             shares = position['shares']
@@ -62,19 +66,47 @@ class PortfolioStateTracker:
                 market_value = shares * price
                 portfolio_value += market_value
 
-                holdings_detail.append({
+                snapshot = {
                     'symbol': symbol,
                     'shares': shares,
                     'avg_cost': position['avg_cost'],
                     'price': price,
                     'market_value': market_value,
-                    'weight': market_value / portfolio_value if portfolio_value > 0 else 0
-                })
+                }
+                holdings_snapshot[symbol] = {
+                    'shares': shares,
+                    'avg_cost': position['avg_cost'],
+                    'price': price,
+                    'market_value': market_value,
+                }
+                holdings_detail.append(snapshot)
+
+        for detail in holdings_detail:
+            detail['weight'] = detail['market_value'] / portfolio_value if portfolio_value > 0 else 0
 
         # 2. 计算收益率
         previous_value = self.get_previous_value()
         daily_return = (portfolio_value / previous_value - 1) if previous_value > 0 else 0
         cumulative_return = (portfolio_value / self.initial_capital - 1)
+
+        # 2.1 计算每日盈亏分解
+        commission = sum(float(t.get('commission', 0.0)) for t in trades)
+        slippage = sum(float(t.get('slippage', 0.0)) for t in trades)
+        turnover = sum(float(t.get('amount', 0.0)) for t in trades)
+        trading_pnl = sum(float(t.get('realized_pnl', 0.0)) for t in trades)
+        net_pnl = portfolio_value - previous_value
+        holding_pnl = net_pnl - trading_pnl + commission + slippage
+
+        daily_result = self.daily_ledger.add_or_update(
+            date,
+            holding_pnl=holding_pnl,
+            trading_pnl=trading_pnl,
+            commission=commission,
+            slippage=slippage,
+            turnover=turnover,
+            cash=self.cash,
+            holdings=holdings_snapshot,
+        )
 
         # 3. 计算回撤
         max_drawdown = self._calculate_max_drawdown(portfolio_value)
@@ -86,6 +118,15 @@ class PortfolioStateTracker:
         state = {
             'date': date,
             'portfolio_value': portfolio_value,
+            'equity': daily_result.equity,
+            'gross_pnl': daily_result.gross_pnl,
+            'net_pnl': daily_result.net_pnl,
+            'holding_pnl': daily_result.holding_pnl,
+            'trading_pnl': daily_result.trading_pnl,
+            'commission': daily_result.commission,
+            'slippage': daily_result.slippage,
+            'turnover': daily_result.turnover,
+            'holdings_value': daily_result.holdings_value,
             'daily_return': daily_return,
             'cumulative_return': cumulative_return,
             'cash': self.cash,
@@ -191,7 +232,7 @@ class PortfolioStateTracker:
         turnover = (buy_amount + sell_amount) / (2 * avg_portfolio_value)
         return turnover
 
-    def add_transaction(self, date: str, symbol: str, action: str, shares: int, price: float, amount: float):
+    def add_transaction(self, date: str, symbol: str, action: str, shares: int, price: float, amount: float, **extra):
         """
         添加交易记录
 
@@ -203,14 +244,16 @@ class PortfolioStateTracker:
             price: 交易价格
             amount: 交易金额
         """
-        self.transaction_history.append({
+        record = {
             'date': datetime.strptime(date, '%Y-%m-%d').date() if isinstance(date, str) else date,
             'symbol': symbol,
             'action': action,
             'shares': shares,
             'price': price,
             'amount': amount
-        })
+        }
+        record.update(extra)
+        self.transaction_history.append(record)
 
     def update_position(self, symbol: str, shares: int, avg_cost: float):
         """
@@ -257,6 +300,14 @@ class PortfolioStateTracker:
             组合总市值
         """
         return self.cash + self.get_current_holdings_value(prices)
+
+    def get_daily_df(self):
+        """导出组合逐日结果DataFrame。"""
+        return self.daily_ledger.to_daily_df(include_holdings=True)
+
+    def get_equity_curve(self):
+        """导出组合权益曲线。"""
+        return self.daily_ledger.to_equity_curve()
 
     def get_holdings_summary(self) -> List[Dict]:
         """

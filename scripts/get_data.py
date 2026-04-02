@@ -19,10 +19,7 @@ import threading
 # 代理池配置 - 支持多个代理自动切换
 # 注意：如果代理不可用，会自动跳过代理直连
 PROXY_POOL = [
-    {"http": "http://g896.kdltps.com:15818", "https": "http://g896.kdltps.com:15818"},
-    # 添加更多代理以实现轮换
-    # {"http": "http://proxy2.example.com:8080", "https": "http://proxy2.example.com:8080"},
-    # {"http": "http://proxy3.example.com:8080", "https": "http://proxy3.example.com:8080"},
+    {"http": "http://g896.kdltps.com:15818", "https": "http://g896.kdltps.com:15818"}
 ]
 
 # 是否启用代理（设为False可以禁用代理）

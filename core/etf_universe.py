@@ -63,14 +63,14 @@ class EtfUniverse:
                 # 统计每个ETF的总交易天数(使用所有历史数据)
                 from sqlalchemy import func
 
-                # 统计每个ETF的总数据天数
+                # 统计每个ETF的总数据天数（使用distinct去重日期）
                 subquery = session.query(
                     EtfHistory.symbol,
-                    func.count(EtfHistory.date).label('total_days')
+                    func.count(func.distinct(EtfHistory.date)).label('total_days')
                 ).group_by(
                     EtfHistory.symbol
                 ).having(
-                    func.count(EtfHistory.date) >= min_data_days  # 至少有min_data_days天数据
+                    func.count(func.distinct(EtfHistory.date)) >= min_data_days  # 至少有min_data_days天数据
                 )
 
                 # 获取符合条件的ETF代码
@@ -134,6 +134,12 @@ class EtfUniverse:
 
                 # 计算平均成交额(万元)
                 recent_amount = df['amount'].tail(days)
+
+                # 检查数据是否为空或全为NaN
+                if recent_amount.empty or recent_amount.isna().all():
+                    logger.debug(f'{symbol}: 成交额数据为空或全NaN，跳过')
+                    continue
+
                 avg_amount = recent_amount.mean()
 
                 # 筛选
@@ -197,6 +203,12 @@ class EtfUniverse:
 
                 # 计算平均换手率
                 recent_turnover = df['turnover_rate'].tail(days)
+
+                # 检查数据是否为空或全为NaN
+                if recent_turnover.empty or recent_turnover.isna().all():
+                    logger.debug(f'{symbol}: 换手率数据为空或全NaN，跳过')
+                    continue
+
                 avg_turnover = recent_turnover.mean()
 
                 # 筛选

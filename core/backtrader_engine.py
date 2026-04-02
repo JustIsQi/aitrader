@@ -9,6 +9,7 @@ from loguru import logger
 
 from core.backtrader_strategy import StrategyTemplate
 from core.backtrader_algos import *
+from core.backtest_result import BacktestResult
 
 
 
@@ -260,36 +261,55 @@ class Engine:
         self.cerebro = cerebro
 
     def _prepare_run(self, symbols, start_date, end_date, commissions=0.0):
-
-        dfs = DbDataLoader(auto_download=False).read_dfs(symbols)
+        dfs = DbDataLoader(auto_download=False).read_dfs(
+            symbols=symbols,
+            start_date=start_date,
+            end_date=end_date,
+        )
         self.cerebro.broker.setcommission(commissions)
+        if not dfs:
+            logger.warning("未加载到任何回测数据")
+            return start_date, end_date
 
-        start_date = '20100101'
+        requested_start = pd.to_datetime(start_date)
+        requested_end = pd.to_datetime(end_date)
+        cleaned_dfs = {}
+        effective_start = requested_start
+
         for s, data in dfs.items():
+            if data.empty or 'date' not in data.columns:
+                continue
+            data = data.copy()
             data['openinterest'] = 0
+            data['date'] = pd.to_datetime(data['date'])
             data.set_index('date', inplace=True)
-            if  data.index[0] > start_date:
-                start_date = data.index[0]
-
-            data.index = pd.to_datetime(data.index)
             data.sort_index(ascending=True, inplace=True)
+            if not data.empty:
+                effective_start = max(effective_start, data.index.min())
+            cleaned_dfs[s] = data
 
-            data = data[
-                (data.index >= pd.to_datetime(start_date)) &
-                (data.index <= pd.to_datetime(end_date))
-                ]
+        for s, data in cleaned_dfs.items():
+            clipped = data[
+                (data.index >= effective_start) &
+                (data.index <= requested_end)
+            ]
+            if clipped.empty:
+                continue
 
-            data = bt.feeds.PandasData(
-                dataname=data,
-                fromdate=pd.to_datetime(start_date),
-                todate=pd.to_datetime(end_date),
+            bt_data = bt.feeds.PandasData(
+                dataname=clipped,
+                fromdate=effective_start,
+                todate=requested_end,
                 timeframe=bt.TimeFrame.Days,
                 name=s,
             )
-            self.cerebro.adddata(data)
+            self.cerebro.adddata(bt_data)
+
+        return effective_start.strftime('%Y%m%d'), requested_end.strftime('%Y%m%d')
 
 
     def run_strategy(self, strategy, symbols,start_date='20101001', end_date=datetime.now().strftime('%Y%m%d'),*args,**kwargs):
+        self._init_engine()
         self._prepare_run(symbols,start_date, end_date)
         self.cerebro.addstrategy(strategy,*args,**kwargs)
         self.results = self.cerebro.run()
@@ -299,9 +319,15 @@ class Engine:
 
         #equity = (1 + returns).cumprod()
         self.perf = (1 + returns).cumprod().calc_stats()
-        # equity.plot()
-        # import matplotlib.pyplot as plt
-        # plt.show()
+        self.hist_trades = [trade.to_dict() for trade in BacktestResult.normalize_trade_records(self.results[0].trade_list)]
+        self.backtest_result = BacktestResult.from_common_inputs(
+            statistics=self.perf.stats,
+            equity_curve=self.perf.prices[['策略']] if hasattr(self.perf, 'prices') else (1 + returns).cumprod(),
+            trades=self.hist_trades,
+            positions=positions,
+            raw={'start_date': start_date, 'end_date': end_date},
+        )
+        return self.backtest_result
 
 
     def run(self, task: Task, commissions=0.0):
@@ -317,12 +343,16 @@ class Engine:
         """
         import time
         run_start = time.time()
-        task.end_date = datetime.now().strftime('%Y%m%d')
+        self._init_engine()
+        effective_end_date = task.end_date or datetime.now().strftime('%Y%m%d')
+        effective_start_date = task.start_date
 
         logger.debug(f"  [{task.name}] Engine.run(): 初始化回测引擎...")
 
         # 准备数据(无论A股还是ETF模式都需要)
-        self._prepare_run(task.symbols, task.start_date, task.end_date, 0.0)
+        effective_start_date, effective_end_date = self._prepare_run(
+            task.symbols, effective_start_date, effective_end_date, 0.0
+        )
 
         # A股模式: 覆盖手续费方案
         if task.ashare_mode:
@@ -352,80 +382,19 @@ class Engine:
         logger.info(f"  [{task.name}] Backtrader回测完成, 耗时 {backtest_elapsed:.2f}秒")
 
         timereturn = self.results[0].analyzers.timereturn.get_analysis()
-        returns_series = pd.Series(timereturn)
-        #print('TimeReturn 分析器结果:', returns_series)
+        returns_series = pd.Series(timereturn, dtype=float)
 
         portfolio_stats = self.results[0].analyzers.getbyname('_PyFolio')
         returns, self.positions, self.transactions, _ = portfolio_stats.get_pf_items()
         #print('returns', returns)
 
-        all_datas = self.cerebro.datas
-
-        # 获取总资产（现金 + 所有持仓市值）
-        total_value = self.cerebro.broker.getvalue()
-
-        # print("所有Datas的最新仓位:")
-        # print(f"总资产: {total_value:.2f} (现金 + 持仓市值)")
-
-        # 计算所有持仓的总市值
-        # total_position_value = 0
-        # positions_info = []
-        #
-        # for data in all_datas:
-        #     position = self.cerebro.broker.getposition(data)
-        #     if position.size != 0:  # 只显示有持仓的
-        #         # 计算当前持仓市值
-        #         current_price = data.close[0]
-        #         position_value = position.size * current_price
-        #         total_position_value += position_value
-        #
-        #         positions_info.append({
-        #             'data': data,
-        #             'position': position,
-        #             'position_value': position_value
-        #         })
-        #
-        # # 计算现金
-        # cash = self.cerebro.broker.getcash()
-        # print(f"现金: {cash:.2f}")
-        # print(f"持仓总市值: {total_position_value:.2f}")
-        # print(f"总资产验证: {cash + total_position_value:.2f} (应与上面总资产一致)")
-
-        # # print("\n各持仓仓位比例:")
-        # self.weights = {}
-        # for info in positions_info:
-        #     data = info['data']
-        #     position = info['position']
-        #     position_value = info['position_value']
-        #
-        #     # 计算仓位比例
-        #     position_ratio = position_value / total_value
-        #     self.weights[data._name] = round(position_ratio,3)
-
-
-            # print(f"  {data._name}:")
-            # print(f"    持仓数量: {position.size}")
-            # print(f"    平均成本: {position.price:.2f}")
-            # print(f"    当前价格: {data.close[0]:.2f}")
-            # print(f"    持仓市值: {position_value:.2f}")
-            # print(f"    仓位比例: {position_ratio:.4f} ({position_ratio * 100:.2f}%)")
-
-        #print(self.weights)
-        #print(positions, transactions)
         returns.index = returns.index.tz_convert(None)
-        # import empyrical
-        # ret = empyrical.annual_return(returns)
-        # print('年化收益',ret)
-
         returns.name = '策略'
 
-
         equity = pd.DataFrame((1 + returns).cumprod())
-        print('equity起始日期', equity.index[0])
         import ffn
-        #print('长度：',len(equity))
-        #equity.calc_stats().display()
         datas = [equity]
+        benchmark_curve = pd.DataFrame()
         for bench in [task.benchmark]:
             dfs = DbDataLoader().read_dfs([bench],start_date=task.start_date, end_date=task.end_date)
             df = dfs.get(bench, pd.DataFrame())
@@ -437,26 +406,38 @@ class Engine:
             data = df.pivot_table(values='close', index=df.index, columns='symbol')
             data.columns = ['benchmark']
             datas.append(data)
+            benchmark_curve = data.copy()
 
 
         all_returns = pd.concat(datas, axis=1).pct_change()
         all_returns.dropna(inplace=True)
 
-        #print('起始日期',all_returns.index[0])
-
         self.perf = (1 + all_returns).cumprod().calc_stats()
-        self.hist_trades =self.results[0].trade_list
-        self.hist_trades.reverse()
+        normalized_trades = BacktestResult.normalize_trade_records(self.results[0].trade_list)
+        self.hist_trades = [trade.to_dict() for trade in reversed(normalized_trades)]
         self.signals = self.results[0].signals
         self.weights = self.results[0].weights
-        print(self.weights)
-
-        #print(self.hist_trades)
-
-
-        #print(pd.DataFrame(self.results[0].trade_list))
-        self.stats()
-        return self.results
+        self.backtest_result = BacktestResult.from_common_inputs(
+            statistics=self.perf.stats,
+            equity_curve=self.perf.prices[['策略']] if hasattr(self.perf, 'prices') else equity,
+            benchmark_curve=self.perf.prices[['benchmark']] if hasattr(self.perf, 'prices') and 'benchmark' in getattr(self.perf, 'prices').columns else benchmark_curve,
+            trades=self.hist_trades,
+            positions=self.positions,
+            signals=self.signals,
+            weights=self.weights,
+            analyzers={
+                'timereturn': returns_series.to_dict(),
+                'returns': self.results[0].analyzers.returns.get_analysis(),
+                'drawdown': self.results[0].analyzers.drawdown.get_analysis(),
+                'sharpe': self.results[0].analyzers.sharpe.get_analysis(),
+            },
+            raw={
+                'strategy_name': task.name,
+                'start_date': effective_start_date,
+                'end_date': effective_end_date,
+            }
+        )
+        return self.backtest_result
 
     def opt(self, strategy,symbols,start_date='20101001', end_date=datetime.now().strftime('%Y%m%d'),*args,**kwargs):
         self._prepare_run(symbols, start_date, end_date)

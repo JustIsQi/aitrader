@@ -286,8 +286,8 @@ t.weight = 'WeightEqually'
 
 # 运行回测
 e = Engine()
-e.run(t)
-e.stats()
+result = e.run(t)
+result.stats()
 ```
 
 #### 运行示例脚本
@@ -484,6 +484,50 @@ task = momentum_strategy_weekly()
 engine = Engine()
 result = engine.run(task)
 result.stats()
+```
+
+### 回测返回值与兼容性（2026-03 更新）
+
+- `Engine.run(task)` 现在推荐视为返回一个标准 `BacktestResult`
+- 推荐写法是 `result = engine.run(task)` 后直接调用 `result.stats()` / `result.plot()`
+- `task.end_date` 现在会被真实用于回测区间，不再被引擎强制覆盖成“今天”
+- 旧代码里若仍使用 `engine.perf`、`engine.hist_trades`、`engine.stats()`，目前仍保留兼容，但新代码不建议继续依赖这些引擎内部属性
+- 命令行入口没有破坏性变化，`run_ashare_signals.py`、`run_etf_portfolio_backtest.py` 仍按原方式使用
+
+### ETF组合风控（2026-03 更新）
+
+ETF 组合回测的 Python API 新增了一批可选风险控制字段，命令行无需强制修改。
+
+`PortfolioTask` 新增的核心可选参数：
+
+- `target_annual_vol`: 目标年化波动率，启用组合级 target-vol 缩放
+- `max_total_weight`: 风险资产总权重上限，剩余权重可自动回填现金
+- `risk_multiplier_min` / `risk_multiplier_max`: 风险倍率裁剪范围
+- `risk_off_drawdown_trigger` / `risk_off_drawdown_exit`: 组合级回撤风控阈值
+- `risk_off_vol_trigger` / `risk_off_vol_exit`: 波动率触发与退出阈值
+- `risk_off_daily_loss_trigger` / `risk_off_daily_loss_exit`: 单日亏损触发与退出阈值
+- `risk_off_multiplier`: 进入 risk-off 后的风险资产倍率
+
+示例：
+
+```python
+from core.portfolio_bt_engine import PortfolioTask, PortfolioBacktestEngine
+
+task = PortfolioTask(
+    name='ETF组合策略',
+    symbols=['510300.SH', '518880.SH', '511260.SH'],
+    start_date='20220101',
+    end_date='20241231',
+    select_buy=['roc(close,20) > 0'],
+    target_annual_vol=0.12,
+    max_total_weight=0.95,
+    risk_off_drawdown_trigger=-0.10,
+    risk_off_drawdown_exit=-0.05,
+    risk_off_multiplier=0.35,
+)
+
+result = PortfolioBacktestEngine(task).run()
+print(result['annual_return'], result['max_drawdown'])
 ```
 
 ### 批量回测
@@ -841,7 +885,7 @@ python run_ashare_signals.py --monthly --filter-preset aggressive
 # 强制重新运行回测（忽略缓存）
 python run_ashare_signals.py --weekly --force-backtest
 
-# 并发优化（默认3个线程，最多15个）
+# 并发优化（默认2个线程，最大3个）
 python run_ashare_signals.py --signal --workers 5
 ```
 
@@ -1083,9 +1127,9 @@ t.period = 'RunWeekly'                # 每周调仓
 
 # 运行回测
 e = Engine()
-e.run(t)
-e.stats()
-e.plot()
+result = e.run(t)
+result.stats()
+result.plot()
 ```
 
 ### 示例 2: 多条件筛选策略

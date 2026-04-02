@@ -44,8 +44,8 @@ t.weight = 'WeightEqually'
 
 # 运行回测
 e = Engine()
-e.run(t)
-e.stats()
+result = e.run(t)
+result.stats()
 ```
 
 ### 运行示例脚本
@@ -79,10 +79,9 @@ python examples/ashare_strategy_example.py ashare_multifactor
 
 | 并发数 | 预计耗时 | 加速比 | 内存需求 |
 |--------|----------|--------|----------|
-| 1（顺序执行） | 35 分钟 | 1x | 2GB |
-| 4 | 约 9 分钟 | 4x | 8GB |
-| **8（默认）** | **约 5 分钟** | **7x** | **16GB** |
-| 16 | 约 5 分钟 | 7x | 32GB |
+| 1（顺序执行） | 最慢 | 1x | 最低 |
+| **2（默认）** | **推荐** | **约 2x** | **适合 8GB 机器** |
+| 3（最大） | 更快 | 约 2-3x | 接近 8GB 安全上限 |
 
 ---
 
@@ -94,16 +93,13 @@ python examples/ashare_strategy_example.py ashare_multifactor
 python run_ashare_signals.py
 ```
 
-自动使用 8 个进程并发执行（CPU 核心数与 8 的最小值）
+自动使用 2 个线程并发执行（当前代码默认值）
 
 #### 2. 自定义并发数
 
 ```bash
-# 使用 4 个进程
-python run_ashare_signals.py --workers 4
-
-# 使用 16 个进程（充分利用多核优势）
-python run_ashare_signals.py --workers 16
+# 使用 3 个线程（当前允许的上限）
+python run_ashare_signals.py --workers 3
 
 # 单进程执行（用于调试）
 python run_ashare_signals.py --workers 1
@@ -112,8 +108,8 @@ python run_ashare_signals.py --workers 1
 #### 3. 结合其他参数
 
 ```bash
-# 强制重新回测 + 16 个并发进程
-python run_ashare_signals.py --force-backtest --workers 16
+# 强制重新回测 + 3 个并发线程
+python run_ashare_signals.py --force-backtest --workers 3
 
 # 查看帮助
 python run_ashare_signals.py --help
@@ -125,10 +121,10 @@ python run_ashare_signals.py --help
 
 #### 实现原理
 
-1. **进程池并发**：使用 `ProcessPoolExecutor` 创建进程池
-2. **独立进程**：每个策略在独立的 Python 进程中运行
-3. **数据库连接**：每个进程维护自己的数据库连接，避免冲突
-4. **结果收集**：主进程收集所有子进程的回测结果
+1. **线程池并发**：使用 `ThreadPoolExecutor` 并发运行策略回测
+2. **共享连接池**：线程共享数据库连接池，避免 fork 带来的连接问题
+3. **内存限制**：当前代码默认 2 个线程，最大限制 3 个
+4. **结果收集**：主线程收集所有回测结果并继续生成信号
 
 #### 代码结构
 
@@ -228,14 +224,14 @@ python run_ashare_signals.py
 
 #### 大批量回测
 ```bash
-# 高并发，充分利用多核
-python run_ashare_signals.py --workers 16
+# 当前最大并发线程数为 3
+python run_ashare_signals.py --workers 3
 ```
 
 #### 定时任务
 ```bash
 # 在 crontab 中添加
-0 15 * * 1-5 cd /data/home/yy/code/aitrader && python run_ashare_signals.py --workers 8
+0 15 * * 1-5 cd /data/home/yy/code/aitrader && python run_ashare_signals.py --workers 2
 ```
 
 ---
@@ -1494,8 +1490,8 @@ t.weight = 'WeightEqually'
 t.ashare_mode = False
 
 e = Engine()
-e.run(t)
-e.stats()
+result = e.run(t)
+result.stats()
 ```
 
 **特点**:
@@ -1541,8 +1537,8 @@ t.ashare_mode = True              # 启用A股交易约束
 t.ashare_commission = 'v2'        # 使用V2手续费方案(2023年后)
 
 e = Engine()
-e.run(t)
-e.stats()
+result = e.run(t)
+result.stats()
 ```
 
 **特点**:
@@ -1594,8 +1590,8 @@ t.ashare_mode = True
 t.ashare_commission = 'v2'
 
 e = Engine()
-e.run(t)
-e.stats()
+result = e.run(t)
+result.stats()
 ```
 
 **特点**:
@@ -1825,10 +1821,16 @@ DEBUG 涨停检查: 600000.SH 价格 11.00 -> 拒绝买入
 from core.backtrader_engine import Engine
 
 e = Engine()
-e.run(task)
-e.stats()
-e.plot()
+result = e.run(task)
+result.stats()
+result.plot()
 ```
+
+**2026-03 更新**:
+- `Engine.run(task)` 推荐视为返回标准 `BacktestResult`
+- 推荐通过 `result.stats()` / `result.plot()` 使用结果对象
+- `task.end_date` 现在会被真实用于回测区间
+- 为兼容旧脚本，`engine.stats()` / `engine.plot()` 仍可继续使用，但不建议新代码再直接依赖 `engine.perf`、`engine.hist_trades`
 
 ---
 
@@ -1843,7 +1845,7 @@ e.plot()
 - `end_date` (str): 结束日期 'YYYYMMDD'
 - `ashare_mode` (bool): 启用A股模式
 - `ashare_commission` (str): 手续费方案 'v1', 'v2', 'zero', 'fixed'
-- `cash` (float): 初始资金
+- `initial_capital` / 默认初始资金由引擎管理
 - `select_buy` (List[str]): 买入条件列表
 - `select_sell` (List[str]): 卖出条件列表
 - `period` (str): 调仓频率 'RunDaily', 'RunWeekly', 'RunMonthly'
@@ -1851,9 +1853,49 @@ e.plot()
 
 ---
 
+#### 3. portfolio_bt_engine.PortfolioTask
+
+ETF 组合回测任务配置对象。
+
+```python
+from core.portfolio_bt_engine import PortfolioTask, PortfolioBacktestEngine
+
+task = PortfolioTask(
+    name='ETF组合策略',
+    symbols=['510300.SH', '518880.SH', '511260.SH'],
+    start_date='20220101',
+    end_date='20241231',
+    select_buy=['roc(close,20) > 0'],
+    target_annual_vol=0.12,
+    max_total_weight=0.95,
+    risk_off_drawdown_trigger=-0.10,
+    risk_off_drawdown_exit=-0.05,
+    risk_off_multiplier=0.35,
+)
+
+result = PortfolioBacktestEngine(task).run()
+print(result['annual_return'], result['max_drawdown'])
+```
+
+**常用新增字段（2026-03）**:
+- `target_annual_vol`: 启用目标波动率缩放
+- `max_total_weight`: 风险资产总权重上限
+- `enable_cash_refill`: 未使用权重自动回填现金
+- `risk_multiplier_min` / `risk_multiplier_max`: 风险倍率裁剪
+- `risk_off_drawdown_trigger` / `risk_off_drawdown_exit`: 组合回撤进入/退出阈值
+- `risk_off_vol_trigger` / `risk_off_vol_exit`: 波动率进入/退出阈值
+- `risk_off_daily_loss_trigger` / `risk_off_daily_loss_exit`: 单日亏损进入/退出阈值
+- `risk_off_multiplier`: 进入 risk-off 后保留的风险资产倍率
+
+**说明**:
+- 命令行入口没有破坏性变化
+- 这些字段主要面向 Python API、自定义 ETF 组合策略和风险平价策略扩展
+
+---
+
 ### A股约束模块
 
-#### 3. ashare_constraints.TPlusOneTracker
+#### 4. ashare_constraints.TPlusOneTracker
 
 T+1交易限制跟踪器。
 
@@ -1869,7 +1911,7 @@ tracker.remove_position('000001.SZ')
 
 ---
 
-#### 4. ashare_constraints.PriceLimitChecker
+#### 5. ashare_constraints.PriceLimitChecker
 
 涨跌停检查器。
 
@@ -1884,7 +1926,7 @@ limit_down = checker.get_limit_price(symbol, prev_close, 'down')
 
 ---
 
-#### 5. ashare_constraints.LotSizeRounder
+#### 6. ashare_constraints.LotSizeRounder
 
 手数调整器。
 
@@ -1901,7 +1943,7 @@ actual_value = rounder.get_actual_value(shares, price)
 
 ### A股手续费模块
 
-#### 6. ashare_commission.AShareCommissionSchemeV2
+#### 7. ashare_commission.AShareCommissionSchemeV2
 
 V2手续费方案(推荐)。
 
@@ -1921,7 +1963,7 @@ cerebro.broker.addcommissioninfo(comminfo)
 
 ---
 
-#### 7. ashare_commission.calculate_commission_manual
+#### 8. ashare_commission.calculate_commission_manual
 
 手动计算手续费(测试/验证)。
 
@@ -1994,6 +2036,8 @@ result = engine.run(task)
 
 # 查看结果
 result.stats()
+# 如需画图：
+# result.plot()
 ```
 
 **策略特点**:
@@ -2019,6 +2063,8 @@ result = engine.run(task)
 
 # 查看结果
 result.stats()
+# 如需画图：
+# result.plot()
 ```
 
 **策略特点**:

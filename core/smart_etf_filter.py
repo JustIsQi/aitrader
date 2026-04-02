@@ -15,6 +15,7 @@ from typing import List, Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import pandas as pd
+import numpy as np
 from loguru import logger
 
 from core.etf_universe import EtfUniverse
@@ -34,6 +35,41 @@ class EtfFilterConfig:
 
     # 目标数量
     target_count: int = 100  # 目标ETF数量
+
+    # ========== 新增: 技术指标筛选 ==========
+    # 是否启用技术指标筛选
+    use_technical_filter: bool = False
+
+    # RSI筛选 (None表示不限制)
+    rsi_min: float = None  # RSI最小值
+    rsi_max: float = None  # RSI最大值
+    rsi_period: int = 14  # RSI周期
+
+    # MACD筛选
+    macd_golden_cross: bool = False  # 是否要求MACD金叉
+
+    # 波动率筛选 (ATR/价格)
+    max_volatility_pct: float = None  # 最大波动率百分比
+
+    # 趋势筛选 (使用trend_score)
+    min_trend_score: float = None  # 最小趋势评分
+
+    # 动量筛选
+    min_roc: float = None  # 最小收益率 (如0.02表示2%)
+    roc_period: int = 20  # 动量周期
+
+    def __post_init__(self):
+        """验证配置参数的合理性"""
+        if self.min_avg_amount < 0:
+            raise ValueError(f"min_avg_amount必须>=0, 当前值: {self.min_avg_amount}")
+        if self.min_turnover_rate < 0:
+            raise ValueError(f"min_turnover_rate必须>=0, 当前值: {self.min_turnover_rate}")
+        if self.min_data_days < 1:
+            raise ValueError(f"min_data_days必须>=1, 当前值: {self.min_data_days}")
+        if self.target_count < 1:
+            raise ValueError(f"target_count必须>=1, 当前值: {self.target_count}")
+        if self.liquidity_days < 1:
+            raise ValueError(f"liquidity_days必须>=1, 当前值: {self.liquidity_days}")
 
 
 class SmartETFFilter:
@@ -91,6 +127,15 @@ class SmartETFFilter:
         if not symbols:
             logger.warning("流动性筛选后无ETF")
             return []
+
+        # 第1.5层: 技术指标筛选 (新增)
+        if self.config.use_technical_filter:
+            symbols = self._layer1_5_technical_filter(symbols)
+            logger.info(f"✓ 第1.5层(技术指标筛选): {len(symbols)} 只ETF")
+
+            if not symbols:
+                logger.warning("技术指标筛选后无ETF")
+                return []
 
         # 最终限制数量
         if len(symbols) > self.config.target_count:
@@ -173,14 +218,20 @@ class SmartETFFilter:
                 # 检查换手率
                 if self.config.min_turnover_rate and 'turnover_rate' in df.columns:
                     recent_turnover = df['turnover_rate'].tail(self.config.liquidity_days)
-                    if recent_turnover.mean() < self.config.min_turnover_rate:
-                        passed = False
+
+                    # 检查数据是否为空或全为NaN
+                    if not recent_turnover.empty and not recent_turnover.isna().all():
+                        if recent_turnover.mean() < self.config.min_turnover_rate:
+                            passed = False
 
                 # 检查成交额
                 if self.config.min_avg_amount and 'amount' in df.columns:
                     recent_amount = df['amount'].tail(self.config.liquidity_days)
-                    if recent_amount.mean() < self.config.min_avg_amount:
-                        passed = False
+
+                    # 检查数据是否为空或全为NaN
+                    if not recent_amount.empty and not recent_amount.isna().all():
+                        if recent_amount.mean() < self.config.min_avg_amount:
+                            passed = False
 
                 if passed:
                     qualified.append(symbol)
@@ -191,6 +242,163 @@ class SmartETFFilter:
         except Exception as e:
             logger.error(f"流动性筛选失败: {e}")
             return symbols
+
+    def _layer1_5_technical_filter(self, symbols: List[str]) -> List[str]:
+        """
+        第1.5层: 技术指标筛选 (新增)
+
+        指标:
+        - RSI (避免超买超卖)
+        - MACD (金叉/死叉)
+        - 波动率 (剔除极端波动)
+        - 趋势评分 (trend_score)
+        - 动量 (ROC)
+        """
+        cfg = self.config
+
+        if not cfg.use_technical_filter:
+            return symbols
+
+        try:
+            from datafeed.db_dataloader import DbDataLoader
+
+            # 计算日期范围 (需要足够历史数据计算指标)
+            max_period = max(
+                cfg.rsi_period or 14,
+                cfg.roc_period or 20,
+                60  # 趋势评分等
+            )
+            end_date = datetime.now().strftime('%Y%m%d')
+            start_date = (datetime.strptime(end_date, '%Y%m%d') -
+                         timedelta(days=max_period * 2)).strftime('%Y%m%d')
+
+            # 批量获取历史数据
+            loader = DbDataLoader(auto_download=False)
+            dfs = loader.read_dfs(
+                symbols=symbols,
+                start_date=start_date,
+                end_date=end_date
+            )
+
+            if not dfs:
+                logger.warning("未能加载技术指标数据")
+                return symbols
+
+            qualified = []
+            for symbol in symbols:
+                if symbol not in dfs:
+                    continue
+
+                df = dfs[symbol]
+                if df.empty or 'close' not in df.columns:
+                    continue
+
+                # 确保日期索引
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'])
+                    df = df.set_index('date')
+
+                passed = True
+
+                # 1. RSI筛选
+                if cfg.rsi_min is not None or cfg.rsi_max is not None:
+                    rsi = self._calculate_rsi(df['close'], cfg.rsi_period)
+                    latest_rsi = rsi.iloc[-1] if len(rsi) > 0 else None
+
+                    if latest_rsi is not None and not pd.isna(latest_rsi):
+                        if cfg.rsi_min is not None and latest_rsi < cfg.rsi_min:
+                            passed = False
+                        if cfg.rsi_max is not None and latest_rsi > cfg.rsi_max:
+                            passed = False
+
+                # 2. MACD金叉筛选
+                if cfg.macd_golden_cross and passed:
+                    macd, signal, _ = self._calculate_macd(df['close'])
+                    if len(macd) >= 2:
+                        # 金叉: MACD上穿信号线
+                        latest_macd = macd.iloc[-1]
+                        latest_signal = signal.iloc[-1]
+                        prev_macd = macd.iloc[-2]
+                        prev_signal = signal.iloc[-2]
+
+                        # 最近出现金叉
+                        is_golden_cross = (latest_macd > latest_signal and
+                                        prev_macd <= prev_signal)
+
+                        if not is_golden_cross:
+                            passed = False
+
+                # 3. 波动率筛选
+                if cfg.max_volatility_pct is not None and passed:
+                    atr = self._calculate_atr(df)
+                    atr_pct = atr.iloc[-1] / df['close'].iloc[-1] * 100 if len(atr) > 0 else 0
+
+                    if atr_pct > cfg.max_volatility_pct:
+                        passed = False
+
+                # 4. 趋势评分筛选
+                if cfg.min_trend_score is not None and passed:
+                    try:
+                        from datafeed.factor_extends import trend_score
+                        ts = trend_score(df['close'], 25)
+                        latest_ts = ts.iloc[-1] if len(ts) > 0 else 0
+
+                        if latest_ts < cfg.min_trend_score:
+                            passed = False
+                    except:
+                        pass  # 计算失败则跳过
+
+                # 5. 动量筛选
+                if cfg.min_roc is not None and passed:
+                    period = cfg.roc_period
+                    if len(df['close']) > period:
+                        roc = df['close'].iloc[-1] / df['close'].iloc[-period] - 1
+                        if roc < cfg.min_roc:
+                            passed = False
+
+                if passed:
+                    qualified.append(symbol)
+
+            logger.debug(f"技术指标筛选: {len(symbols)} -> {len(qualified)}")
+            return qualified
+
+        except Exception as e:
+            logger.error(f"技术指标筛选失败: {e}")
+            return symbols
+
+    def _calculate_rsi(self, close: pd.Series, period: int = 14) -> pd.Series:
+        """计算RSI"""
+        delta = close.diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+
+        avg_gain = gain.rolling(period).mean()
+        avg_loss = loss.rolling(period).mean()
+
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+
+    def _calculate_macd(self, close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
+        """计算MACD"""
+        ema_fast = close.ewm(span=fast, adjust=False).mean()
+        ema_slow = close.ewm(span=slow, adjust=False).mean()
+        macd = ema_fast - ema_slow
+        signal_line = macd.ewm(span=signal, adjust=False).mean()
+        return macd, signal_line, macd - signal_line
+
+    def _calculate_atr(self, df: pd.DataFrame, period: int = 20) -> pd.Series:
+        """计算ATR"""
+        high = df['high'] if 'high' in df.columns else df['close']
+        low = df['low'] if 'low' in df.columns else df['close']
+        close = df['close']
+
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        return tr.rolling(period).mean()
 
     def _limit_by_amount(self, symbols: List[str]) -> List[str]:
         """
@@ -230,6 +438,11 @@ class SmartETFFilter:
 
                 # 计算平均成交额
                 recent_amount = df['amount'].tail(self.config.liquidity_days)
+
+                # 检查数据是否为空或全为NaN
+                if recent_amount.empty or recent_amount.isna().all():
+                    continue
+
                 avg_amount = recent_amount.mean()
 
                 if pd.notna(avg_amount):

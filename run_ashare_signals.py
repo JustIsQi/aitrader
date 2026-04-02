@@ -67,7 +67,7 @@ def run_single_strategy_backtest(strategy_info: Tuple[str, str, str, str]) -> Op
         # 步骤2: 创建策略配置
         logger.debug(f"  [{display_name}] 步骤2/4: 创建策略配置")
         task = strategy_func()
-        logger.debug(f"  [{display_name}] 策略配置: {task.name}, 股票池={len(task.stocks) if hasattr(task, 'stocks') else 'N/A'}")
+        logger.debug(f"  [{display_name}] 策略配置: {task.name}, 股票池={len(task.symbols) if hasattr(task, 'symbols') else 'N/A'}")
 
         # 步骤3: 运行回测
         logger.info(f"  [{display_name}] 步骤3/4: 执行回测 (可能需要较长时间)")
@@ -94,9 +94,9 @@ def run_single_strategy_backtest(strategy_info: Tuple[str, str, str, str]) -> Op
 
         if backtest_id:
             logger.success(f"✓ [{display_name}] 全部完成! 总耗时 {total_elapsed:.2f}秒 | "
-                         f"收益率={metrics.get('total_return', 0):.2%} | "
+                         f"收益率={metrics.get('total_return', 0):.2f}% | "
                          f"夏普比率={metrics.get('sharpe_ratio', 0):.2f} | "
-                         f"回撤={metrics.get('max_drawdown', 0):.2%}")
+                         f"回撤={metrics.get('max_drawdown', 0):.2f}%")
             return {
                 'display_name': display_name,
                 'backtest_id': backtest_id,

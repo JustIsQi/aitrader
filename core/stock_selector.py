@@ -32,14 +32,26 @@ from database.models.models import (
 
 @dataclass
 class ChaseStrategyConfig:
-    """追涨策略配置"""
-    require_5d_high_close: bool = True  # 收盘价创5日新高
-    require_limit_up: bool = True  # 要求涨停或1-2连板
-    max_consecutive_boards: int = 2  # 最多2连板
-    min_main_net_inflow: float = 50.0  # 主力净流入≥5000万(万元)
-    min_volume_ratio: float = 1.0  # 量比≥1.0
-    max_stocks_per_sector: int = 5  # 每板块最多选5只
-    min_change_pct: float = 8.0  # 最小涨幅要求（从涨停9.5%降到8%）
+    """追涨策略配置 (动量突破5步Pipeline)"""
+    # 第1步：涨幅筛选
+    min_change_pct: float = 5.0         # 最小涨幅5%
+    max_change_pct: float = 7.0         # 最大涨幅7%
+    allow_failed_limit_up: bool = True  # 允许曾涨停未封住（盘中触板回落）
+    limit_up_threshold: float = 9.5    # 涨停判定阈值（主板9.5%，创业板/科创板可调至19.5%）
+
+    # 第2步：量能验证
+    min_turnover_rate: float = 5.0      # 最小换手率5%
+    max_turnover_rate: float = 10.0     # 最大换手率10%
+    min_volume_ratio: float = 1.0       # 量比>1
+    require_volume_step_up: bool = True # 要求成交量阶梯放大（连续3日递增）
+
+    # 第4步：形态关键
+    breakout_lookback_days: int = 20    # 突破回看天数
+    require_breakout_or_ma_diverge: bool = True  # 要求突破近期平台/前高 或 均线刚发散
+    ma_diverge_max_spread: float = 8.0  # 均线发散最大价差%（超过视为高位，排除）
+
+    # 通用
+    max_stocks_per_sector: int = 5      # 每板块最多选5只
 
 
 @dataclass
@@ -61,7 +73,7 @@ class RiskFilterConfig:
     exclude_reduction: bool = True  # 排除减持公告
     exclude_suspend: bool = True  # 排除停牌
     min_market_cap: float = 50.0  # 最小市值50亿(亿元)
-    max_market_cap: float = 500.0  # 最大市值500亿(亿元)
+    max_market_cap: float = 200.0  # 最大市值200亿(亿元)
     exclude_non_main_board: bool = True  # 排除非主板股票（科创板、创业板、北交所）
 
 
@@ -91,6 +103,10 @@ class SelectedStock:
     consecutive_boards: int = 0
     close_ma_deviation: float = 0.0
     macd_golden_cross: bool = False
+    turnover_rate: float = 0.0
+    is_breakout: bool = False
+    is_ma_diverge: bool = False
+    is_failed_limit_up: bool = False
 
 
 class StockSelector:
@@ -204,13 +220,13 @@ class StockSelector:
         date: str
     ) -> List[SelectedStock]:
         """
-        应用追涨策略
+        应用动量突破策略 (5步Pipeline)
 
         筛选条件:
-        1. 收盘价创5日新高
-        2. 当日涨停或1-2连板
-        3. 主力净流入≥5000万 (暂未实现,使用量比替代)
-        4. 量比≥1.2
+        第1步：涨幅筛选 → 昨日涨幅5%-7%（或曾涨停未封住）
+        第2步：量能验证 → 昨日换手5%-10%，量比>1，成交量阶梯放大
+        第4步：形态关键 → 突破近期平台/前高，或均线刚发散（非高位）
+        (第3步市值过滤 和 第5步开盘确认 在其他模块处理)
 
         Args:
             sector_stocks: 按板块分组的股票 {sector: [(code, name), ...]}
@@ -222,17 +238,24 @@ class StockSelector:
         selected = []
 
         date_obj = datetime.strptime(date, '%Y%m%d').date()
-        start_date_obj = date_obj - timedelta(days=20)
-        start_date_str = start_date_obj.strftime('%Y%m%d')
+        # 回看天数取配置值和30天中较大的，保证均线计算有足够数据
+        lookback = max(self.chase_config.breakout_lookback_days, 30)
+        start_date_obj = date_obj - timedelta(days=int(lookback * 1.8))
 
         logger.info("=" * 60)
-        logger.info("应用追涨策略...")
+        logger.info("应用动量突破策略 (5步Pipeline)...")
+        logger.info(f"  涨幅范围: {self.chase_config.min_change_pct}%-{self.chase_config.max_change_pct}%")
+        logger.info(f"  换手率范围: {self.chase_config.min_turnover_rate}%-{self.chase_config.max_turnover_rate}%")
+        logger.info(f"  量比阈值: >{self.chase_config.min_volume_ratio}")
+        logger.info(f"  曾涨停未封住: {'是' if self.chase_config.allow_failed_limit_up else '否'}")
         logger.info("=" * 60)
+
+        step_stats = {'total': 0, 'step1_pass': 0, 'step2_pass': 0, 'step4_pass': 0}
 
         for sector_name, stocks in sector_stocks.items():
             stock_codes = [s[0] for s in stocks]
 
-            # 获取历史数据
+            # 获取历史数据 (包含turnover_rate和high用于新策略)
             try:
                 with self.db.get_session() as session:
                     query = session.query(
@@ -243,7 +266,8 @@ class StockSelector:
                         StockHistory.high,
                         StockHistory.low,
                         StockHistory.volume,
-                        StockHistory.change_pct
+                        StockHistory.change_pct,
+                        StockHistory.turnover_rate
                     ).filter(
                         StockHistory.symbol.in_(stock_codes),
                         StockHistory.date >= start_date_obj,
@@ -256,62 +280,93 @@ class StockSelector:
                     logger.debug(f"板块 {sector_name} 无历史数据")
                     continue
 
-                # 按股票分析
+                # 按股票逐一分析
                 for stock_code in stock_codes:
                     stock_df = df[df['symbol'] == stock_code].copy()
 
-                    if stock_df.empty or len(stock_df) < 5:
+                    if stock_df.empty or len(stock_df) < 10:
                         continue
 
+                    step_stats['total'] += 1
                     stock_name = next((s[1] for s in stocks if s[0] == stock_code), "")
-
-                    # 获取最新数据
                     latest = stock_df.iloc[-1]
 
-                    # 1. 检查5日新高
-                    if self.chase_config.require_5d_high_close:
-                        recent_5d_high = stock_df['close'].tail(5).max()
-                        current_close = latest['close']
-                        is_5d_high = current_close >= recent_5d_high * 0.99  # 允许0.1%误差
+                    # ========== 第1步：涨幅筛选 ==========
+                    change_pct = latest['change_pct']
+                    is_normal_range = (self.chase_config.min_change_pct <= change_pct <= self.chase_config.max_change_pct)
 
-                        if not is_5d_high:
-                            continue
-                    else:
-                        is_5d_high = True
+                    # 曾涨停未封住：盘中最高价触及涨停，但收盘未封住
+                    is_failed_limit_up = False
+                    limit_threshold = self.chase_config.limit_up_threshold
+                    if self.chase_config.allow_failed_limit_up and not is_normal_range:
+                        if len(stock_df) >= 2:
+                            pre_close = stock_df.iloc[-2]['close']
+                            if pre_close > 0:
+                                intraday_max_pct = (latest['high'] - pre_close) / pre_close * 100
+                                # 盘中触板(>=阈值) 但收盘未封住(change_pct < 阈值)
+                                is_failed_limit_up = (intraday_max_pct >= limit_threshold and change_pct < limit_threshold and change_pct > 0)
 
-                    # 2. 检查涨停/连板（使用配置的min_change_pct参数）
-                    if self.chase_config.require_limit_up:
-                        change_pct = latest['change_pct']
-                        is_limit_up = change_pct >= self.chase_config.min_change_pct  # 使用配置的最小涨幅
-
-                        # 统计连板数 (简化版本,只看最近几日)
-                        if is_limit_up:
-                            consecutive_boards = 1
-                            if len(stock_df) >= 2:
-                                prev_change = stock_df.iloc[-2]['change_pct']
-                                if prev_change >= self.chase_config.min_change_pct:
-                                    consecutive_boards = 2
-                        else:
-                            is_limit_up = False
-                            consecutive_boards = 0
-
-                        if not is_limit_up and consecutive_boards == 0:
-                            continue
-                    else:
-                        is_limit_up = True
-                        consecutive_boards = 0
-
-                    # 检查连板数限制
-                    if consecutive_boards > self.chase_config.max_consecutive_boards:
+                    if not is_normal_range and not is_failed_limit_up:
                         continue
 
-                    # 3. 检查量比
+                    step_stats['step1_pass'] += 1
+
+                    # ========== 第2步：量能验证 ==========
+                    # 2a. 换手率范围检查
+                    turnover_rate = latest.get('turnover_rate', 0) or 0
+                    if turnover_rate < self.chase_config.min_turnover_rate or turnover_rate > self.chase_config.max_turnover_rate:
+                        continue
+
+                    # 2b. 量比 > 1
                     volume_ratio = self._calculate_volume_ratio(stock_df)
                     if volume_ratio < self.chase_config.min_volume_ratio:
                         continue
 
-                    # 4. 计算评分 (量比越大越好)
-                    strength_score = volume_ratio * 10
+                    # 2c. 成交量阶梯放大（连续3日递增）
+                    if self.chase_config.require_volume_step_up:
+                        if not self._check_volume_step_up(stock_df):
+                            continue
+
+                    step_stats['step2_pass'] += 1
+
+                    # ========== 第4步：形态关键 ==========
+                    is_breakout = False
+                    is_ma_diverge = False
+
+                    if self.chase_config.require_breakout_or_ma_diverge:
+                        is_breakout = self._check_breakout_pattern(
+                            stock_df,
+                            lookback_days=self.chase_config.breakout_lookback_days
+                        )
+                        is_ma_diverge = self._check_ma_divergence(
+                            stock_df,
+                            max_spread=self.chase_config.ma_diverge_max_spread
+                        )
+
+                        if not is_breakout and not is_ma_diverge:
+                            continue
+
+                    step_stats['step4_pass'] += 1
+
+                    # ========== 综合评分 ==========
+                    # 评分维度: 量比(30%) + 换手率适中度(20%) + 涨幅强度(20%) + 形态(30%)
+                    vol_score = min(volume_ratio / 3.0, 1.0) * 30  # 量比，封顶3
+
+                    # 换手率越接近中间值(7.5%)越好
+                    turnover_mid = (self.chase_config.min_turnover_rate + self.chase_config.max_turnover_rate) / 2
+                    turnover_score = max(0, 1.0 - abs(turnover_rate - turnover_mid) / turnover_mid) * 20
+
+                    # 涨幅越大越好（在范围内）
+                    change_score = min(change_pct / self.chase_config.max_change_pct, 1.0) * 20
+
+                    # 形态加分: 突破+均线发散双满足额外加分
+                    pattern_score = 0
+                    if is_breakout:
+                        pattern_score += 20
+                    if is_ma_diverge:
+                        pattern_score += 10
+
+                    strength_score = vol_score + turnover_score + change_score + pattern_score
 
                     selected.append(SelectedStock(
                         stock_code=stock_code,
@@ -319,20 +374,30 @@ class StockSelector:
                         sector_name=sector_name,
                         strategy_type='chase',
                         strength_score=strength_score,
-                        net_inflow_ratio=0.0,  # 暂未计算
-                        seal_rate=0.0,  # 暂未计算
+                        net_inflow_ratio=0.0,
+                        seal_rate=0.0,
                         close_price=latest['close'],
-                        main_net_inflow=0.0,  # 暂未计算
+                        main_net_inflow=0.0,
                         volume_ratio=volume_ratio,
-                        is_5d_high=is_5d_high,
-                        is_limit_up=is_limit_up,
-                        consecutive_boards=consecutive_boards
+                        is_5d_high=is_breakout,
+                        is_limit_up=is_normal_range,
+                        consecutive_boards=0,
+                        turnover_rate=turnover_rate,
+                        is_breakout=is_breakout,
+                        is_ma_diverge=is_ma_diverge,
+                        is_failed_limit_up=is_failed_limit_up
                     ))
 
             except Exception as e:
                 logger.error(f"分析板块 {sector_name} 追涨策略失败: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
                 continue
 
+        logger.info(f"Pipeline统计: 总计={step_stats['total']}, "
+                    f"第1步(涨幅)通过={step_stats['step1_pass']}, "
+                    f"第2步(量能)通过={step_stats['step2_pass']}, "
+                    f"第4步(形态)通过={step_stats['step4_pass']}")
         logger.info(f"✓ 追涨策略选中 {len(selected)} 只股票")
 
         # 按板块限制数量
@@ -468,6 +533,138 @@ class StockSelector:
         selected = self._limit_by_sector(selected, self.dip_config.max_stocks_per_sector)
 
         return selected
+
+    def _check_volume_step_up(self, df: pd.DataFrame) -> bool:
+        """
+        检查成交量阶梯放大（连续3日递增）
+
+        Args:
+            df: 股票历史数据 (按日期升序)
+
+        Returns:
+            是否满足成交量阶梯放大条件
+        """
+        if len(df) < 3:
+            return False
+
+        vol_3 = df['volume'].iloc[-3]  # 前天
+        vol_2 = df['volume'].iloc[-2]  # 昨天前一天
+        vol_1 = df['volume'].iloc[-1]  # 昨天（最新）
+
+        # 连续3日成交量递增
+        if vol_3 > 0 and vol_2 > 0 and vol_1 > 0:
+            return vol_1 > vol_2 > vol_3
+
+        return False
+
+    def _check_breakout_pattern(self, df: pd.DataFrame, lookback_days: int = 20) -> bool:
+        """
+        检查是否突破近期平台/前高
+
+        判断逻辑:
+        1. 收盘价突破近N日最高价（排除最后一天自身）
+        2. 或收盘价突破近期窄幅整理平台的上沿
+
+        Args:
+            df: 股票历史数据 (按日期升序)
+            lookback_days: 回看天数
+
+        Returns:
+            是否突破
+        """
+        if len(df) < lookback_days:
+            # 数据不足，使用可用的全部数据（至少需要5天）
+            if len(df) < 5:
+                return False
+            lookback_days = len(df) - 1
+
+        current_close = df['close'].iloc[-1]
+
+        # 方式1: 突破近N日最高收盘价（排除最后1天）
+        historical_high = df['close'].iloc[-lookback_days - 1:-1].max()
+        if current_close > historical_high:
+            return True
+
+        # 方式2: 突破近期整理平台
+        # 计算近N日（排除最后1天）的价格波动率（标准差/均值）
+        recent_closes = df['close'].iloc[-lookback_days - 1:-1]
+        if len(recent_closes) >= 5:
+            mean_price = recent_closes.mean()
+            std_price = recent_closes.std()
+
+            if mean_price > 0:
+                volatility = std_price / mean_price
+                # 窄幅整理：波动率 < 3%，表示价格在一个平台内横盘
+                if volatility < 0.03:
+                    platform_high = recent_closes.max()
+                    # 突破平台上沿
+                    if current_close > platform_high:
+                        return True
+
+        # 方式3: 突破近N日最高价（用high而非close）
+        if 'high' in df.columns:
+            historical_high_price = df['high'].iloc[-lookback_days - 1:-1].max()
+            if current_close > historical_high_price:
+                return True
+
+        return False
+
+    def _check_ma_divergence(self, df: pd.DataFrame, max_spread: float = 8.0) -> bool:
+        """
+        检查均线刚发散（非高位）
+
+        判断逻辑:
+        - MA5 > MA10 > MA20（多头排列）
+        - (MA5 - MA20) / MA20 < max_spread%（非高位发散，排除已大涨的）
+        - 前一天尚未满足多头排列（"刚"发散）
+
+        Args:
+            df: 股票历史数据 (按日期升序)
+            max_spread: 均线发散最大价差百分比
+
+        Returns:
+            是否满足均线刚发散条件
+        """
+        if len(df) < 21:
+            return False
+
+        closes = df['close'].values
+
+        # 计算当日均线
+        ma5_today = closes[-5:].mean()
+        ma10_today = closes[-10:].mean()
+        ma20_today = closes[-20:].mean()
+
+        # 检查今日多头排列: MA5 > MA10 > MA20
+        if not (ma5_today > ma10_today > ma20_today):
+            return False
+
+        # 检查非高位: 发散幅度不能太大
+        if ma20_today > 0:
+            spread = (ma5_today - ma20_today) / ma20_today * 100
+            if spread >= max_spread:
+                return False  # 已经高位发散，排除
+        else:
+            return False
+
+        # 检查"刚"发散: 前一天尚未满足多头排列
+        if len(df) >= 22:
+            closes_prev = closes[:-1]  # 排除最后一天
+            ma5_prev = closes_prev[-5:].mean()
+            ma10_prev = closes_prev[-10:].mean()
+            ma20_prev = closes_prev[-20:].mean()
+
+            prev_bullish = (ma5_prev > ma10_prev > ma20_prev)
+
+            # 如果前一天已经是多头排列，检查发散是否在加速
+            if prev_bullish:
+                prev_spread = (ma5_prev - ma20_prev) / ma20_prev * 100 if ma20_prev > 0 else 0
+                # 只要今天的发散比昨天更大一点点就算"正在发散"
+                if spread <= prev_spread:
+                    return False
+        # 如果数据不足以计算前一天，只要当日满足就通过
+
+        return True
 
     def _calculate_volume_ratio(self, df: pd.DataFrame) -> float:
         """
@@ -713,15 +910,26 @@ if __name__ == '__main__':
     logger.remove()
     logger.add(lambda msg: print(msg, end=''), level="INFO")
 
-    # 创建选股器
+    # 创建选股器 (使用新的5步Pipeline配置)
     selector = StockSelector(
         chase_config=ChaseStrategyConfig(
-            require_limit_up=False,  # 测试时放宽条件
-            min_volume_ratio=1.0
+            min_change_pct=5.0,
+            max_change_pct=7.0,
+            allow_failed_limit_up=True,
+            min_turnover_rate=5.0,
+            max_turnover_rate=10.0,
+            min_volume_ratio=1.0,
+            require_volume_step_up=True,
+            require_breakout_or_ma_diverge=True
         ),
         dip_config=DipStrategyConfig(
-            max_close_ma_deviation=5.0,  # 测试时放宽条件
+            max_close_ma_deviation=5.0,
             require_macd_golden_cross=False
+        ),
+        risk_config=RiskFilterConfig(
+            min_market_cap=50.0,
+            max_market_cap=200.0,
+            exclude_non_main_board=True
         )
     )
 
@@ -735,9 +943,13 @@ if __name__ == '__main__':
         strategy_type='both'
     )
 
-    print("\n✓ 追涨策略:")
+    print("\n✓ 追涨策略 (动量突破):")
     for stock in selected.get('chase', [])[:5]:
-        print(f"  {stock.stock_code} {stock.stock_name}: {stock.strength_score:.2f}")
+        print(f"  {stock.stock_code} {stock.stock_name}: "
+              f"得分={stock.strength_score:.2f} "
+              f"量比={stock.volume_ratio:.2f} "
+              f"换手={stock.turnover_rate:.1f}% "
+              f"突破={stock.is_breakout} 发散={stock.is_ma_diverge}")
 
     print("\n✓ 低吸策略:")
     for stock in selected.get('dip', [])[:5]:

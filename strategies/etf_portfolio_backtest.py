@@ -3,6 +3,7 @@
 
 演示如何使用组合回测引擎构建ETF组合策略
 """
+from datetime import datetime
 from core.portfolio_bt_engine import PortfolioBacktestEngine, PortfolioTask, run_portfolio_backtest
 
 
@@ -36,7 +37,7 @@ def etf_momentum_portfolio():
             '513330.SH',  # 德国DAX ETF
         ],
         start_date='20200101',
-        end_date='20251215',
+        end_date=datetime.now().strftime('%Y%m%d'),  # 使用当前日期
         initial_capital=1000000,
         commission_rate=0.0003,
 
@@ -56,8 +57,22 @@ def etf_momentum_portfolio():
         sell_at_least_count=1,
 
         weight_type='equal',
-        rebalance_on_signal_change=True
+        rebalance_on_signal_change=True,
+        atr_stop_multiplier=2.0,
+        atr_tp_multiplier=3.0,
     )
+
+    # 参数验证
+    if task.buy_at_least_count > len(task.select_buy):
+        raise ValueError(
+            f"buy_at_least_count({task.buy_at_least_count}) "
+            f"不能大于买入条件数量({len(task.select_buy)})"
+        )
+    if task.sell_at_least_count > len(task.select_sell):
+        raise ValueError(
+            f"sell_at_least_count({task.sell_at_least_count}) "
+            f"不能大于卖出条件数量({len(task.select_sell)})"
+        )
 
     engine = PortfolioBacktestEngine(task)
     result = engine.run()
@@ -124,7 +139,7 @@ def etf_trend_following_portfolio():
             '588000.SH',  # 科创50
         ],
         start_date='20200101',
-        end_date='20251215',
+        end_date=datetime.now().strftime('%Y%m%d'),  # 使用当前日期
         select_buy=[
             'close > ma(close,60)',     # 长期趋势向上
             'roc(close,20) > 0',         # 中期动量
@@ -156,7 +171,7 @@ def etf_global_asset_allocation():
             '511880.SH',  # 现金：银华日利
         ],
         start_date='20200101',
-        end_date='20251215',
+        end_date=datetime.now().strftime('%Y%m%d'),  # 使用当前日期
         select_buy=[
             'roc(close,20) > 0.03',      # 动量 > 3%
             'close > ma(close,20)',       # 上升趋势

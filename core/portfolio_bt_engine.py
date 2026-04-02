@@ -23,6 +23,13 @@ from datafeed.db_dataloader import DbDataLoader
 from database.factor_cache import FactorCache
 from core.portfolio_tracker import PortfolioStateTracker
 from core.portfolio_metrics import PortfolioMetrics
+from core.portfolio_risk_controls import (
+    CashRefillConfig,
+    RiskMultiplierClipConfig,
+    RiskOffConfig,
+    TargetVolatilityConfig,
+    apply_portfolio_risk_controls,
+)
 from database.pg_manager import get_db
 
 
@@ -50,6 +57,29 @@ class PortfolioTask:
     # 组合配置
     weight_type: str = 'equal'  # 权重类型（目前仅支持'equal'）
     rebalance_on_signal_change: bool = True  # 信号变化时再平衡
+    max_total_weight: float = 1.0  # 风险资产总权重上限
+    cash_symbol: str = 'CASH'
+    enable_cash_refill: bool = True
+
+    # 目标波动率控制
+    target_annual_vol: float = None
+    target_vol_lookback_days: int = 20
+    target_vol_ewma_alpha: float = None
+    risk_multiplier_min: float = 0.0
+    risk_multiplier_max: float = 1.0
+
+    # 组合级 risk-off
+    risk_off_drawdown_trigger: float = None
+    risk_off_drawdown_exit: float = None
+    risk_off_vol_trigger: float = None
+    risk_off_vol_exit: float = None
+    risk_off_daily_loss_trigger: float = None
+    risk_off_daily_loss_exit: float = None
+    risk_off_multiplier: float = 0.0
+
+    # ATR止损/止盈（None=禁用）
+    atr_stop_multiplier: float = None   # ATR止损倍数，如2.0表示入场价-ATR*2触发止损
+    atr_tp_multiplier: float = None     # ATR止盈倍数，如3.0表示入场价+ATR*3触发止盈
 
 
 class PortfolioBacktestEngine:
@@ -65,6 +95,12 @@ class PortfolioBacktestEngine:
         self.task = task
         self.db = get_db()
         self.tracker = PortfolioStateTracker(initial_capital=task.initial_capital)
+        self._risk_off_active = False
+        self._last_risk_control_result = None
+
+        # ATR止损/止盈：记录每个持仓的入场价和入场时ATR
+        self._entry_prices: Dict[str, float] = {}
+        self._entry_atrs: Dict[str, float] = {}
 
         # 加载数据
         self._load_data()
@@ -78,8 +114,9 @@ class PortfolioBacktestEngine:
         logger.info("加载价格数据...")
 
         # 加载所有标的的价格数据
+        all_symbols = list(dict.fromkeys(self.task.symbols + ([self.task.benchmark] if self.task.benchmark else [])))
         raw_data = DbDataLoader().read_dfs(
-            symbols=self.task.symbols,
+            symbols=all_symbols,
             start_date=self.task.start_date,
             end_date=self.task.end_date
         )
@@ -95,6 +132,32 @@ class PortfolioBacktestEngine:
                 self.price_data[symbol] = df_copy
             else:
                 self.price_data[symbol] = df
+
+        signal_symbols = [s for s in self.task.symbols if s in self.price_data and not self.price_data[s].empty]
+        if signal_symbols:
+            close_frames = [
+                self.price_data[s]['close'].rename(s)
+                for s in signal_symbols
+                if 'close' in self.price_data[s].columns
+            ]
+            self.close_matrix = pd.concat(close_frames, axis=1).sort_index() if close_frames else pd.DataFrame()
+            if not self.close_matrix.empty:
+                self.close_matrix = self.close_matrix[~self.close_matrix.index.duplicated(keep='last')]
+                self.close_matrix = self.close_matrix.ffill()
+        else:
+            self.close_matrix = pd.DataFrame()
+
+        self.market_calendar = [ts.strftime('%Y-%m-%d') for ts in self.close_matrix.index] if not self.close_matrix.empty else []
+        self.benchmark_series = pd.Series(dtype=float)
+        self.benchmark_returns = pd.Series(dtype=float)
+        if self.task.benchmark in self.price_data and 'close' in self.price_data[self.task.benchmark].columns:
+            self.benchmark_series = self.price_data[self.task.benchmark]['close'].sort_index()
+            if not self.close_matrix.empty:
+                self.benchmark_series = self.benchmark_series.reindex(self.close_matrix.index).ffill()
+                self.benchmark_returns = self.benchmark_series.pct_change().fillna(0.0)
+
+        self.portfolio_return_history: List[float] = []
+        self.benchmark_return_history: List[float] = []
 
         # 初始化因子缓存
         all_factors = list(set(self.task.select_buy + self.task.select_sell))
@@ -126,10 +189,27 @@ class PortfolioBacktestEngine:
             # 1. 获取当前价格
             prices = self._get_prices(date)
 
-            # 2. 使用信号生成器获取当前信号
+            # 2. ATR止损/止盈检查（优先于信号）
+            atr_force_sell = self._check_atr_stops(date, prices)
+            if atr_force_sell:
+                for symbol in atr_force_sell:
+                    trades = self._close_symbol_position(date, symbol, prices)
+                    for trade in trades:
+                        self.tracker.add_transaction(
+                            date=date, symbol=trade['symbol'],
+                            action=trade['action'], shares=trade['shares'],
+                            price=trade['price'], amount=trade['amount'],
+                            commission=trade.get('commission', 0.0),
+                            realized_pnl=trade.get('realized_pnl', 0.0),
+                        )
+                    self._entry_prices.pop(symbol, None)
+                    self._entry_atrs.pop(symbol, None)
+                previous_signals = [s for s in (previous_signals or []) if s not in atr_force_sell]
+
+            # 3. 使用信号生成器获取当前信号
             current_signals = self._get_signals(date)
 
-            # 3. 检查信号是否变化（再平衡触发）
+            # 4. 检查信号是否变化（再平衡触发）
             if self._should_rebalance(current_signals, previous_signals):
                 logger.debug(f"{date}: 信号变化，触发再平衡")
                 logger.debug(f"  当前标的: {current_signals}")
@@ -138,6 +218,7 @@ class PortfolioBacktestEngine:
                 # 4. 生成目标组合（等权）
                 if current_signals:
                     target_portfolio = self._generate_target_portfolio(current_signals)
+                    target_portfolio = self._apply_risk_controls(date, target_portfolio)
 
                     # 5. 执行再平衡交易
                     trades = self._execute_rebalance(date, target_portfolio, prices)
@@ -150,7 +231,9 @@ class PortfolioBacktestEngine:
                             action=trade['action'],
                             shares=trade['shares'],
                             price=trade['price'],
-                            amount=trade['amount']
+                            amount=trade['amount'],
+                            commission=trade.get('commission', 0.0),
+                            realized_pnl=trade.get('realized_pnl', 0.0),
                         )
 
                     rebalance_count += 1
@@ -158,6 +241,17 @@ class PortfolioBacktestEngine:
                     # 如果没有符合条件的标的，清空持仓
                     trades = self._close_all_positions(date, prices)
                     logger.debug(f"{date}: 无符合条件的标的，清空持仓")
+                    for trade in trades:
+                        self.tracker.add_transaction(
+                            date=date,
+                            symbol=trade['symbol'],
+                            action=trade['action'],
+                            shares=trade['shares'],
+                            price=trade['price'],
+                            amount=trade['amount'],
+                            commission=trade.get('commission', 0.0),
+                            realized_pnl=trade.get('realized_pnl', 0.0),
+                        )
 
                 previous_signals = current_signals
             else:
@@ -165,6 +259,13 @@ class PortfolioBacktestEngine:
 
             # 6. 更新每日状态（净值、回撤、换手率）
             self.tracker.update_daily_state(date, prices, trades)
+            if self.tracker.daily_states:
+                self.portfolio_return_history.append(self.tracker.daily_states[-1].get('daily_return', 0.0))
+            if not self.benchmark_returns.empty:
+                dt = pd.to_datetime(date)
+                if dt in self.benchmark_returns.index:
+                    bench_ret = float(self.benchmark_returns.get(dt, 0.0))
+                    self.benchmark_return_history.append(bench_ret)
 
         logger.info(f"回测完成，共再平衡 {rebalance_count} 次")
 
@@ -184,20 +285,11 @@ class PortfolioBacktestEngine:
         Returns:
             交易日列表 ['2024-01-01', '2024-01-02', ...]
         """
-        if not self.price_data:
+        if self.close_matrix.empty:
             return []
-
-        # 使用第一个标的的交易日作为基准
-        first_symbol = list(self.price_data.keys())[0]
-        df = self.price_data[first_symbol]
-
-        # 筛选日期范围
         start = pd.to_datetime(self.task.start_date)
         end = pd.to_datetime(self.task.end_date)
-
-        df_dates = pd.to_datetime(df.index)
-        trading_days = df_dates[(df_dates >= start) & (df_dates <= end)]
-
+        trading_days = self.close_matrix.index[(self.close_matrix.index >= start) & (self.close_matrix.index <= end)]
         return [d.strftime('%Y-%m-%d') for d in trading_days]
 
     def _get_prices(self, date: str) -> Dict[str, float]:
@@ -210,24 +302,22 @@ class PortfolioBacktestEngine:
         Returns:
             价格字典 {symbol: close_price}
         """
-        prices = {}
+        if self.close_matrix.empty:
+            return {}
+
         target_date = pd.to_datetime(date)
+        if target_date not in self.close_matrix.index:
+            available_dates = self.close_matrix.index[self.close_matrix.index <= target_date]
+            if len(available_dates) == 0:
+                return {}
+            target_date = available_dates.max()
 
-        for symbol, df in self.price_data.items():
-            if df.empty or 'close' not in df.columns:
-                continue
-
-            # 找到最接近日期的数据
-            df_dates = pd.to_datetime(df.index)
-
-            # 筛选 <= target_date 的数据
-            valid_dates = df_dates[df_dates <= target_date]
-
-            if len(valid_dates) > 0:
-                closest_date = valid_dates.max()
-                prices[symbol] = df.loc[closest_date, 'close']
-
-        return prices
+        row = self.close_matrix.loc[target_date]
+        return {
+            symbol: float(price)
+            for symbol, price in row.items()
+            if symbol in self.task.symbols and pd.notna(price)
+        }
 
     def _get_signals(self, date: str) -> List[str]:
         """
@@ -332,6 +422,82 @@ class PortfolioBacktestEngine:
 
         return {symbol: weight for symbol in symbols}
 
+    def _get_recent_portfolio_returns(self, window: int) -> List[float]:
+        if window <= 0:
+            return []
+        returns = [state.get('daily_return', 0.0) for state in self.tracker.daily_states]
+        return returns[-window:]
+
+    def _get_current_drawdown(self) -> float:
+        if not self.tracker.daily_states:
+            return 0.0
+        return float(self.tracker.daily_states[-1].get('running_max_drawdown', 0.0))
+
+    def _get_latest_daily_return(self) -> Optional[float]:
+        if not self.tracker.daily_states:
+            return None
+        return float(self.tracker.daily_states[-1].get('daily_return', 0.0))
+
+    def _apply_risk_controls(self, date: str, base_weights: Dict[str, float]) -> Dict[str, float]:
+        if not base_weights:
+            return {}
+
+        target_vol_config = TargetVolatilityConfig(
+            enabled=self.task.target_annual_vol is not None,
+            target_annual_vol=self.task.target_annual_vol or 0.12,
+            lookback_days=self.task.target_vol_lookback_days,
+            ewma_alpha=self.task.target_vol_ewma_alpha,
+        )
+        clip_config = RiskMultiplierClipConfig(
+            min_multiplier=self.task.risk_multiplier_min,
+            max_multiplier=self.task.risk_multiplier_max,
+            fallback_multiplier=1.0,
+        )
+        risk_off_config = RiskOffConfig(
+            drawdown_trigger=self.task.risk_off_drawdown_trigger,
+            drawdown_exit=self.task.risk_off_drawdown_exit,
+            vol_trigger=self.task.risk_off_vol_trigger,
+            vol_exit=self.task.risk_off_vol_exit,
+            daily_loss_trigger=self.task.risk_off_daily_loss_trigger,
+            daily_loss_exit=self.task.risk_off_daily_loss_exit,
+            risk_off_multiplier=self.task.risk_off_multiplier,
+        )
+        cash_config = CashRefillConfig(
+            max_total_weight=self.task.max_total_weight,
+            cash_symbol=self.task.cash_symbol,
+            enable_cash_refill=self.task.enable_cash_refill,
+        )
+
+        risk_result = apply_portfolio_risk_controls(
+            base_weights,
+            recent_daily_returns=self._get_recent_portfolio_returns(self.task.target_vol_lookback_days),
+            drawdown=self._get_current_drawdown(),
+            daily_return=self._get_latest_daily_return(),
+            was_risk_off=self._risk_off_active,
+            target_vol_config=target_vol_config,
+            clip_config=clip_config,
+            risk_off_config=risk_off_config,
+            cash_config=cash_config,
+        )
+        if risk_result.is_risk_off != self._risk_off_active:
+            logger.info(f"{date}: risk-off 状态切换 -> {risk_result.is_risk_off} ({risk_result.risk_off_reason})")
+        self._risk_off_active = risk_result.is_risk_off
+        self._last_risk_control_result = risk_result
+
+        adjusted = {
+            symbol: weight
+            for symbol, weight in risk_result.adjusted_weights.items()
+            if symbol != self.task.cash_symbol and weight > 0
+        }
+
+        if risk_result.effective_multiplier != 1.0 or risk_result.cash_weight > 0:
+            logger.debug(
+                f"{date}: 风控后权重 gross={risk_result.gross_weight:.3f}, "
+                f"cash={risk_result.cash_weight:.3f}, mult={risk_result.effective_multiplier:.3f}"
+            )
+
+        return adjusted
+
     def _execute_rebalance(self, date: str, target_weights: Dict[str, float], prices: Dict[str, float]) -> List[Dict]:
         """
         执行再平衡交易
@@ -363,72 +529,148 @@ class PortfolioBacktestEngine:
         current_shares = {s: p['shares'] for s, p in self.tracker.holdings.items()}
         all_symbols = set(current_shares.keys()) | set(target_shares.keys())
 
-        for symbol in all_symbols:
+        # 先卖后买，避免可成交调仓被“资金不足”误杀
+        for symbol in sorted(all_symbols):
             current = current_shares.get(symbol, 0)
             target = target_shares.get(symbol, 0)
+            if target >= current:
+                continue
 
-            if target > current:
-                # 买入
-                buy_shares = target - current
-                price = prices.get(symbol, 0)
+            sell_shares = current - target
+            price = prices.get(symbol, 0)
+            if price <= 0 or sell_shares <= 0:
+                continue
 
-                if price > 0:
-                    amount = buy_shares * price
-                    cost = amount * (1 + self.task.commission_rate)
+            amount = sell_shares * price
+            commission = amount * self.task.commission_rate
+            proceeds = amount - commission
+            avg_cost = self.tracker.holdings.get(symbol, {}).get('avg_cost', 0.0)
+            realized_pnl = (price - avg_cost) * sell_shares
+            new_shares = current - sell_shares
 
-                    if self.tracker.cash >= cost:
-                        # 更新持仓
-                        old_shares = current
-                        old_cost = self.tracker.holdings.get(symbol, {}).get('shares', 0) * \
-                                   self.tracker.holdings.get(symbol, {}).get('avg_cost', 0)
-                        new_cost = old_cost + amount
-                        new_shares = old_shares + buy_shares
+            if new_shares > 0:
+                self.tracker.update_position(symbol, new_shares, avg_cost)
+            elif symbol in self.tracker.holdings:
+                del self.tracker.holdings[symbol]
 
-                        self.tracker.update_position(symbol, new_shares, new_cost / new_shares if new_shares > 0 else 0)
-                        self.tracker.cash -= cost
+            self.tracker.cash += proceeds
 
-                        trades.append({
-                            'symbol': symbol,
-                            'action': 'buy',
-                            'shares': buy_shares,
-                            'price': price,
-                            'amount': amount
-                        })
-                    else:
-                        logger.debug(f"{date}: 资金不足，无法买入 {symbol} {buy_shares}股")
+            trades.append({
+                'symbol': symbol,
+                'action': 'sell',
+                'shares': sell_shares,
+                'price': price,
+                'amount': amount,
+                'commission': commission,
+                'realized_pnl': realized_pnl,
+            })
 
-            elif target < current:
-                # 卖出
-                sell_shares = current - target
-                price = prices.get(symbol, 0)
+        for symbol in sorted(all_symbols):
+            current = current_shares.get(symbol, 0)
+            target = target_shares.get(symbol, 0)
+            if target <= current:
+                continue
 
-                if price > 0 and sell_shares > 0:
-                    amount = sell_shares * price
-                    proceeds = amount * (1 - self.task.commission_rate)
+            buy_shares = target - current
+            price = prices.get(symbol, 0)
+            if price <= 0:
+                continue
 
-                    # 更新持仓
-                    new_shares = current - sell_shares
+            amount = buy_shares * price
+            commission = amount * self.task.commission_rate
+            cost = amount + commission
 
-                    if new_shares > 0:
-                        # 保持平均成本不变
-                        avg_cost = self.tracker.holdings[symbol]['avg_cost']
-                        self.tracker.update_position(symbol, new_shares, avg_cost)
-                    else:
-                        # 清仓
-                        if symbol in self.tracker.holdings:
-                            del self.tracker.holdings[symbol]
+            if self.tracker.cash < cost:
+                logger.debug(f"{date}: 资金不足，无法买入 {symbol} {buy_shares}股")
+                continue
 
-                    self.tracker.cash += proceeds
+            old_shares = current
+            old_cost = self.tracker.holdings.get(symbol, {}).get('shares', 0) * \
+                       self.tracker.holdings.get(symbol, {}).get('avg_cost', 0)
+            new_cost = old_cost + amount
+            new_shares = old_shares + buy_shares
 
-                    trades.append({
-                        'symbol': symbol,
-                        'action': 'sell',
-                        'shares': sell_shares,
-                        'price': price,
-                        'amount': amount
-                    })
+            self.tracker.update_position(symbol, new_shares, new_cost / new_shares if new_shares > 0 else 0)
+            self.tracker.cash -= cost
+
+            if symbol not in self._entry_prices:
+                self._entry_prices[symbol] = price
+                atr = self._calculate_atr(symbol, date)
+                if atr:
+                    self._entry_atrs[symbol] = atr
+
+            trades.append({
+                'symbol': symbol,
+                'action': 'buy',
+                'shares': buy_shares,
+                'price': price,
+                'amount': amount,
+                'commission': commission,
+                'realized_pnl': 0.0,
+            })
 
         return trades
+
+    def _calculate_atr(self, symbol: str, date: str, period: int = 14) -> Optional[float]:
+        """计算指定日期的ATR"""
+        df = self.price_data.get(symbol)
+        if df is None or len(df) < period + 1:
+            return None
+        target = pd.to_datetime(date)
+        hist = df[df.index <= target].tail(period + 1)
+        if len(hist) < period + 1 or 'high' not in hist.columns or 'low' not in hist.columns:
+            return None
+        tr = pd.concat([
+            hist['high'] - hist['low'],
+            (hist['high'] - hist['close'].shift(1)).abs(),
+            (hist['low'] - hist['close'].shift(1)).abs()
+        ], axis=1).max(axis=1)
+        atr = tr.rolling(period).mean().iloc[-1]
+        return float(atr) if not pd.isna(atr) else None
+
+    def _check_atr_stops(self, date: str, prices: Dict[str, float]) -> List[str]:
+        """检查ATR止损/止盈，返回需要强制平仓的标的列表"""
+        if not self.task.atr_stop_multiplier and not self.task.atr_tp_multiplier:
+            return []
+        force_sell = []
+        for symbol, position in self.tracker.holdings.items():
+            price = prices.get(symbol, 0)
+            entry_price = self._entry_prices.get(symbol, 0)
+            entry_atr = self._entry_atrs.get(symbol, 0)
+            if price <= 0 or entry_price <= 0 or entry_atr <= 0:
+                continue
+            if self.task.atr_stop_multiplier and price < entry_price - entry_atr * self.task.atr_stop_multiplier:
+                logger.debug(f"{date}: {symbol} ATR止损触发 price={price:.3f} < {entry_price - entry_atr * self.task.atr_stop_multiplier:.3f}")
+                force_sell.append(symbol)
+            elif self.task.atr_tp_multiplier and price > entry_price + entry_atr * self.task.atr_tp_multiplier:
+                logger.debug(f"{date}: {symbol} ATR止盈触发 price={price:.3f} > {entry_price + entry_atr * self.task.atr_tp_multiplier:.3f}")
+                force_sell.append(symbol)
+        return force_sell
+
+    def _close_symbol_position(self, date: str, symbol: str, prices: Dict[str, float]) -> List[Dict]:
+        """平仓单个标的"""
+        position = self.tracker.holdings.get(symbol)
+        if not position:
+            return []
+        shares = position['shares']
+        price = prices.get(symbol, 0)
+        if price <= 0 or shares <= 0:
+            return []
+        amount = shares * price
+        commission = amount * self.task.commission_rate
+        avg_cost = position.get('avg_cost', 0.0)
+        realized_pnl = (price - avg_cost) * shares
+        self.tracker.cash += amount - commission
+        del self.tracker.holdings[symbol]
+        return [{
+            'symbol': symbol,
+            'action': 'sell',
+            'shares': shares,
+            'price': price,
+            'amount': amount,
+            'commission': commission,
+            'realized_pnl': realized_pnl,
+        }]
 
     def _close_all_positions(self, date: str, prices: Dict[str, float]) -> List[Dict]:
         """
@@ -449,7 +691,10 @@ class PortfolioBacktestEngine:
 
             if price > 0 and shares > 0:
                 amount = shares * price
-                proceeds = amount * (1 - self.task.commission_rate)
+                commission = amount * self.task.commission_rate
+                avg_cost = position.get('avg_cost', 0.0)
+                realized_pnl = (price - avg_cost) * shares
+                proceeds = amount - commission
 
                 self.tracker.cash += proceeds
                 del self.tracker.holdings[symbol]
@@ -459,7 +704,9 @@ class PortfolioBacktestEngine:
                     'action': 'sell',
                     'shares': shares,
                     'price': price,
-                    'amount': amount
+                    'amount': amount,
+                    'commission': commission,
+                    'realized_pnl': realized_pnl,
                 })
 
         return trades
@@ -495,8 +742,8 @@ class PortfolioBacktestEngine:
                 'final_holdings': []
             }
 
-        # 初始化指标计算器
-        metrics_calculator = PortfolioMetrics(self.tracker.daily_states)
+        daily_df = self.tracker.get_daily_df()
+        metrics_calculator = PortfolioMetrics(daily_df if not daily_df.empty else self.tracker.daily_states)
 
         # 获取基础指标
         final_state = self.tracker.daily_states[-1]
@@ -504,6 +751,12 @@ class PortfolioBacktestEngine:
 
         # 计算高级指标
         all_metrics = metrics_calculator.calculate_all_metrics()
+        if self.benchmark_return_history and len(self.benchmark_return_history) == len(metrics_calculator.returns):
+            all_metrics['information_ratio'] = metrics_calculator.calculate_information_ratio(
+                np.array(self.benchmark_return_history, dtype=float)
+            )
+        else:
+            all_metrics['information_ratio'] = 0.0
 
         # 构建结果字典
         result = {
@@ -520,12 +773,14 @@ class PortfolioBacktestEngine:
             'max_drawdown': all_metrics['max_drawdown'],
             'var_95': all_metrics['var_95'],
             'cvar_95': all_metrics['cvar_95'],
+            'information_ratio': all_metrics['information_ratio'],
             'win_rates': all_metrics['win_rates'],
             'monthly_returns': all_metrics['monthly_returns'],
             'avg_turnover_rate': all_metrics['avg_turnover_rate'],
             'total_trades': len(self.tracker.transaction_history),
             'equity_curve': metrics_calculator.get_equity_curve(),
-            'final_holdings': final_state['holdings']
+            'final_holdings': final_state['holdings'],
+            'daily_df': daily_df.to_dict('records') if not daily_df.empty else [],
         }
 
         logger.success(f"回测完成!")
@@ -560,7 +815,12 @@ class PortfolioBacktestEngine:
                 'select_buy': self.task.select_buy,
                 'select_sell': self.task.select_sell,
                 'buy_at_least_count': self.task.buy_at_least_count,
-                'sell_at_least_count': self.task.sell_at_least_count
+                'sell_at_least_count': self.task.sell_at_least_count,
+                'target_annual_vol': self.task.target_annual_vol,
+                'max_total_weight': self.task.max_total_weight,
+                'risk_off_drawdown_trigger': self.task.risk_off_drawdown_trigger,
+                'risk_off_drawdown_exit': self.task.risk_off_drawdown_exit,
+                'risk_off_multiplier': self.task.risk_off_multiplier,
             }
 
             # 创建回测记录
@@ -576,16 +836,16 @@ class PortfolioBacktestEngine:
                 portfolio_config=portfolio_config,
 
                 # 基础指标
-                total_return=metrics['total_return'],
-                annual_return=metrics['annual_return'],
+                total_return=metrics['total_return'] * 100,
+                annual_return=metrics['annual_return'] * 100,
                 sharpe_ratio=metrics['sharpe_ratio'],
-                max_drawdown=metrics['max_drawdown'],
+                max_drawdown=metrics['max_drawdown'] * 100,
 
                 # 高级指标
                 sortino_ratio=metrics.get('sortino_ratio'),
                 calmar_ratio=metrics.get('calmar_ratio'),
-                var_95=metrics.get('var_95'),
-                cvar_95=metrics.get('cvar_95'),
+                var_95=(metrics.get('var_95') * 100 if metrics.get('var_95') is not None else None),
+                cvar_95=(metrics.get('cvar_95') * 100 if metrics.get('cvar_95') is not None else None),
                 information_ratio=metrics.get('information_ratio'),
                 avg_turnover_rate=metrics.get('avg_turnover_rate'),
                 win_rates=metrics.get('win_rates'),
