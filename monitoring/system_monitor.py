@@ -218,61 +218,28 @@ class SystemMonitor:
             self.monitor_thread.join(timeout=5)
             self.monitor_thread = None
 
-    def check_postgres_connections(self) -> Optional[dict]:
+    def check_database_health(self) -> Optional[dict]:
         """
-        检查PostgreSQL连接状态
+        检查Database连接状态
 
         Returns:
             Optional[dict]: 连接状态，失败返回None
         """
         try:
-            from database.pg_manager import get_db
+            from database.db_manager import get_db
             from sqlalchemy import text
 
             db = get_db()
 
             with db.get_session() as session:
-                # 活跃连接数
-                result = session.execute(text(
-                    "SELECT count(*) FROM pg_stat_activity WHERE state = 'active'"
-                ))
-                active = result.scalar()
-
-                # 总连接数
-                result = session.execute(text(
-                    "SELECT count(*) FROM pg_stat_activity"
-                ))
-                total = result.scalar()
-
-                # 最大连接数
-                result = session.execute(text(
-                    "SELECT setting::int FROM pg_settings WHERE name = 'max_connections'"
-                ))
-                max_conn = result.scalar()
-
-                status = {
-                    'active_connections': active,
-                    'total_connections': total,
-                    'max_connections': max_conn,
-                    'usage_percent': (total / max_conn) * 100
-                }
-
-                logger.debug(
-                    f"PostgreSQL: {active}/{total} 活跃, "
-                    f"{total}/{max_conn} 总计 ({status['usage_percent']:.1f}%)"
-                )
-
-                # 告警
-                if status['usage_percent'] > 90:
-                    logger.warning(
-                        f"⚠️ PostgreSQL连接数过高: {total}/{max_conn} "
-                        f"({status['usage_percent']:.1f}%)"
-                    )
+                session.execute(text("SELECT 1"))
+                status = {'healthy': True}
+                logger.debug("Database health check passed")
 
                 return status
 
         except Exception as e:
-            logger.error(f"检查PostgreSQL连接失败: {e}")
+            logger.error(f"检查Database连接失败: {e}")
             return None
 
 
@@ -294,10 +261,10 @@ def log_system_status():
     monitor.log_metrics()
 
 
-def check_postgres():
-    """检查PostgreSQL连接状态"""
+def check_database():
+    """检查Database连接状态"""
     monitor = get_monitor()
-    return monitor.check_postgres_connections()
+    return monitor.check_database_health()
 
 
 def start_monitoring(interval_seconds: int = 300):
@@ -323,7 +290,7 @@ if __name__ == '__main__':
     print(f"磁盘: {metrics.disk_percent:.1f}%")
     print(f"负载: {metrics.load_average_1m:.2f} (1min)")
 
-    # 检查PostgreSQL
-    pg_status = monitor.check_postgres_connections()
-    if pg_status:
-        print(f"PostgreSQL: {pg_status['total_connections']}/{pg_status['max_connections']} 连接")
+    # 检查Database
+    db_status = monitor.check_database_health()
+    if db_status:
+        print("Database: healthy")

@@ -1,13 +1,13 @@
 """
 A股股票数据下载器
-从 akshare 下载 A股历史数据并存储到 PostgreSQL
+从 akshare 下载 A股历史数据并存储到 Database
 """
 import pandas as pd
 import akshare as ak
 from datetime import datetime, timedelta
 from loguru import logger
 from typing import Optional
-from database.pg_manager import get_db
+from database.db_manager import get_db
 
 
 class StockDownloader:

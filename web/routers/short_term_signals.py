@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from loguru import logger
 import pandas as pd
 import numpy as np

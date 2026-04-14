@@ -43,7 +43,7 @@ except ImportError:
     ak = None
 
 # 数据库和模型
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from database.models.models import SectorData, StockMetadata, StockHistory, DailyOperationList
 
 # 核心分析模块

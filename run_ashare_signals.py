@@ -38,7 +38,7 @@ logger.add(project_root / 'logs' / 'ashare_pipeline.log', level='DEBUG', rotatio
 from core.backtrader_engine import Engine
 from core.backtest_utils import extract_backtest_metrics
 from core.strategy_loader import StrategyLoader
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from signals.multi_strategy_signals import MultiStrategySignalGenerator
 
 

@@ -156,7 +156,7 @@ section h3 {
     transform: rotate(-90deg);
 }
 
-/* ETF and A-Share Module Date Headers */
+/* A-Share Module Date Headers */
 .signals-panel .date-header {
     display: flex;
     justify-content: space-between;
@@ -884,13 +884,6 @@ button:hover {
 }
 
 /* 设置固定的列宽，确保对齐 */
-/* ETF表格（5列）的列宽 */
-.signals-table.etf-table col.symbol-col { width: 15%; }
-.signals-table.etf-table col.name-col { width: 30%; }
-.signals-table.etf-table col.price-col { width: 10%; }
-.signals-table.etf-table col.backtest-col { width: 14%; }
-.signals-table.etf-table col.position-col { width: 23%; }
-
 /* A股表格（6列）的列宽 */
 .signals-table.ashare-table col.symbol-col { width: 16%; }
 .signals-table.ashare-table col.name-col { width: 18%; }

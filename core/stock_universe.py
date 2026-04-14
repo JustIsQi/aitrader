@@ -19,7 +19,7 @@ from typing import List, Optional, Dict, Any, Callable, TypeVar
 from loguru import logger
 from sqlalchemy.exc import OperationalError, DBAPIError
 
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from database.models import StockMetadata, StockFundamentalDaily
 
 T = TypeVar('T')

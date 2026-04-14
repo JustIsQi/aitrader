@@ -69,11 +69,10 @@ document.addEventListener('DOMContentLoaded', function() {
             loadingElement.style.display = 'none';
 
             // Check if there's any data
-            const hasEtf = data.etf && data.etf.dates && data.etf.dates.length > 0;
             const hasWeekly = data.ashare && data.ashare.weekly && data.ashare.weekly.dates && data.ashare.weekly.dates.length > 0;
             const hasMonthly = data.ashare && data.ashare.monthly && data.ashare.monthly.dates && data.ashare.monthly.dates.length > 0;
 
-            if (!hasEtf && !hasWeekly && !hasMonthly) {
+            if (!hasWeekly && !hasMonthly) {
                 emptyStateElement.style.display = 'block';
                 return;
             }
@@ -91,12 +90,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function renderSignals(data) {
-        // Render ETF section
-        if (data.etf && data.etf.dates && data.etf.dates.length > 0) {
-            const etfSection = createAssetTypeSection('ETF Trading Signals', 'etf', data.etf.dates);
-            signalsContainer.appendChild(etfSection);
-        }
-
         // Render A-Share Weekly section
         if (data.ashare && data.ashare.weekly && data.ashare.weekly.dates && data.ashare.weekly.dates.length > 0) {
             const weeklySection = createAssetTypeSection('A-Share Weekly Strategies (A股周频策略)', 'ashare-weekly', data.ashare.weekly.dates);

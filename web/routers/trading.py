@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 from datetime import date
 from pathlib import Path
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from web.models import TradingRecord, TransactionResponse, PositionResponse
 import numpy as np
 import pandas as pd
@@ -131,7 +131,7 @@ async def get_transactions(symbol: str = None, start_date: str = None,
     获取交易记录
 
     Args:
-        symbol: 过滤ETF代码 (可选)
+        symbol: 过滤股票代码 (可选)
         start_date: 开始日期 YYYY-MM-DD (可选)
         end_date: 结束日期 YYYY-MM-DD (可选)
         limit: 最大记录数 (默认: 100)
@@ -262,7 +262,7 @@ async def recalculate_positions():
 @router.get("/codes")
 async def get_trading_codes(search: str = None, limit: int = 100):
     """
-    获取 ETF 和股票代码列表（支持搜索）
+    获取股票代码列表（支持搜索）
 
     Args:
         search: 搜索关键词（可选）

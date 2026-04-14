@@ -24,7 +24,7 @@ except ImportError:
     logger.warning("talib未安装,部分技术指标计算将不可用")
     talib = None
 
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from database.models.models import (
     StockHistory, StockMetadata, StockFundamentalDaily, StockRiskData
 )
@@ -255,26 +255,17 @@ class StockSelector:
         for sector_name, stocks in sector_stocks.items():
             stock_codes = [s[0] for s in stocks]
 
-            # 获取历史数据 (包含turnover_rate和high用于新策略)
+            # 获取历史数据 (turnover_rate 来自 Wind 衍生指标表)
             try:
-                with self.db.get_session() as session:
-                    query = session.query(
-                        StockHistory.symbol,
-                        StockHistory.date,
-                        StockHistory.open,
-                        StockHistory.close,
-                        StockHistory.high,
-                        StockHistory.low,
-                        StockHistory.volume,
-                        StockHistory.change_pct,
-                        StockHistory.turnover_rate
-                    ).filter(
-                        StockHistory.symbol.in_(stock_codes),
-                        StockHistory.date >= start_date_obj,
-                        StockHistory.date <= date_obj
-                    ).order_by(StockHistory.date)
+                from datafeed.db_dataloader import DbDataLoader
 
-                    df = pd.read_sql(query.statement, session.bind)
+                loader = DbDataLoader(auto_download=False)
+                dfs = loader.read_dfs(
+                    symbols=stock_codes,
+                    start_date=start_date_obj.strftime('%Y%m%d'),
+                    end_date=date_obj.strftime('%Y%m%d'),
+                )
+                df = pd.concat(dfs.values(), ignore_index=True) if dfs else pd.DataFrame()
 
                 if df.empty:
                     logger.debug(f"板块 {sector_name} 无历史数据")

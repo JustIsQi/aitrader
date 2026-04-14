@@ -3,7 +3,7 @@
 包含数据库连接、因子缓存、数据导入等
 """
 
-from .pg_manager import PostgreSQLManager, get_db, close_all_connections
+from .db_manager import DatabaseManager, get_db, close_all_connections
 from .factor_cache import FactorCache
 
-__all__ = ['get_db', 'PostgreSQLManager', 'FactorCache', 'close_all_connections']
+__all__ = ['get_db', 'DatabaseManager', 'FactorCache', 'close_all_connections']

@@ -11,35 +11,6 @@ A股策略示例
 from core.backtrader_engine import Task, Engine
 
 
-def example_etf_strategy():
-    """示例: ETF策略(非A股模式)"""
-    t = Task()
-    t.name = 'ETF轮动策略'
-    t.symbols = ['510300.SH', '510500.SH', '159915.SZ']
-    t.start_date = '20200101'
-    t.end_date = '20231231'
-
-    # 简单动量选股
-    t.select_buy = ['roc(close,20) > 0.02']
-    t.buy_at_least_count = 1
-    t.select_sell = ['roc(close,20) < 0']
-
-    # 按动量排序,选top1
-    t.order_by_signal = 'roc(close,20)'
-    t.order_by_topK = 1
-
-    t.period = 'RunWeekly'
-    t.weight = 'WeightEqually'
-
-    # ETF模式(默认)
-    t.ashare_mode = False
-
-    e = Engine()
-    e.run(t)
-    e.stats()
-    # e.plot()
-
-
 def example_ashare_stock_strategy():
     """示例: A股股票策略(启用A股约束)"""
     t = Task()
@@ -130,11 +101,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         strategy_type = sys.argv[1]
 
-        if strategy_type == 'etf':
-            print("\n运行ETF策略...")
-            example_etf_strategy()
-
-        elif strategy_type == 'ashare_momentum':
+        if strategy_type == 'ashare_momentum':
             print("\n运行A股动量策略...")
             example_ashare_stock_strategy()
 
@@ -144,9 +111,8 @@ if __name__ == '__main__':
 
         else:
             print(f"\n未知策略类型: {strategy_type}")
-            print("可用选项: etf, ashare_momentum, ashare_multifactor")
+            print("可用选项: ashare_momentum, ashare_multifactor")
     else:
         print("\n请指定策略类型:")
-        print("  python ashare_strategy_example.py etf")
         print("  python ashare_strategy_example.py ashare_momentum")
         print("  python ashare_strategy_example.py ashare_multifactor")

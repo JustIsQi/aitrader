@@ -1,5 +1,5 @@
 """
-Import A-share stock information from ashare.csv into PostgreSQL
+Import A-share stock information from ashare.csv into Database
 Reads ashare.csv and creates records in ashare_stock_info table
 """
 import os

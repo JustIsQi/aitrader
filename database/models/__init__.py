@@ -5,7 +5,6 @@ from database.models.base import Base, engine, SessionLocal
 
 # Import all models
 from database.models.models import (
-    EtfHistory,
     StockHistory,
     StockMetadata,
     StockFundamentalDaily,
@@ -13,12 +12,10 @@ from database.models.models import (
     Transaction,
     Position,
     FactorCache,
-    EtfCode,
     StockCode,
     StrategyBacktest,
     SignalBacktestAssociation,
     AShareStockInfo,
-    EtfHistoryQfq,
     StockHistoryQfq
 )
 
@@ -26,7 +23,6 @@ __all__ = [
     'Base',
     'engine',
     'SessionLocal',
-    'EtfHistory',
     'StockHistory',
     'StockMetadata',
     'StockFundamentalDaily',
@@ -34,11 +30,9 @@ __all__ = [
     'Transaction',
     'Position',
     'FactorCache',
-    'EtfCode',
     'StockCode',
     'StrategyBacktest',
     'SignalBacktestAssociation',
     'AShareStockInfo',
-    'EtfHistoryQfq',
     'StockHistoryQfq',
 ]

@@ -1,37 +1,10 @@
 """
-SQLAlchemy ORM Models for AITrader PostgreSQL Database
+SQLAlchemy ORM Models for AITrader Database Database
 All models mirror the existing DuckDB schema
 """
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, Text, UniqueConstraint, Index, ForeignKey, JSON
 from sqlalchemy.sql import func
 from database.models.base import Base
-
-
-class EtfHistory(Base):
-    """ETF历史数据表"""
-    __tablename__ = 'etf_history'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol = Column(String(20), nullable=False)
-    name = Column(String(100))
-    date = Column(Date, nullable=False)
-    open = Column(Float)
-    high = Column(Float)
-    low = Column(Float)
-    close = Column(Float)
-    volume = Column(Integer)
-    amount = Column(Float)
-    amplitude = Column(Float)
-    change_pct = Column(Float)
-    change_amount = Column(Float)
-    turnover_rate = Column(Float)
-    created_at = Column(DateTime, server_default=func.now())
-
-    __table_args__ = (
-        UniqueConstraint('symbol', 'date', name='uix_etf_symbol_date'),
-        Index('idx_etf_symbol_date', 'symbol', 'date'),
-        Index('idx_etf_date', 'date'),
-    )
 
 
 class StockHistory(Base):
@@ -141,7 +114,7 @@ class Trader(Base):
     score = Column(Float)
     rank = Column(Integer)
     quantity = Column(Integer)
-    asset_type = Column(String(20), nullable=False)  # 'etf' or 'ashare'
+    asset_type = Column(String(20), nullable=False)  # 'ashare'
     backtest_metrics = Column(JSON)  # 回测指标 (可选)
     created_at = Column(DateTime, server_default=func.now())
 
@@ -200,15 +173,6 @@ class FactorCache(Base):
     )
 
 
-class EtfCode(Base):
-    """ETF代码表"""
-    __tablename__ = 'etf_codes'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol = Column(String(20), nullable=False, unique=True)
-    name = Column(String(100))
-
-
 class StockCode(Base):
     """股票代码表"""
     __tablename__ = 'stock_codes'
@@ -237,7 +201,7 @@ class StrategyBacktest(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     strategy_name = Column(String(100), nullable=False)
     strategy_version = Column(String(50))  # e.g., 'weekly', 'monthly'
-    asset_type = Column(String(20), nullable=False)  # 'etf' or 'ashare'
+    asset_type = Column(String(20), nullable=False)  # 'ashare'
 
     # Backtest configuration
     start_date = Column(Date, nullable=False)
@@ -280,7 +244,7 @@ class StrategyBacktest(Base):
     win_rates = Column(JSON)  # 胜率 {'daily': 60, 'weekly': 65, 'monthly': 70}
 
     # Portfolio holdings (组合持仓)
-    final_holdings = Column(JSON)  # 最后一天持仓 [{'symbol': '510300.SH', 'shares': 100, 'weight': 0.25}]
+    final_holdings = Column(JSON)  # 最后一天持仓 [{'symbol': '000001.SZ', 'shares': 100, 'weight': 0.25}]
 
     # Metadata
     backtest_date = Column(DateTime, server_default=func.now())
@@ -308,33 +272,6 @@ class SignalBacktestAssociation(Base):
 
     __table_args__ = (
         UniqueConstraint('trader_id', 'backtest_id', name='uix_signal_backtest'),
-    )
-
-
-class EtfHistoryQfq(Base):
-    """ETF前复权历史数据表"""
-    __tablename__ = 'etf_history_qfq'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol = Column(String(20), nullable=False)
-    name = Column(String(100))
-    date = Column(Date, nullable=False)
-    open = Column(Float)
-    high = Column(Float)
-    low = Column(Float)
-    close = Column(Float)
-    volume = Column(Integer)
-    amount = Column(Float)
-    amplitude = Column(Float)
-    change_pct = Column(Float)
-    change_amount = Column(Float)
-    turnover_rate = Column(Float)
-    created_at = Column(DateTime, server_default=func.now())
-
-    __table_args__ = (
-        UniqueConstraint('symbol', 'date', name='uix_etf_qfq_symbol_date'),
-        Index('idx_etf_qfq_symbol_date', 'symbol', 'date'),
-        Index('idx_etf_qfq_date', 'date'),
     )
 
 

@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 from loguru import logger
 
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from database.models.models import StockHistory
 
 

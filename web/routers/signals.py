@@ -4,7 +4,7 @@ Signals API endpoints
 from fastapi import APIRouter, HTTPException
 from typing import List, Optional
 from datetime import datetime
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from web.models import SignalResponse
 from loguru import logger
 import numpy as np
@@ -109,10 +109,10 @@ async def get_signals_by_date(signal_date: str):
 @router.get("/by-symbol/{symbol}", response_model=List[SignalResponse])
 async def get_signals_by_symbol(symbol: str, start_date: str = None, end_date: str = None):
     """
-    获取指定标的的信号
+    获取指定A股标的的信号
 
     Args:
-        symbol: ETF代码
+        symbol: A股代码
         start_date: 开始日期 YYYY-MM-DD (可选)
         end_date: 结束日期 YYYY-MM-DD (可选)
 
@@ -149,16 +149,15 @@ async def get_signals_by_symbol(symbol: str, start_date: str = None, end_date: s
 @router.get("/history/grouped")
 async def get_signals_history_grouped(start_date: str = None, end_date: str = None):
     """
-    获取历史信号，按日期分组，并按ETF/A股分类
+    获取历史A股信号，按日期和策略频率分组
 
     Args:
         start_date: 开始日期 YYYY-MM-DD (可选)
         end_date: 结束日期 YYYY-MM-DD (可选)
 
     Returns:
-        按ETF和A股分类，再按日期分组的历史信号
+        按周频/月频分类，再按日期分组的历史信号
         {
-            "etf": {"dates": [...]},
             "ashare": {"weekly": {"dates": [...]}, "monthly": {"dates": [...]}}
         }
     """
@@ -200,7 +199,6 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
 
         if signals_df.empty:
             return {
-                "etf": {"dates": []},
                 "ashare": {"weekly": {"dates": []}, "monthly": {"dates": []}}
             }
 
@@ -211,8 +209,6 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
         symbols = signals_df['symbol'].unique().tolist()
         company_abbr_map = db.batch_get_company_abbr(symbols)
 
-        # 按asset_type分组
-        etf_signals = []
         ashare_signals = []
 
         for record in signals_df.to_dict('records'):
@@ -227,24 +223,9 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
             # 添加公司简称
             cleaned_record['zh_company_abbr'] = company_abbr_map.get(record['symbol'], '')
 
-            # 按类型分组
             asset_type = cleaned_record.get('asset_type', '')
-            if asset_type == 'etf':
-                etf_signals.append(cleaned_record)
-            elif asset_type == 'ashare':
+            if asset_type == 'ashare':
                 ashare_signals.append(cleaned_record)
-
-        # ETF信号按日期分组
-        etf_grouped = {}
-        for signal in etf_signals:
-            date_key = signal['signal_date']
-            if date_key not in etf_grouped:
-                etf_grouped[date_key] = []
-            etf_grouped[date_key].append(signal)
-
-        # Sort by date descending (newest first)
-        etf_dates_list = [{"date": date, "signals": signals}
-                         for date, signals in sorted(etf_grouped.items(), key=lambda x: x[0], reverse=True)]
 
         # A股信号按周频/月频分组，再按日期分组
         ashare_weekly = []
@@ -285,7 +266,6 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
                              for date, signals in sorted(monthly_grouped.items(), key=lambda x: x[0], reverse=True)]
 
         return {
-            "etf": {"dates": etf_dates_list},
             "ashare": {
                 "weekly": {"dates": weekly_dates_list},
                 "monthly": {"dates": monthly_dates_list}
@@ -294,92 +274,6 @@ async def get_signals_history_grouped(start_date: str = None, end_date: str = No
 
     except Exception as e:
         logger.error(f"Error fetching historical signals grouped: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/etf/latest")
-async def get_latest_etf_signals(limit: int = 50):
-    """
-    获取最新一天的ETF信号 (仅返回最新日期的信号)
-
-    Returns:
-        Single object with latest date and signals (not grouped by date)
-        {
-            "date": "2024-01-15",
-            "signals": [...]
-        }
-    """
-    try:
-        db = get_db()
-        with db.get_session() as session:
-            # Query ETF signals using asset_type column
-            from database.models.models import Trader
-            from sqlalchemy import func, case
-
-            # ETF信号：使用asset_type字段过滤，按rank排序（rank=1优先）
-            # 卖出信号优先显示，然后是价格<50的ETF
-            query = session.query(Trader).filter(
-                Trader.asset_type == 'etf'
-            ).order_by(
-                case(
-                    (Trader.signal_type == 'sell', 0),  # 卖出信号优先级为0
-                    else_=1                              # 买入信号优先级为1
-                ).asc(),                                 # 按信号类型优先级升序
-                case(
-                    (Trader.price < 50, 0),      # 价格<50优先级为0
-                    else_=1                       # 价格>=50优先级为1
-                ).asc(),                          # 按价格优先级升序
-                func.coalesce(Trader.rank, 9999).asc(),
-                Trader.signal_date.desc(),
-                Trader.created_at.desc()
-            ).limit(limit)
-
-            signals_df = pd.read_sql(query.statement, session.bind)
-
-        if signals_df.empty:
-            return {"date": None, "signals": []}
-
-        # Clean and process signals
-        signals_df = clean_dataframe(signals_df)
-
-        # Batch get ETF names for all symbols
-        symbols = signals_df['symbol'].unique().tolist()
-        etf_name_map = db.batch_get_etf_names(symbols)
-
-        signals_list = []
-        for record in signals_df.to_dict('records'):
-            cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
-            if 'signal_date' in cleaned_record and cleaned_record['signal_date']:
-                cleaned_record['signal_date'] = cleaned_record['signal_date'].strftime('%Y-%m-%d')
-            if 'created_at' in cleaned_record and cleaned_record['created_at']:
-                cleaned_record['created_at'] = cleaned_record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
-
-            # Add ETF name
-            cleaned_record['zh_company_abbr'] = etf_name_map.get(record['symbol'], '')
-
-            # 新增: 获取回测信息
-            backtest_info = db.get_signal_backtest(record['id'])
-            cleaned_record['backtest'] = backtest_info
-
-            signals_list.append(cleaned_record)
-
-        # Find the latest date and filter signals
-        if signals_list:
-            dates = [s['signal_date'] for s in signals_list]
-            latest_date = max(dates)
-            latest_signals = [s for s in signals_list if s['signal_date'] == latest_date]
-        else:
-            latest_date = None
-            latest_signals = []
-
-        # Return single date object (not a list)
-        return {
-            "date": latest_date,
-            "signals": latest_signals
-        }
-
-    except Exception as e:
-        logger.error(f"Error fetching ETF signals: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -529,7 +423,7 @@ async def get_backtest_detail(backtest_id: int):
 @router.get("/backtest/{backtest_id}")
 async def get_backtest_by_id_universal(backtest_id: int):
     """
-    获取回测详情通用端点(支持ETF和A股)
+    获取A股回测详情通用端点
 
     Returns:
         Complete backtest report with equity curve and trades

@@ -24,7 +24,7 @@ except ImportError:
     logger.warning("akshare未安装,部分功能将不可用")
     ak = None
 
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from database.models.models import SectorData, StockHistory, StockMetadata
 
 

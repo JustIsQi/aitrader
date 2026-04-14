@@ -19,112 +19,6 @@
         <div class="dashboard-grid-two-column">
             <!-- Left Column: Trading Signals -->
             <div class="signals-column">
-            <!-- ETF Signals Module -->
-            <section class="signals-panel etf-panel">
-                <div class="module-header" id="etf-module-header">
-                    <span class="module-title">ETF Trading Signals</span>
-                    <span class="expand-icon">&#9662;</span>
-                </div>
-
-                <div id="etf-signals-container" class="signals-container">
-                    {% if etf_date %}
-                        <div class="latest-date-header">{{ etf_date }}</div>
-
-                        <!-- Buy Signals Table -->
-                        {% set buy_signals = etf_signals|selectattr('signal_type', 'equalto', 'buy')|list %}
-                        {% if buy_signals %}
-                        <div class="signals-table-wrapper buy-signals-table">
-                            <div class="signals-table-header">买入信号 ({{ buy_signals|length }})</div>
-                            <table class="signals-table etf-table">
-                                <colgroup>
-                                    <col class="symbol-col">
-                                    <col class="name-col">
-                                    <col class="price-col">
-                                    <col class="position-col">
-                                </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th>代码</th>
-                                        <th>名称</th>
-                                        <th>价格</th>
-                                        <th>持仓</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for signal in buy_signals %}
-                                    <tr class="signal-row buy" data-symbol="{{ signal.symbol }}">
-                                        <td class="symbol-cell">{{ signal.symbol }}</td>
-                                        <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
-                                        <td class="price-cell">{{ signal.price }}</td>
-                                        <td class="position-cell">
-                                            {% if signal.position is defined and signal.position %}
-                                            <div class="position-info">
-                                                <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
-                                                <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
-                                                    {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
-                                                </span>
-                                            </div>
-                                            {% else %}
-                                                -
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                        {% endif %}
-
-                        <!-- Sell Signals Table -->
-                        {% set sell_signals = etf_signals|selectattr('signal_type', 'equalto', 'sell')|list %}
-                        {% if sell_signals %}
-                        <div class="signals-table-wrapper sell-signals-table">
-                            <div class="signals-table-header">卖出信号 ({{ sell_signals|length }})</div>
-                            <table class="signals-table etf-table sell-highlight">
-                                <colgroup>
-                                    <col class="symbol-col">
-                                    <col class="name-col">
-                                    <col class="price-col">
-                                    <col class="position-col">
-                                </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th>代码</th>
-                                        <th>名称</th>
-                                        <th>价格</th>
-                                        <th>持仓</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for signal in sell_signals %}
-                                    <tr class="signal-row sell" data-symbol="{{ signal.symbol }}">
-                                        <td class="symbol-cell">{{ signal.symbol }}</td>
-                                        <td class="name-cell">{{ signal.zh_company_abbr or '-' }}</td>
-                                        <td class="price-cell">{{ signal.price }}</td>
-                                        <td class="position-cell">
-                                            {% if signal.position is defined and signal.position %}
-                                            <div class="position-info">
-                                                <span class="quantity">{{ "%.0f"|format(signal.position.quantity) }} 股</span>
-                                                <span class="pnl {{ 'positive' if signal.position.unrealized_pl >= 0 else 'negative' }}">
-                                                    {{ "%.2f"|format(signal.position.unrealized_pl_pct) }}%
-                                                </span>
-                                            </div>
-                                            {% else %}
-                                                -
-                                            {% endif %}
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                        {% endif %}
-                    {% else %}
-                        <p class="no-data">No ETF signals available</p>
-                    {% endif %}
-                </div>
-            </section>
-
             <!-- A-Share Weekly Signals Module -->
             <section class="signals-panel ashare-panel">
                 <div class="module-header" id="ashare-weekly-module-header">
@@ -612,8 +506,8 @@
                                     <td>{{ pos.symbol }}</td>
                                     <td>
                                         <div class="symbol-cell">
-                                            {% if pos.etf_name or pos.stock_name %}
-                                                <span class="symbol-name-cn">{{ pos.etf_name or pos.stock_name }}</span>
+                                            {% if pos.stock_name %}
+                                                <span class="symbol-name-cn">{{ pos.stock_name }}</span>
                                             {% else %}
                                                 <span class="symbol-name-cn">-</span>
                                             {% endif %}

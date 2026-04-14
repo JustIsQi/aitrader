@@ -188,51 +188,28 @@ class ResourceManager:
         return status
 
     @classmethod
-    def check_postgres_connections(cls) -> Optional[dict]:
+    def check_database_health(cls) -> Optional[dict]:
         """
-        检查PostgreSQL连接数
+        检查Database连接数
 
         Returns:
             Optional[dict]: 连接状态，失败返回None
         """
         try:
-            from database.pg_manager import get_db
+            from database.db_manager import get_db
             db = get_db()
 
             with db.get_session() as session:
                 from sqlalchemy import text
 
-                # 获取活跃连接数
-                result = session.execute(text(
-                    "SELECT count(*) FROM pg_stat_activity WHERE state = 'active'"
-                ))
-                active = result.scalar()
-
-                # 获取最大连接数
-                result = session.execute(text(
-                    "SELECT setting::int FROM pg_settings WHERE name = 'max_connections'"
-                ))
-                max_conn = result.scalar()
-
-                status = {
-                    'active_connections': active,
-                    'max_connections': max_conn,
-                    'usage_percent': (active / max_conn) * 100
-                }
-
-                logger.debug(f"PostgreSQL连接: {active}/{max_conn} ({status['usage_percent']:.1f}%)")
-
-                # 连接数告警
-                if status['usage_percent'] > 90:
-                    logger.warning(
-                        f"⚠️ PostgreSQL连接数过高: {active}/{max_conn} "
-                        f"({status['usage_percent']:.1f}%)"
-                    )
+                session.execute(text("SELECT 1"))
+                status = {'healthy': True}
+                logger.debug("Database health check passed")
 
                 return status
 
         except Exception as e:
-            logger.error(f"检查PostgreSQL连接失败: {e}")
+            logger.error(f"检查Database连接失败: {e}")
             return None
 
     @classmethod
@@ -310,7 +287,7 @@ def log_system_status():
 if __name__ == '__main__':
     # 检查系统状态
     ResourceManager.log_system_status()
-    ResourceManager.check_postgres_connections()
+    ResourceManager.check_database_health()
 
     # 检查是否可以运行回测
     can_run, reason = ResourceManager.can_start_workload(WorkloadType.BACKTEST)

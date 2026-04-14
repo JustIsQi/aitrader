@@ -10,7 +10,7 @@ from loguru import logger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from signals.strategy_parser import StrategyParser, ParsedStrategy, StrategyType
 from database.factor_cache import FactorCache
 
@@ -497,14 +497,11 @@ class MultiStrategySignalGenerator:
         try:
             from core.backtest_utils import calculate_symbol_backtest
 
-            # 判断资产类型（基于符号格式）
-            asset_type = 'etf' if '.' in symbol and 'XSHG' in symbol or 'XSHE' in symbol else 'ashare'
-
             return calculate_symbol_backtest(
                 symbol=symbol,
                 lookback_days=lookback_days,
                 end_date=self.target_date,
-                asset_type=asset_type
+                asset_type='ashare'
             )
         except Exception as e:
             logger.warning(f"计算标的 {symbol} 的回测指标失败: {e}")

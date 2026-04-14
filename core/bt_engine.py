@@ -263,17 +263,15 @@ import requests, json
 
 if __name__ == '__main__':
     t = Task()
-    t.name = '全球大类资产-修正斜率轮动'
-    etfs = [
-        '510300.SH',  # 沪深300ETF
-        '159915.SZ',  # 创业板
-        '518880.SH',  # 黄金ETF
-        '513100.SH',  # 纳指ETF
-        '159985.SZ',  # 豆柏ETF
-        '511880.SH',  # 银华日利ETF
+    t.name = 'A股动量回测示例'
+    stocks = [
+        '000001.SZ',
+        '000002.SZ',
+        '600000.SH',
+        '600036.SH',
     ]
 
-    t.symbols = etfs
+    t.symbols = stocks
 
     #t.select_sell = ["roc(close,21)>0.17"]
     t.order_by_signal =  "roc(close,22)"
@@ -282,8 +280,8 @@ if __name__ == '__main__':
     res = e.run(t)
     print(res.stats)
 
-    # 保存交易记录到PostgreSQL
-    from database.pg_manager import get_db
+    # 保存交易记录到Database
+    from database.db_manager import get_db
     db = get_db()
     transactions_df = res.get_transactions()
     db.save_backtest_transactions(transactions_df, strategy_name=t.name)

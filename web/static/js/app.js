@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize recalculate positions button
     initRecalculateButton();
 
-    // Initialize module toggles (ETF/A-share)
+    // Initialize module toggles (A-share)
     initModuleToggles();
 
     // Initialize backtest section toggles
@@ -281,17 +281,8 @@ function initRecalculateButton() {
 // ========== Module-level expand/collapse ==========
 
 function initModuleToggles() {
-    const etfHeader = document.getElementById('etf-module-header');
     const ashareWeeklyHeader = document.getElementById('ashare-weekly-module-header');
     const ashareMonthlyHeader = document.getElementById('ashare-monthly-module-header');
-
-    if (etfHeader) {
-        etfHeader.addEventListener('click', function() {
-            const container = document.getElementById('etf-signals-container');
-            container.classList.toggle('collapsed');
-            _toggleIcon(this);
-        });
-    }
 
     if (ashareWeeklyHeader) {
         ashareWeeklyHeader.addEventListener('click', function() {
@@ -372,10 +363,7 @@ async function loadBacktestDetail(backtestId, assetType = 'ashare') {
         modalBody.innerHTML = '<p style="text-align: center; padding: 20px;">Loading backtest data...</p>';
         modal.style.display = 'block';
 
-        // 根据assetType选择API端点
-        const endpoint = assetType === 'etf'
-            ? `/api/signals/backtest/${backtestId}`
-            : `/api/signals/ashare/backtest/${backtestId}`;
+        const endpoint = `/api/signals/ashare/backtest/${backtestId}`;
 
         // Fetch backtest data
         const response = await fetch(endpoint);

@@ -18,7 +18,7 @@ import pandas as pd
 from loguru import logger
 
 from core.stock_universe import StockUniverse
-from database.pg_manager import get_db
+from database.db_manager import get_db
 
 
 @dataclass

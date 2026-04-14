@@ -9,7 +9,7 @@ from pathlib import Path
 from loguru import logger
 import numpy as np
 
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from web.routers import signals, trading, analytics, short_term_signals
 import pandas as pd
 
@@ -34,7 +34,7 @@ def safe_dict_value(value):
 # 初始化FastAPI应用
 app = FastAPI(
     title="AITrader Web Interface",
-    description="Web interface for ETF trading signals and portfolio management",
+    description="Web interface for A-share trading signals and portfolio management",
     version="1.0.0"
 )
 
@@ -59,7 +59,7 @@ db = get_db()
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     """
-    主仪表板页面 - 分别显示ETF和A股信号
+    主仪表板页面 - 显示A股信号
     """
     # 获取当前持仓
     positions = db.get_positions()
@@ -91,18 +91,6 @@ async def dashboard(request: Request):
             positions_dict[symbol] = position_data
             positions_dict[f"{symbol}.SH"] = position_data
             positions_dict[f"{symbol}.SZ"] = position_data
-
-    # Get ETF signals separately
-    from web.routers.signals import get_latest_etf_signals
-    etf_result = await get_latest_etf_signals(limit=50)
-    etf_date = etf_result.get("date")
-    etf_signals = etf_result.get("signals", [])
-
-    # Enrich ETF signals with position data
-    for signal in etf_signals:
-        symbol = signal.get('symbol')
-        if symbol and symbol in positions_dict:
-            signal['position'] = positions_dict[symbol]
 
     # Get A-share signals with backtests (split by weekly/monthly)
     from web.routers.signals import get_latest_ashare_signals
@@ -143,16 +131,14 @@ async def dashboard(request: Request):
     # Convert to list
     positions_list = []
     if not positions.empty:
-        # Fetch ETF names and stock company abbreviations
+        # Fetch stock company abbreviations
         symbols = positions['symbol'].tolist()
-        etf_name_map = db.batch_get_etf_names(symbols) if symbols else {}
         stock_name_map = db.batch_get_company_abbr(symbols) if symbols else {}
 
         for record in positions.to_dict('records'):
             cleaned_record = {k: safe_dict_value(v) for k, v in record.items()}
             symbol = record['symbol']
-            # Add ETF name or stock company abbreviation
-            cleaned_record['etf_name'] = etf_name_map.get(symbol, '')
+            # Add stock company abbreviation
             cleaned_record['stock_name'] = stock_name_map.get(symbol, '')
             positions_list.append(cleaned_record)
 
@@ -166,8 +152,6 @@ async def dashboard(request: Request):
         "index.html",
         {
             "request": request,
-            "etf_date": etf_date,
-            "etf_signals": etf_signals,
             "ashare_weekly_date": ashare_weekly.get("date"),
             "ashare_weekly_signals": ashare_weekly.get("signals", []),
             "ashare_monthly_date": ashare_monthly.get("date"),

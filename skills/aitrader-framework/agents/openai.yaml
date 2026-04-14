@@ -1,7 +1,0 @@
-interface:
-  display_name: "AITrader Framework"
-  short_description: "复用 AITrader 量化交易架构与工作流"
-  default_prompt: "Use $aitrader-framework to adapt AITrader's Task/Engine backtest and A股 signal workflow to this repository."
-
-policy:
-  allow_implicit_invocation: true

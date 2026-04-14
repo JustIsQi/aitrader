@@ -24,7 +24,7 @@ sys.path.insert(0, str(project_root))
 import akshare as ak
 from loguru import logger
 from tqdm import tqdm
-from database.pg_manager import get_db
+from database.db_manager import get_db
 from database.models import StockMetadata
 
 

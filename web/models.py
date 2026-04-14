@@ -8,7 +8,7 @@ from datetime import date
 
 class TradingRecord(BaseModel):
     """交易记录模型"""
-    symbol: str = Field(..., description="ETF代码")
+    symbol: str = Field(..., description="股票代码")
     buy_sell: str = Field(..., description="buy 或 sell")
     quantity: float = Field(..., gt=0, description="数量")
     price: float = Field(..., gt=0, description="单价")

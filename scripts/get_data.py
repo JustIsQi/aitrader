@@ -203,25 +203,12 @@ def fetch_stock_history(symbol, start_date=None, end_date=None, adjust="hfq"):
     return result
 
 
-def fetch_etf_history(symbol, start_date=None, end_date=None, adjust="hfq"):
-    """获取ETF历史数据
-
-    Args:
-        symbol: ETF代码
-        start_date: 开始日期 (YYYYMMDD 格式)
-        end_date: 结束日期 (YYYYMMDD 格式)
-        adjust: 复权类型 ('qfq'前复权, 'hfq'后复权, ''不复权)
-    """
-    result = ak.fund_etf_hist_em(symbol=symbol, period="daily", adjust=adjust,
-                                start_date=start_date, end_date=end_date)
-    return result
-
 def fetch_stock_history_with_proxy(symbol, func=fetch_stock_history, start_date=None, end_date=None):
-    """使用代理获取股票/ETF历史数据，失败时自动重试
+    """使用代理获取股票历史数据，失败时自动重试
 
     Args:
-        symbol: 股票或ETF代码
-        func: 获取函数，默认为 fetch_stock_history，可传入 fetch_etf_history
+        symbol: 股票代码
+        func: 获取函数，默认为 fetch_stock_history
         start_date: 开始日期 (YYYYMMDD 格式)
         end_date: 结束日期 (YYYYMMDD 格式)
 
@@ -268,28 +255,6 @@ def fetch_stock_history_with_proxy(symbol, func=fetch_stock_history, start_date=
 
             # 等待后重试
             time.sleep(2)
-
-
-def is_etf(symbol):
-    """判断是否为ETF代码
-
-    ETF代码特征:
-    - 上海5开头: 51xxxx, 56xxxx
-    - 深圳15开头: 159xxx
-    """
-    # 移除市场后缀
-    code = symbol.split('.')[0]
-
-    # 上海ETF: 51xxxx 或 56xxxx
-    if code.startswith('51') or code.startswith('56'):
-        return True
-
-    # 深圳ETF: 159xxx
-    if code.startswith('159'):
-        return True
-
-    return False
-
 
 def fetch_stock_list():
     """获取股票列表，支持代理自动切换"""

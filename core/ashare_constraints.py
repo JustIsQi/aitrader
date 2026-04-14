@@ -295,7 +295,7 @@ class LotSizeRounder:
 
     A股买卖必须是整手(100股)或其整数倍:
     - 普通股票: 100股/手
-    - 部分ETF: 100份/手
+    - 部分场内产品: 100份/手
     """
 
     def __init__(self, lot_size: int = 100):

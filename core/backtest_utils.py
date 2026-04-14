@@ -158,16 +158,16 @@ def calculate_symbol_backtest(
     symbol: str,
     lookback_days: int = 20,
     end_date: str = None,
-    asset_type: str = 'etf'
+    asset_type: str = 'ashare'
 ) -> dict:
     """
     计算单个标的近N天的回测指标
 
     Args:
-        symbol: 标的代码 (如 510300.XSHG)
+        symbol: A股代码
         lookback_days: 回测天数（默认20天）
         end_date: 结束日期 (YYYYMMDD, 默认为最新日期)
-        asset_type: 资产类型 ('etf' or 'ashare')
+        asset_type: 资产类型，仅支持 'ashare'
 
     Returns:
         dict: 回测指标字典，包含：
@@ -180,10 +180,11 @@ def calculate_symbol_backtest(
             - volatility: 波动率
             - sharpe_ratio: 夏普比率
     """
-    from database.pg_manager import get_db
     from datetime import datetime, timedelta
+    from datafeed.mysql_ashare_reader import MySQLAshareReader
 
-    db = get_db()
+    if asset_type != 'ashare':
+        raise ValueError("calculate_symbol_backtest 仅支持 A股(asset_type='ashare')")
 
     # 计算日期范围
     if end_date is None:
@@ -194,19 +195,12 @@ def calculate_symbol_backtest(
     # 多取30天保证有足够交易日
     start_date = end_date - timedelta(days=lookback_days + 30)
 
-    # 获取历史数据
-    if asset_type == 'etf':
-        df = db.get_etf_history(
-            symbol=symbol,
-            start_date=start_date.strftime('%Y-%m-%d'),
-            end_date=end_date.strftime('%Y-%m-%d')
-        )
-    else:
-        df = db.get_stock_history(
-            symbol=symbol,
-            start_date=start_date.strftime('%Y-%m-%d'),
-            end_date=end_date.strftime('%Y-%m-%d')
-        )
+    # 获取MySQL/Wind历史数据
+    df = MySQLAshareReader().read_prices(
+        [symbol],
+        start_date.strftime('%Y%m%d'),
+        end_date.strftime('%Y%m%d')
+    )
 
     if df is None or len(df) < lookback_days:
         logger.warning(f"标的 {symbol} 数据不足，需要至少 {lookback_days} 天，实际 {len(df) if df is not None else 0} 天")
