@@ -1,7 +1,14 @@
 import pandas as pd
 import unittest
+import sys
+from pathlib import Path
 
-from datafeed.mysql_ashare_reader import MySQLAshareReader
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
 
 
 class MySQLAshareReaderTest(unittest.TestCase):

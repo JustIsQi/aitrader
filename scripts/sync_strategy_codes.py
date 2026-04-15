@@ -7,12 +7,13 @@ import re
 import sys
 from pathlib import Path
 
-# 添加项目根目录到 Python 路径
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+project_root = Path(__file__).resolve().parents[1]
+src_dir = project_root / "src"
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
 from loguru import logger
-from database.db_manager import get_db
+from aitrader.infrastructure.db.db_manager import get_db
 
 
 def extract_codes_from_strategies(strategy_dir: Path) -> set:

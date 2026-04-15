@@ -8,13 +8,15 @@ import argparse
 import sys
 from pathlib import Path
 
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+project_root = Path(__file__).resolve().parents[1]
+src_dir = project_root / "src"
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
 from loguru import logger
 
-from database.db_manager import get_db
-from datafeed.downloaders.stock_downloader import StockDownloader
+from aitrader.infrastructure.db.db_manager import get_db
+from aitrader.infrastructure.market_data.downloaders.stock_downloader import StockDownloader
 
 
 class CodeInitializer:
@@ -24,8 +26,8 @@ class CodeInitializer:
         self.db = get_db()
         self.stock_downloader = StockDownloader()
 
-    def fetch_stock_list_from_akshare(self):
-        logger.info("正在从 AkShare 获取 A股列表...")
+    def fetch_stock_list_from_wind(self):
+        logger.info("正在从 Wind 获取 A股列表...")
         df = self.stock_downloader.fetch_stock_list()
         if df is None or df.empty:
             logger.error("获取 A股列表失败")
@@ -48,7 +50,7 @@ class CodeInitializer:
             logger.info(f"强制模式:清空现有的 {existing_count} 条记录")
             self.db.clear_stock_codes()
 
-        df = self.fetch_stock_list_from_akshare()
+        df = self.fetch_stock_list_from_wind()
         if df is None or df.empty:
             return 0
 

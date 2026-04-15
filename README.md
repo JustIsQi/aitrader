@@ -11,6 +11,7 @@ Install dependencies:
 
 ```bash
 pip install -r requirements.txt
+pip install -e .
 ```
 
 Configure the Wind MySQL price source with either `MYSQL_URL` or component
@@ -29,21 +30,16 @@ shape, not application configuration.
 
 ## Main Workflows
 
-Run A-share strategy signals:
+Recommended package entrypoints:
 
 ```bash
-python run_ashare_signals.py
-python run_ashare_signals.py --workers 2
-python run_ashare_signals.py --force-backtest
-```
-
-Run short-term A-share operation list generation:
-
-```bash
-python run_short_term_signals.py
-python run_short_term_signals.py 20260120
-python run_short_term_signals.py 20260120 --fetch-only
-python run_short_term_signals.py 20260120 --signals-only
+python -m aitrader.app.cli.ashare_signals
+python -m aitrader.app.cli.short_term_signals
+python -m aitrader.app.cli.stock_backtests
+aitrader-ashare-signals
+aitrader-short-term
+aitrader-stock-backtests
+uvicorn --app-dir src aitrader.interfaces.api.main:app --reload
 ```
 
 Start the Web UI:
@@ -59,18 +55,31 @@ A-share strategies -> Task -> Engine -> DbDataLoader -> MySQLAshareReader -> Win
                                       -> FactorExpr / FactorCache -> signals
 ```
 
+## Source Layout
+
+Core application code is being migrated into `src/aitrader/`:
+
+- `src/aitrader/app`: CLI entrypoints, use cases, application services
+- `src/aitrader/domain`: domain-layer landing zone for strategy, backtest, and portfolio logic
+- `src/aitrader/infrastructure`: database, market data, repositories, configuration
+- `src/aitrader/interfaces`: FastAPI/Web entrypoints and schemas
+- `src/aitrader/shared`: shared helpers
+
 Key modules:
 
-- `datafeed/mysql_ashare_reader.py`: reads Wind MySQL A-share daily prices and
-  derivative indicators.
-- `datafeed/db_dataloader.py`: preserves the existing `{symbol: DataFrame}`
-  loader contract for engines and factor code.
-- `core/backtrader_engine.py`: executes strategy `Task` objects.
-- `core/strategy_loader.py`: discovers `strategies/stocks_*.py`.
-- `run_ashare_signals.py`: runs A-share backtests and signal generation.
-- `run_short_term_signals.py`: runs the short-term A-share selection workflow.
-- `database/db_manager.py`: neutral application persistence facade for signals,
-  backtests, positions, reference data, and short-term operation lists.
+- `src/aitrader/infrastructure/market_data/mysql_reader.py`: reads Wind MySQL
+  A-share daily prices and derivative indicators.
+- `src/aitrader/infrastructure/market_data/loaders.py`: preserves the existing
+  `{symbol: DataFrame}` loader contract for engines and factor code.
+- `src/aitrader/domain/backtest/engine.py`: executes strategy `Task` objects.
+- `src/aitrader/domain/strategy/loader.py`: discovers `strategies/stocks_*.py`.
+- `src/aitrader/app/cli/ashare_signals.py`: runs A-share backtests and signal
+  generation.
+- `src/aitrader/app/cli/short_term_signals.py`: runs the short-term A-share
+  selection workflow.
+- `src/aitrader/infrastructure/db/db_manager.py`: neutral application
+  persistence facade for signals, backtests, positions, reference data, and
+  short-term operation lists.
 
 ## Data Contract
 

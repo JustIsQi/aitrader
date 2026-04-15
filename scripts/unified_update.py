@@ -11,13 +11,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+project_root = Path(__file__).resolve().parents[1]
+src_dir = project_root / "src"
+for path in (project_root, src_dir):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from loguru import logger
 
-from database.db_manager import get_db
-from datafeed.downloaders.fundamental_downloader import FundamentalDownloader
+from aitrader.infrastructure.db.db_manager import get_db
+from aitrader.infrastructure.market_data.downloaders.fundamental_downloader import FundamentalDownloader
 
 
 class UnifiedUpdater:

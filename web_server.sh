@@ -3,11 +3,11 @@
 # Web server control script for AITrader
 # Usage: ./web_server.sh {start|stop|restart|status}
 
-WORKDIR="/home/code/aitrader"
+WORKDIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="$WORKDIR/web_server.pid"
 LOG_FILE="$WORKDIR/logs/web_server.log"
-HOST="0.0.0.0"
-PORT="8000"
+HOST="${AITRADER_WEB_HOST:-0.0.0.0}"
+PORT="${AITRADER_WEB_PORT:-8000}"
 
 # Function to start server
 start_server() {
@@ -28,7 +28,7 @@ start_server() {
     # Create logs directory if it doesn't exist
     mkdir -p "$WORKDIR/logs"
 
-    nohup python -m uvicorn web.main:app --host $HOST --port $PORT \
+    nohup python -m uvicorn --app-dir "$WORKDIR/src" aitrader.interfaces.api.main:app --host "$HOST" --port "$PORT" \
         >> "$LOG_FILE" 2>&1 &
 
     echo $! > "$PID_FILE"

@@ -3,25 +3,25 @@
 ## Run A-share Signals
 
 ```bash
-python run_ashare_signals.py
+python -m aitrader.app.cli.ashare_signals
 ```
 
 Useful options:
 
 ```bash
-python run_ashare_signals.py --workers 2
-python run_ashare_signals.py --force-backtest
-python run_ashare_signals.py --mode weekly
-python run_ashare_signals.py --mode monthly
+python -m aitrader.app.cli.ashare_signals --workers 2
+python -m aitrader.app.cli.ashare_signals --force-backtest
+python -m aitrader.app.cli.ashare_signals --weekly
+python -m aitrader.app.cli.ashare_signals --monthly
 ```
 
 ## Run Short-Term A-share Workflow
 
 ```bash
-python run_short_term_signals.py
-python run_short_term_signals.py 20260120
-python run_short_term_signals.py 20260120 --fetch-only
-python run_short_term_signals.py 20260120 --signals-only
+python -m aitrader.app.cli.short_term_signals
+python -m aitrader.app.cli.short_term_signals 20260120
+python -m aitrader.app.cli.short_term_signals 20260120 --fetch-only
+python -m aitrader.app.cli.short_term_signals 20260120 --signals-only
 ```
 
 ## Configure MySQL Prices

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aitrader"
+version = "0.1.0"
+description = "A-share research, backtest, and signal-generation platform"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "backtrader",
+  "ffn",
+  "loguru",
+  "bt",
+  "jupyter",
+  "pyfolio-reloaded",
+  "pandas",
+  "tqdm",
+  "fastapi==0.104.1",
+  "uvicorn[standard]==0.24.0",
+  "pydantic==2.5.0",
+  "jinja2==3.1.2",
+  "python-multipart==0.0.6",
+  "sqlalchemy>=2.0.0",
+  "python-dotenv>=1.0.0",
+  "pymysql>=1.1.0",
+]
+
+[project.scripts]
+aitrader-ashare-signals = "aitrader.app.cli.ashare_signals:main"
+aitrader-short-term = "aitrader.app.cli.short_term_signals:main"
+aitrader-stock-backtests = "aitrader.app.cli.stock_backtests:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["aitrader*"]

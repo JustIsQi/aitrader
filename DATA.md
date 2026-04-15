@@ -8,8 +8,8 @@ Wind MySQL table `ASHAREEODDERIVATIVEINDICATOR`.
 
 The canonical reader is:
 
-- `datafeed/mysql_ashare_reader.py`
-- `datafeed/db_dataloader.py`
+- `src/aitrader/infrastructure/market_data/mysql_reader.py`
+- `src/aitrader/infrastructure/market_data/loaders.py`
 
 `DbDataLoader.read_dfs(symbols, start_date, end_date)` returns a dictionary of
 DataFrames keyed by Wind-style stock code, such as `000001.SZ`.
@@ -70,7 +70,7 @@ snapshot table for code paths that still query local fundamentals.
 ## Local Persistence
 
 Application state such as signals, backtests, positions, stock metadata, and
-short-term operation lists uses `database/db_manager.py`. This is separate from
+short-term operation lists uses `src/aitrader/infrastructure/db/db_manager.py`. This is separate from
 historical price reads.
 
 The default `DATABASE_URL` is SQLite:

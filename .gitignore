@@ -1,6 +1,19 @@
-*.csv.env
+*.csv
 *.log
 *.tmp
+*.pyc
+
+.env
+.pytest_cache/
+__pycache__/
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
+
+# Runtime artifacts
+/logs/
+/web_server.pid
 
 # DuckDB旧文件（保留备份，不提交到git）
 # *.duckdb

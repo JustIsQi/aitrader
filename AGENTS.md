@@ -2,7 +2,7 @@
 
 ## Project Environment
 
-- 默认使用 `/Users/yangyang/miniconda3/bin/python` 运行 Python 脚本和测试。
+- 默认使用 `/data/datavol/yy/anaconda3/bin/python` 运行 Python 脚本和测试。
 - 临时 test 脚本或验证脚本在测试完成后要及时删除，避免留在仓库里污染后续变更。
 
 <!-- BEGIN COMPOUND CODEX TOOL MAP -->

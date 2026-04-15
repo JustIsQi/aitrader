@@ -4,15 +4,18 @@ Reads ashare.csv and creates records in ashare_stock_info table
 """
 import os
 import sys
+from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 from typing import Dict
 
-# Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+project_root = Path(__file__).resolve().parents[1]
+src_dir = project_root / "src"
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 
-from database.models.base import Base, engine, SessionLocal
-from database.models.models import AShareStockInfo
+from aitrader.infrastructure.db.models.base import Base, engine, SessionLocal
+from aitrader.infrastructure.db.models.models import AShareStockInfo
 
 
 # Exchange name to suffix mapping
