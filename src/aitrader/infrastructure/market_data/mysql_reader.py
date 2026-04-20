@@ -87,6 +87,15 @@ class MySQLAshareReaderConfig:
 
     @classmethod
     def from_env(cls) -> "MySQLAshareReaderConfig":
+        # Ensure direct script entrypoints (for example research runners) pick up
+        # the project .env without requiring users to source it in the shell.
+        try:
+            from aitrader.infrastructure.config.settings import get_settings
+
+            get_settings()
+        except Exception:
+            pass
+
         port = os.getenv("MYSQL_PORT", "3306").strip()
         try:
             parsed_port = int(port)

@@ -11,10 +11,16 @@
 可选环境变量:
   AITRADER_FAST=1     仅跑 2023-2024 (快速冒烟)
   AITRADER_ONLY=microcap,reversal     仅跑指定策略
+  AITRADER_CPU_CAP=96 最多使用的 CPU core 预算; 默认 96
+  AITRADER_WORKERS=6  策略级并行 worker 数; 默认最多 6 个
+  AITRADER_FACTOR_WORKERS=16  单个策略内因子计算 worker 数; 由 Engine 读取
+  AITRADER_PRELOAD=1  父进程先预热行情/基准缓存, Linux fork 下子进程可复用
+  AITRADER_PRECOMPUTE_FACTORS=1  预热时一次性计算所有策略因子并集; 默认跟随 AITRADER_PRELOAD
 """
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 import sys
 import time
@@ -28,6 +34,7 @@ sys.path.insert(0, str(HERE))
 
 from importlib import import_module
 
+from aitrader.domain.backtest.engine import Task
 from aitrader.domain.backtest.engine import Engine
 from aitrader.domain.strategy.agentic_turnover import agentic_turnover_strategy_weekly
 
@@ -61,6 +68,56 @@ def _patch_dates(task) -> None:
         task.end_date = '20241231'
 
 
+def _parse_positive_int_env(name: str, default: int | None = None) -> int | None:
+    raw = os.getenv(name, '').strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f'  [警告] {name}={raw!r} 不是整数, 使用默认值 {default}')
+        return default
+    if value <= 0:
+        print(f'  [警告] {name}={raw!r} 必须 > 0, 使用默认值 {default}')
+        return default
+    return value
+
+
+def _fork_context():
+    """Linux 服务器上用 fork 让预热后的大缓存走 copy-on-write。"""
+    try:
+        return multiprocessing.get_context('fork')
+    except ValueError:
+        return None
+
+
+def _resolve_cpu_cap() -> int:
+    cpu_count = os.cpu_count() or 4
+    requested_cap = _parse_positive_int_env('AITRADER_CPU_CAP', 96) or 96
+    return max(1, min(cpu_count, requested_cap))
+
+
+def _resolve_worker_plan(task_count: int) -> tuple[int, int, int]:
+    """Return (cpu_cap, strategy_workers, factor_workers) with total <= cpu_cap."""
+    cpu_cap = _resolve_cpu_cap()
+    default_strategy_workers = min(task_count, cpu_cap, 6)
+    requested_strategy_workers = _parse_positive_int_env('AITRADER_WORKERS', default_strategy_workers)
+    strategy_workers = min(task_count, cpu_cap, requested_strategy_workers or default_strategy_workers)
+
+    max_factor_workers = max(1, cpu_cap // max(1, strategy_workers))
+    requested_factor_workers = _parse_positive_int_env('AITRADER_FACTOR_WORKERS', max_factor_workers)
+    factor_workers = min(max_factor_workers, requested_factor_workers or max_factor_workers)
+
+    if requested_factor_workers and requested_factor_workers > max_factor_workers:
+        print(
+            f'  [限速] AITRADER_FACTOR_WORKERS={requested_factor_workers} 会超过 '
+            f'{cpu_cap} core 预算, 调整为 {factor_workers}'
+        )
+
+    os.environ['AITRADER_FACTOR_WORKERS'] = str(factor_workers)
+    return cpu_cap, strategy_workers, factor_workers
+
+
 def _extract_metrics(stats_dict: dict) -> dict:
     """从 ffn calc_stats 输出里抽几个核心指标."""
     if not stats_dict:
@@ -84,14 +141,19 @@ def _extract_metrics(stats_dict: dict) -> dict:
 
 def run_one(name: str, factory) -> dict:
     """跑单个策略, 返回核心指标字典. 失败时返回 error."""
+    task = factory()
+    _patch_dates(task)
+    return run_one_task(name, task)
+
+
+def run_one_task(name: str, task: Task) -> dict:
+    """跑单个已构造好的 Task, 返回核心指标字典. 失败时返回 error."""
     print(f'\n\n{"#" * 70}')
     print(f'# 跑策略: {name}')
     print(f'{"#" * 70}\n')
 
     t0 = time.time()
     try:
-        task = factory()
-        _patch_dates(task)
         result = Engine().run(task)
         elapsed = time.time() - t0
 
@@ -176,6 +238,97 @@ def _run_one_worker(strategy_name: str) -> dict:
     return run_one(strategy_name, factory)
 
 
+def _run_task_worker(strategy_name: str, task: Task) -> dict:
+    """ProcessPoolExecutor worker — task 已在父进程构造/打补丁。"""
+    return run_one_task(strategy_name, task)
+
+
+def _build_tasks(strategy_names: list[str]) -> list[tuple[str, Task]]:
+    tasks = []
+    for name in strategy_names:
+        task = ALL_STRATEGIES[name]()
+        _patch_dates(task)
+        tasks.append((name, task))
+    return tasks
+
+
+def _preload_data(tasks: list[tuple[str, Task]]) -> None:
+    """父进程预热行情和基准数据; fork 后子进程可复用进程内缓存。"""
+    if os.getenv('AITRADER_PRELOAD') != '1':
+        return
+
+    try:
+        from aitrader.infrastructure.market_data.loaders import DbDataLoader
+    except Exception as exc:
+        print(f'  [警告] 无法导入 DbDataLoader, 跳过预热: {exc}')
+        return
+
+    precompute_factors = os.getenv('AITRADER_PRECOMPUTE_FACTORS', '1') == '1'
+    print('\n🔥 预热行情缓存: AITRADER_PRELOAD=1')
+    loader = DbDataLoader(auto_download=False, adjust_type='qfq')
+
+    preload_requests: dict[tuple[tuple[str, ...], str, str], list[str]] = {}
+    fields_by_request: dict[tuple[tuple[str, ...], str, str], set[str]] = {}
+    benchmark_requests: dict[tuple[str, str, str], str] = {}
+    for _, task in tasks:
+        symbols = sorted({symbol for symbol in getattr(task, 'symbols', []) if symbol})
+        if symbols:
+            start = str(task.start_date).replace('-', '')
+            end = str(task.end_date).replace('-', '')
+            request_key = (tuple(symbols), start, end)
+            preload_requests[request_key] = symbols
+            fields_by_request.setdefault(request_key, set()).update(
+                task.select_buy + task.select_sell + ([task.order_by_signal] if task.order_by_signal else [])
+            )
+        benchmark = getattr(task, 'benchmark', None)
+        if benchmark:
+            benchmark_requests[(benchmark, str(task.start_date).replace('-', ''), str(task.end_date).replace('-', ''))] = benchmark
+
+    for request_key, symbols in preload_requests.items():
+        _, start, end = request_key
+        t0 = time.time()
+        print(f'  - 行情: {len(symbols)} 标的, {start} ~ {end}')
+        dfs = loader.read_dfs(symbols=symbols, start_date=start, end_date=end, copy_result=False)
+        print(f'    完成, 耗时 {time.time() - t0:.1f}s')
+
+        fields = sorted({field for field in fields_by_request.get(request_key, set()) if field})
+        if precompute_factors and fields:
+            try:
+                from aitrader.domain.backtest import engine as engine_module
+                from aitrader.infrastructure.market_data.factor_expr import FactorExpr
+            except Exception as exc:
+                print(f'    [警告] 无法导入因子预计算组件, 跳过: {exc}')
+                continue
+
+            factor_workers = _parse_positive_int_env('AITRADER_FACTOR_WORKERS', None)
+            factor_t0 = time.time()
+            print(f'    预计算因子并集: {len(fields)} 个表达式, worker={factor_workers or "auto"}')
+            df_all = FactorExpr().calc_formulas(
+                dfs,
+                fields,
+                parallel=True,
+                max_workers=factor_workers,
+            )
+            cache_key = engine_module._datafeed_cache_key(
+                tuple(symbols),
+                start,
+                end,
+                'qfq',
+                tuple(fields),
+            )
+            engine_module._DATAFEED_CACHE[cache_key] = df_all
+            print(f'    因子并集完成, 耗时 {time.time() - factor_t0:.1f}s, 数据量: {len(df_all)}行')
+
+    for (benchmark, start, end), _ in benchmark_requests.items():
+        t0 = time.time()
+        print(f'  - 基准: {benchmark}, {start} ~ {end}')
+        try:
+            loader.read_dfs(symbols=[benchmark], start_date=start, end_date=end, copy_result=False)
+            print(f'    完成, 耗时 {time.time() - t0:.1f}s')
+        except Exception as exc:
+            print(f'    [警告] 基准预热失败, 正式回测时将按 Engine 逻辑跳过: {exc}')
+
+
 def main() -> None:
     strategies_to_run = [n for n in ALL_STRATEGIES if _maybe_filter(n)]
     skipped = [n for n in ALL_STRATEGIES if not _maybe_filter(n)]
@@ -186,16 +339,29 @@ def main() -> None:
         print('没有要跑的策略')
         return
 
-    max_workers = min(len(strategies_to_run), os.cpu_count() or 4, 6)
-    print(f'\n🚀 并行回测: {len(strategies_to_run)} 个策略, {max_workers} 个 worker\n')
+    tasks_to_run = _build_tasks(strategies_to_run)
+
+    cpu_cap, max_workers, factor_workers = _resolve_worker_plan(len(tasks_to_run))
+    preload = 'on' if os.getenv('AITRADER_PRELOAD') == '1' else 'off'
+    print(
+        f'\n🚀 并行回测: {len(tasks_to_run)} 个策略, {max_workers} 个策略 worker '
+        f'| 因子 worker/策略: {factor_workers} | CPU预算: {cpu_cap} core | 预热: {preload}\n'
+    )
+
+    _preload_data(tasks_to_run)
 
     t_wall = time.time()
     rows: list[dict] = []
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+    executor_kwargs = {'max_workers': max_workers}
+    mp_context = _fork_context()
+    if mp_context is not None:
+        executor_kwargs['mp_context'] = mp_context
+
+    with ProcessPoolExecutor(**executor_kwargs) as executor:
         future_map = {
-            executor.submit(_run_one_worker, name): name
-            for name in strategies_to_run
+            executor.submit(_run_task_worker, name, task): name
+            for name, task in tasks_to_run
         }
         for future in as_completed(future_map):
             name = future_map[future]

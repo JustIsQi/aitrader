@@ -1,4 +1,5 @@
 import importlib
+import os
 from dataclasses import dataclass, asdict
 from typing import List, Dict
 
@@ -125,6 +126,78 @@ def _normalize_field_key(fields: list[str]) -> tuple[str, ...]:
     return tuple(sorted({field for field in fields if field}))
 
 
+def _datafeed_cache_key(
+    symbols: tuple[str, ...],
+    start_date: str,
+    end_date: str,
+    adjust_type: str,
+    fields: tuple[str, ...],
+) -> tuple:
+    return (
+        symbols,
+        _normalize_cache_bound(start_date),
+        _normalize_cache_bound(end_date),
+        adjust_type,
+        fields,
+    )
+
+
+def _find_datafeed_cache(
+    symbols: tuple[str, ...],
+    start_date: str,
+    end_date: str,
+    adjust_type: str,
+    fields: tuple[str, ...],
+) -> tuple[pd.DataFrame | None, bool]:
+    """Return cached df_all and whether it came from a superset field cache."""
+    cache_key = _datafeed_cache_key(symbols, start_date, end_date, adjust_type, fields)
+    cached = _DATAFEED_CACHE.get(cache_key)
+    if cached is not None:
+        return cached, False
+
+    requested_fields = set(fields)
+    start_norm = _normalize_cache_bound(start_date)
+    end_norm = _normalize_cache_bound(end_date)
+    for (
+        cached_symbols,
+        cached_start,
+        cached_end,
+        cached_adjust_type,
+        cached_fields,
+    ), cached_df in _DATAFEED_CACHE.items():
+        if cached_symbols != symbols:
+            continue
+        if cached_start != start_norm or cached_end != end_norm:
+            continue
+        if cached_adjust_type != adjust_type:
+            continue
+        if requested_fields.issubset(set(cached_fields)):
+            return cached_df, True
+
+    return None, False
+
+
+def _resolve_factor_workers() -> int | None:
+    """Optional cap for nested factor-calculation pools.
+
+    AITRADER_FACTOR_WORKERS is useful on large servers where multiple strategy
+    processes run concurrently. Without a cap, each strategy may try to use all
+    CPUs for factor calculation and oversubscribe the machine.
+    """
+    raw = os.getenv('AITRADER_FACTOR_WORKERS', '').strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(f"AITRADER_FACTOR_WORKERS={raw!r} 不是整数, 使用自动 worker 数")
+        return None
+    if value <= 0:
+        logger.warning(f"AITRADER_FACTOR_WORKERS={raw!r} 必须 > 0, 使用自动 worker 数")
+        return None
+    return value
+
+
 class DataFeed:
     def __init__(self, task: Task, preloaded_dfs: dict | None = None):
         datafeed_start = time.time()
@@ -137,17 +210,25 @@ class DataFeed:
                 task.select_buy + task.select_sell + ([task.order_by_signal] if task.order_by_signal else [])
             )
         )
-        cache_key = (
+        fields_key = tuple(fields)
+        cache_key = _datafeed_cache_key(
             cache_symbols,
-            _normalize_cache_bound(task.start_date),
-            _normalize_cache_bound(task.end_date),
+            task.start_date,
+            task.end_date,
             loader_adjust_type,
-            tuple(fields),
+            fields_key,
         )
 
-        cached_df_all = _DATAFEED_CACHE.get(cache_key)
+        cached_df_all, is_superset_cache = _find_datafeed_cache(
+            cache_symbols,
+            task.start_date,
+            task.end_date,
+            loader_adjust_type,
+            fields_key,
+        )
         if cached_df_all is not None:
-            logger.info(f"  [{task.name}] DataFeed: 命中宽表缓存 (标的数: {len(cache_symbols)}, 因子数: {len(fields)})")
+            cache_kind = "宽表超集缓存" if is_superset_cache else "宽表缓存"
+            logger.info(f"  [{task.name}] DataFeed: 命中{cache_kind} (标的数: {len(cache_symbols)}, 因子数: {len(fields)})")
             self.df_all = cached_df_all
             total_elapsed = time.time() - datafeed_start
             logger.info(f"  [{task.name}] DataFeed: 数据准备总完成, 总耗时 {total_elapsed:.2f}秒")
@@ -173,7 +254,15 @@ class DataFeed:
             logger.debug(f"  [{task.name}] DataFeed: 无额外因子表达式，仅使用原始行情字段")
 
         calc_start = time.time()
-        df_all = FactorExpr().calc_formulas(dfs, fields, parallel=True)
+        factor_workers = _resolve_factor_workers()
+        if factor_workers is not None:
+            logger.info(f"  [{task.name}] DataFeed: 因子计算 worker 上限={factor_workers}")
+        df_all = FactorExpr().calc_formulas(
+            dfs,
+            fields,
+            parallel=True,
+            max_workers=factor_workers,
+        )
         logger.info(f"  [{task.name}] DataFeed: 技术指标计算完成, 耗时 {time.time() - calc_start:.2f}秒, 数据量: {len(df_all)}行")
         self.df_all = df_all
         _DATAFEED_CACHE[cache_key] = df_all
@@ -575,5 +664,3 @@ class Engine:
         # 解决坐标轴负号显示问题
         plt.rcParams['axes.unicode_minus'] = False
         plt.show()
-
-
