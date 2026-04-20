@@ -4,49 +4,65 @@ import pandas as pd
 #from bak.calc_utils import calc_by_symbol
 
 
+def _rolling_regression_metrics(x: np.ndarray, y: np.ndarray, window: int) -> np.ndarray:
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    if len(x) != len(y):
+        raise ValueError('x and y must have the same length')
+
+    metrics = np.full((len(x), 3), np.nan, dtype=float)
+    if window <= 1 or len(x) < window:
+        return metrics
+
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    xw = sliding_window_view(x, window)
+    yw = sliding_window_view(y, window)
+    valid = np.isfinite(xw).all(axis=1) & np.isfinite(yw).all(axis=1)
+    if not np.any(valid):
+        return metrics
+
+    sum_x = xw.sum(axis=1)
+    sum_x2 = np.square(xw).sum(axis=1)
+    sum_y = yw.sum(axis=1)
+    sum_y2 = np.square(yw).sum(axis=1)
+    sum_xy = np.sum(xw * yw, axis=1)
+
+    denom = window * sum_x2 - sum_x ** 2
+    fit_valid = valid & (np.abs(denom) > 1e-12)
+    if not np.any(fit_valid):
+        return metrics
+
+    slope = np.full(len(xw), np.nan, dtype=float)
+    intercept = np.full(len(xw), np.nan, dtype=float)
+    slope[fit_valid] = (window * sum_xy[fit_valid] - sum_x[fit_valid] * sum_y[fit_valid]) / denom[fit_valid]
+    intercept[fit_valid] = (sum_y[fit_valid] - slope[fit_valid] * sum_x[fit_valid]) / window
+
+    residual = yw[fit_valid] - (slope[fit_valid][:, None] * xw[fit_valid] + intercept[fit_valid][:, None])
+    ss_res = np.square(residual).sum(axis=1)
+    ss_tot = sum_y2[fit_valid] - (sum_y[fit_valid] ** 2) / window
+    r_squared = np.where(np.abs(ss_tot) > 1e-12, 1 - ss_res / ss_tot, 0.0)
+    r_squared = np.clip(r_squared, 0.0, 1.0)
+
+    metrics_window = metrics[window - 1:]
+    metrics_window[:, 0] = intercept
+    metrics_window[:, 1] = slope
+    metrics_window[fit_valid, 2] = r_squared
+    return metrics
+
+
 def _numpy_rolling_regress(x, y, window, array=False):
     """
-    使用numpy进行滚动线性回归计算
-
-    参数:
-    x: 自变量序列
-    y: 因变量序列
-    window: 窗口大小
-    array: 是否返回数组格式
-
-    返回:
-    回归系数数组
+    Use vectorized rolling linear regression.
+    
+    Returns intercept, slope and R^2 for each point. When array=False,
+    preserves the legacy slope-only return value.
     """
-    # 确保x和y长度相同
-    if len(x) != len(y):
-        raise ValueError("x and y must have the same length")
-
-    # 初始化结果数组
-    coefs = np.full((len(x), 2), np.nan)  # 截距和斜率
-
-    # 逐个窗口计算回归系数
-    for i in range(window - 1, len(x)):
-        x_window = x[i - window + 1:i + 1]
-        y_window = y[i - window + 1:i + 1]
-
-        # 检查窗口内是否有NaN值
-        if np.any(np.isnan(x_window)) or np.any(np.isnan(y_window)):
-            continue
-
-        # 计算回归系数
-        A = np.vstack([x_window, np.ones(len(x_window))]).T
-        try:
-            slope, intercept = np.linalg.lstsq(A, y_window, rcond=None)[0]
-            coefs[i, 0] = intercept
-            coefs[i, 1] = slope
-        except:
-            # 处理线性代数计算错误
-            continue
-
+    metrics = _rolling_regression_metrics(x, y, window)
     if array:
-        return coefs
-    else:
-        return coefs[:, 1]  # 默认返回斜率
+        return metrics
+    return metrics[:, 1]
 
 def _rolling_window(a: np.ndarray, window: int) -> np.ndarray:
     """
@@ -65,61 +81,49 @@ def _rolling_window(a: np.ndarray, window: int) -> np.ndarray:
 
 def trend_score(close: pd.Series, period:int=25):
     """
-                向量化计算趋势评分：年化收益率 × R平方
-                修改为与第二个实现相同的计算逻辑
-                :param close: 收盘价序列（np.array或pd.Series）
-                :param period: 计算窗口长度，默认25天
-                :return: 趋势评分数组，长度与输入相同，前period-1位为NaN
+                Vectorized trend score: annualized return times R-squared.
                 """
-    if len(close) < period:
-        return np.full_like(close, np.nan)
+    close_series = pd.Series(close)
+    if len(close_series) < period:
+        return pd.Series(np.full(len(close_series), np.nan), index=close_series.index)
 
-    # 创建结果数组
-    result = np.full(len(close), np.nan)
+    values = close_series.to_numpy(dtype=float, copy=False)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        log_values = np.log(values)
 
-    # 对每个窗口进行计算
-    for i in range(period - 1, len(close)):
-        window = close[i - period + 1:i + 1]
+    from numpy.lib.stride_tricks import sliding_window_view
 
-        # 使用与第二个实现相同的回归计算逻辑
-        y_raw = window.values
-        y = np.log(y_raw)  # 对数转换
-        x = np.arange(len(y))
-        n = len(x)
+    windows = sliding_window_view(log_values, period)
+    valid = np.isfinite(windows).all(axis=1)
+    result = np.full(len(values), np.nan, dtype=float)
+    if not np.any(valid):
+        return pd.Series(result, index=close_series.index)
 
-        if n < 2:
-            result[i] = 0.0
-            continue
+    x = np.arange(period, dtype=float)
+    sum_x = x.sum()
+    sum_x2 = np.square(x).sum()
+    denom = period * sum_x2 - sum_x ** 2
+    if abs(denom) <= 1e-12:
+        return pd.Series(result, index=close_series.index)
 
-        sum_x = x.sum()
-        sum_y = y.sum()
-        sum_x2 = (x ** 2).sum()
-        sum_xy = (x * y).sum()
-        denominator = n * sum_x2 - sum_x ** 2
+    sum_y = windows.sum(axis=1)
+    sum_xy = windows @ x
+    slope = np.full(len(windows), np.nan, dtype=float)
+    intercept = np.full(len(windows), np.nan, dtype=float)
+    slope[valid] = (period * sum_xy[valid] - sum_x * sum_y[valid]) / denom
+    intercept[valid] = (sum_y[valid] - slope[valid] * sum_x) / period
 
-        # 处理零分母（完全无波动）
-        if abs(denominator) <= 1e-9:
-            result[i] = 0.0
-            continue
+    residual = windows[valid] - (slope[valid][:, None] * x + intercept[valid][:, None])
+    ss_res = np.square(residual).sum(axis=1)
+    ss_tot = np.square(windows[valid]).sum(axis=1) - (sum_y[valid] ** 2) / period
+    r_squared = np.where(np.abs(ss_tot) > 1e-12, 1 - ss_res / ss_tot, 0.0)
+    r_squared = np.clip(r_squared, 0.0, 1.0)
 
-        # 计算斜率/截距
-        slope = (n * sum_xy - sum_x * sum_y) / denominator
-        intercept = (sum_y - slope * sum_x) / n
+    annualized_return = np.exp(slope[valid] * 250) - 1
+    result_indices = np.flatnonzero(valid) + period - 1
+    result[result_indices] = annualized_return * r_squared
 
-        # 计算R平方
-        y_pred = slope * x + intercept
-        ss_res = np.sum((y - y_pred) ** 2)
-        ss_tot = np.sum(y ** 2) - (sum_y ** 2) / n
-        r_squared = 1 - ss_res / ss_tot if abs(ss_tot) > 1e-9 else 0.0
-        r_squared = max(0.0, min(r_squared, 1.0))  # 限制在[0,1]范围
-
-        # 年化收益率
-        annualized_return = np.exp(slope * 250) - 1
-
-        # 综合评分
-        result[i] = annualized_return * r_squared
-
-    return pd.Series(result, index=close.index)
+    return pd.Series(result, index=close_series.index)
 
 def _bbands(series: pd.Series, N: int = 20, K: float = 2) -> tuple[pd.Series, pd.Series, pd.Series]:
     """
@@ -153,7 +157,6 @@ def MA(series: pd.Series, N: int) -> pd.Series:
     return series.rolling(N).mean()
 
 def RSRS(high: pd.Series, low: pd.Series, N: int = 18) -> pd.Series:
-
     coefs = _numpy_rolling_regress(
         low.values,
         high.values,
@@ -161,11 +164,7 @@ def RSRS(high: pd.Series, low: pd.Series, N: int = 18) -> pd.Series:
         array=True
     )
 
-    # 提取斜率系数
     beta = coefs[:, 1]
-    print(beta)
-
-    # 将结果保存回DataFrame
     return pd.Series(beta, index=high.index)
 
 def RSRS_ZSCORE(high:pd.Series,low:pd.Series,N:int=18,M:int=600):
@@ -178,22 +177,19 @@ def RSRS_ZSCORE(high:pd.Series,low:pd.Series,N:int=18,M:int=600):
     )
     beta = coefs[:, 1]  # 斜率系数
 
-    # 计算滚动窗口的均值和标准差
-    if len(beta) >= M:
-        beta_rollwindow = _rolling_window(beta, M)
-        beta_mean = np.nanmean(beta_rollwindow, axis=1)
-        beta_std = np.nanstd(beta_rollwindow, axis=1)
+    if len(beta) < M:
+        return pd.Series(np.full(len(high), np.nan), index=high.index)
 
-        # 计算Z-score
-        zscore = (beta[M - 1:] - beta_mean) / beta_std
+    beta_rollwindow = _rolling_window(beta, M)
+    beta_mean = np.nanmean(beta_rollwindow, axis=1)
+    beta_std = np.nanstd(beta_rollwindow, axis=1)
 
-        # 将结果填充到与原始序列相同长度
-        len_to_pad = len(high) - len(zscore)
-        pad = [np.nan for _ in range(len_to_pad)]
-        pad.extend(zscore)
+    zscore = (beta[M - 1:] - beta_mean) / beta_std
 
-    return pd.Series(pad,index=high.index)
-
+    len_to_pad = len(high) - len(zscore)
+    pad = np.full(len(high), np.nan, dtype=float)
+    pad[len_to_pad:] = zscore
+    return pd.Series(pad, index=high.index)
 
 def RSRS_ZSCORE_RIGHT(high,low,N=18,M=600):
     # 计算RSRS斜率、截距和R²
@@ -204,28 +200,21 @@ def RSRS_ZSCORE_RIGHT(high,low,N=18,M=600):
         array=True
     )
 
-    # 提取斜率系数和R²值
-    beta = coefs[:, 0]  # 斜率系数
-    r_squared = coefs[:, 1]  # R²值
+    beta = coefs[:, 1]  # 斜率系数
+    r_squared = coefs[:, 2]  # R²值
 
-    # 计算滚动窗口的均值和标准差
-    if len(beta) >= M:
-        beta_rollwindow = _rolling_window(beta, M)
-        beta_mean = np.nanmean(beta_rollwindow, axis=1)
-        beta_std = np.nanstd(beta_rollwindow, axis=1)
+    if len(beta) < M:
+        return pd.Series(np.full(len(high), np.nan), index=high.index)
 
-        # 计算标准Z-score
-        zscore = (beta[M - 1:] - beta_mean) / beta_std
+    beta_rollwindow = _rolling_window(beta, M)
+    beta_mean = np.nanmean(beta_rollwindow, axis=1)
+    beta_std = np.nanstd(beta_rollwindow, axis=1)
 
-        # 获取对应的R²值
-        r_squared_window = r_squared[M - 1:]
+    zscore = (beta[M - 1:] - beta_mean) / beta_std
+    r_squared_window = r_squared[M - 1:]
+    right_zscore = zscore * r_squared_window
 
-        # 计算右偏标准分: 将负值设为0，正值乘以R²
-        right_zscore = zscore * r_squared_window  # np.where(zscore < 0, 0, zscore * r_squared_window)
-
-        # 将结果填充到与原始序列相同长度
-        len_to_pad = len(high) - len(right_zscore)
-        pad = [np.nan for _ in range(len_to_pad)]
-        pad.extend(right_zscore)
-
-    return pd.Series(pad,index=high.index)
+    len_to_pad = len(high) - len(right_zscore)
+    pad = np.full(len(high), np.nan, dtype=float)
+    pad[len_to_pad:] = right_zscore
+    return pd.Series(pad, index=high.index)

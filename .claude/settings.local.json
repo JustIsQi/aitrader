@@ -58,7 +58,23 @@
       "Bash(claude:*)",
       "Bash(env:*)",
       "Bash(pg_lsclusters)",
-      "Bash(PGPASSWORD=Yy882388lsls psql -h localhost -U postgres -d aitrader -c \"\\\\dt\")"
+      "Bash(PGPASSWORD=Yy882388lsls psql -h localhost -U postgres -d aitrader -c \"\\\\dt\")",
+      "Bash(2>&1)",
+      "Bash(PYTHONPATH=src python src/aitrader/domain/strategy/agentic_turnover.py weekly)",
+      "Bash(uv pip *)",
+      "Bash(PYTHONPATH=src /data/datavol/yy/anaconda3/bin/python src/aitrader/domain/strategy/agentic_turnover.py weekly)",
+      "Bash(/data/datavol/yy/anaconda3/bin/pip install *)",
+      "Bash(PYTHONPATH=src:. /data/datavol/yy/anaconda3/bin/python src/aitrader/domain/strategy/agentic_turnover.py weekly)",
+      "Bash(PYTHONPATH=src:. /data/datavol/yy/anaconda3/bin/python -)",
+      "Bash(wait 2342265)",
+      "Bash(awk '{print \"PID:\", $2, \"CPU:\", $3\"%\", \"MEM:\", $4\"%\", \"TIME:\", $10}')",
+      "Bash(git mv *)",
+      "Bash(/data/datavol/yy/anaconda3/bin/python .claude/skills/arxiv-paper-pipeline/scripts/arxiv_paper_pipeline.py --list)",
+      "Bash(/data/datavol/yy/anaconda3/bin/pip list *)",
+      "Bash(/home/yy/anaconda3/bin/pip list *)",
+      "Bash(/home/yy/anaconda3/bin/python *)",
+      "Skill(update-config)",
+      "Bash(strace -p 3460023 -c -e trace=read,write)"
     ]
   }
 }

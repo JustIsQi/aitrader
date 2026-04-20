@@ -109,37 +109,104 @@ from aitrader.infrastructure.market_data.loaders import DbDataLoader
 from aitrader.infrastructure.market_data.factor_expr import FactorExpr
 import time
 
+# 进程级基准数据缓存: {(symbol, start, end): df}
+# 避免同一进程内多次 Engine.run() 重复查询基准 (例如 510300.SH)。
+_BENCHMARK_CACHE: dict = {}
+
+# 进程内宽表缓存: {(symbols, start, end, fields): df_all}
+_DATAFEED_CACHE: dict[tuple, pd.DataFrame] = {}
+
+
+def _normalize_cache_bound(value: str) -> str:
+    return str(value).replace('-', '')
+
+
+def _normalize_field_key(fields: list[str]) -> tuple[str, ...]:
+    return tuple(sorted({field for field in fields if field}))
+
+
 class DataFeed:
-    def __init__(self, task: Task):
+    def __init__(self, task: Task, preloaded_dfs: dict | None = None):
         datafeed_start = time.time()
-        logger.info(f"  [{task.name}] DataFeed: 开始加载数据 (标的数: {len(task.symbols)})...")
-        logger.debug(f"  [{task.name}] DataFeed: 日期范围 {task.start_date} ~ {task.end_date}")
+        self._factor_df_cache: dict[str, pd.DataFrame] = {}
 
-        dfs = DbDataLoader(auto_download=False).read_dfs(symbols=task.symbols,start_date=task.start_date, end_date=task.end_date)
-        logger.info(f"  [{task.name}] DataFeed: 原始数据加载完成, 耗时 {time.time() - datafeed_start:.2f}秒")
+        loader_adjust_type = 'qfq'
+        cache_symbols = tuple(sorted((preloaded_dfs or {}).keys() or task.symbols))
+        fields = list(
+            _normalize_field_key(
+                task.select_buy + task.select_sell + ([task.order_by_signal] if task.order_by_signal else [])
+            )
+        )
+        cache_key = (
+            cache_symbols,
+            _normalize_cache_bound(task.start_date),
+            _normalize_cache_bound(task.end_date),
+            loader_adjust_type,
+            tuple(fields),
+        )
 
-        fields = list(set(task.select_buy + task.select_sell))
-        if task.order_by_signal:
-            fields += [task.order_by_signal]
-        names = fields
+        cached_df_all = _DATAFEED_CACHE.get(cache_key)
+        if cached_df_all is not None:
+            logger.info(f"  [{task.name}] DataFeed: 命中宽表缓存 (标的数: {len(cache_symbols)}, 因子数: {len(fields)})")
+            self.df_all = cached_df_all
+            total_elapsed = time.time() - datafeed_start
+            logger.info(f"  [{task.name}] DataFeed: 数据准备总完成, 总耗时 {total_elapsed:.2f}秒")
+            return
 
-        logger.debug(f"  [{task.name}] DataFeed: 计算技术指标: {', '.join(fields)}")
+        if preloaded_dfs is not None:
+            logger.info(f"  [{task.name}] DataFeed: 复用已加载数据 (标的数: {len(preloaded_dfs)})")
+            dfs = preloaded_dfs
+        else:
+            logger.info(f"  [{task.name}] DataFeed: 开始加载数据 (标的数: {len(task.symbols)})...")
+            logger.debug(f"  [{task.name}] DataFeed: 日期范围 {task.start_date} ~ {task.end_date}")
+            dfs = DbDataLoader(auto_download=False, adjust_type=loader_adjust_type).read_dfs(
+                symbols=task.symbols,
+                start_date=task.start_date,
+                end_date=task.end_date,
+                copy_result=False,
+            )
+            logger.info(f"  [{task.name}] DataFeed: 原始数据加载完成, 耗时 {time.time() - datafeed_start:.2f}秒")
+
+        if fields:
+            logger.debug(f"  [{task.name}] DataFeed: 计算技术指标: {', '.join(fields)}")
+        else:
+            logger.debug(f"  [{task.name}] DataFeed: 无额外因子表达式，仅使用原始行情字段")
+
         calc_start = time.time()
-        df_all = FactorExpr().calc_formulas(dfs,fields)
+        df_all = FactorExpr().calc_formulas(dfs, fields, parallel=True)
         logger.info(f"  [{task.name}] DataFeed: 技术指标计算完成, 耗时 {time.time() - calc_start:.2f}秒, 数据量: {len(df_all)}行")
         self.df_all = df_all
+        _DATAFEED_CACHE[cache_key] = df_all
 
         total_elapsed = time.time() - datafeed_start
         logger.info(f"  [{task.name}] DataFeed: 数据准备总完成, 总耗时 {total_elapsed:.2f}秒")
 
 
     def get_factor_df(self, col):
+        cached = self._factor_df_cache.get(col)
+        if cached is not None:
+            return cached
+
         if col not in self.df_all.columns:
             logger.warning(f'Column {col} not found in computed factors')
             return None
-        df_factor = self.df_all.pivot_table(values=col, index=self.df_all.index, columns='symbol')
+
+        index_name = self.df_all.index.name or 'index'
+        factor_frame = self.df_all.reset_index()
+        try:
+            df_factor = factor_frame.pivot(index=index_name, columns='symbol', values=col)
+        except ValueError:
+            df_factor = factor_frame.pivot_table(
+                values=col,
+                index=index_name,
+                columns='symbol',
+                aggfunc='first',
+            )
+
         if col == 'close':
             df_factor = df_factor.ffill()
+
+        self._factor_df_cache[col] = df_factor
         return df_factor
 
 
@@ -190,7 +257,7 @@ class Engine:
 
     def _get_algos(self, task: Task):
 
-        from core import backtrader_algos
+        from aitrader.domain.backtest import algos as backtrader_algos
 
         if task.period == 'RunEveryNPeriods':
             algo_period = bt.algos.RunEveryNPeriods(n=task.period_days, run_on_last_date=True)
@@ -261,20 +328,27 @@ class Engine:
         self.cerebro = cerebro
 
     def _prepare_run(self, symbols, start_date, end_date, commissions=0.0):
+        load_start = time.time()
         dfs = DbDataLoader(auto_download=False).read_dfs(
             symbols=symbols,
             start_date=start_date,
             end_date=end_date,
+            copy_result=False,
         )
+        logger.info(f"  _prepare_run: MySQL 加载完成 {len(dfs)} 标的, 耗时 {time.time() - load_start:.2f}秒")
         self.cerebro.broker.setcommission(commissions)
         if not dfs:
             logger.warning("未加载到任何回测数据")
+            self._raw_dfs = {}
             return start_date, end_date
+
+        # 缓存原始 dfs (date 仍是 YYYYMMDD 列), 供后续 DataFeed 复用,
+        # 避免 Engine.run() 中再次发 MySQL 查询。
+        self._raw_dfs = dfs
 
         requested_start = pd.to_datetime(start_date)
         requested_end = pd.to_datetime(end_date)
         cleaned_dfs = {}
-        effective_start = requested_start
 
         for s, data in dfs.items():
             if data.empty or 'date' not in data.columns:
@@ -284,9 +358,11 @@ class Engine:
             data['date'] = pd.to_datetime(data['date'])
             data.set_index('date', inplace=True)
             data.sort_index(ascending=True, inplace=True)
-            if not data.empty:
-                effective_start = max(effective_start, data.index.min())
             cleaned_dfs[s] = data
+
+        # effective_start = requested_start，不再取所有标的最晚首日，
+        # 各标的数据从 requested_start 开始截取，数据不足的标的自然只有部分数据。
+        effective_start = requested_start
 
         for s, data in cleaned_dfs.items():
             clipped = data[
@@ -363,8 +439,8 @@ class Engine:
             # 默认模式: 使用传统佣金设置
             self.cerebro.broker.setcommission(commissions)
 
-        # DataFeed初始化(包含数据加载和指标计算)
-        self.datafeed = DataFeed(task)
+        # DataFeed初始化(复用 _prepare_run 中已加载的数据, 避免再发一次 MySQL 查询)
+        self.datafeed = DataFeed(task, preloaded_dfs=getattr(self, '_raw_dfs', None))
 
         # 添加策略,传递A股模式参数
         logger.debug(f"  [{task.name}] 添加策略算法...")
@@ -396,15 +472,31 @@ class Engine:
         datas = [equity]
         benchmark_curve = pd.DataFrame()
         for bench in [task.benchmark]:
-            dfs = DbDataLoader().read_dfs([bench],start_date=task.start_date, end_date=task.end_date)
-            df = dfs.get(bench, pd.DataFrame())
-            if df.empty:
-                logger.warning(f"基准 {bench} 数据为空，跳过")
-                continue
-            df.set_index('date',inplace=True)
-            df.index = pd.to_datetime(df.index)
-            data = df.pivot_table(values='close', index=df.index, columns='symbol')
-            data.columns = ['benchmark']
+            cache_key = (bench, task.start_date, task.end_date)
+            cached = _BENCHMARK_CACHE.get(cache_key)
+            if cached is not None:
+                logger.debug(f"  [{task.name}] 基准 {bench} 命中缓存")
+                data = cached.copy()
+            else:
+                try:
+                    dfs = DbDataLoader().read_dfs(
+                        symbols=[bench],
+                        start_date=task.start_date,
+                        end_date=task.end_date,
+                        copy_result=False,
+                    )
+                except (ValueError, Exception) as e:
+                    logger.warning(f"基准 {bench} 数据加载失败，跳过基准对比: {e}")
+                    continue
+                df = dfs.get(bench, pd.DataFrame()).copy()
+                if df.empty:
+                    logger.warning(f"基准 {bench} 数据为空，跳过")
+                    continue
+                df.set_index('date', inplace=True)
+                df.index = pd.to_datetime(df.index)
+                data = df.pivot_table(values='close', index=df.index, columns='symbol')
+                data.columns = ['benchmark']
+                _BENCHMARK_CACHE[cache_key] = data.copy()
             datas.append(data)
             benchmark_curve = data.copy()
 

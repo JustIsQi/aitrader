@@ -60,7 +60,8 @@ class FactorCache:
             dfs = loader.read_dfs(
                 symbols=self.symbols,
                 start_date=self.start_date,
-                end_date=self.end_date
+                end_date=self.end_date,
+                copy_result=False,
             )
 
             if not dfs:
@@ -69,7 +70,7 @@ class FactorCache:
 
             # 批量计算所有因子
             factor_calc = FactorExpr()
-            self.df_all = factor_calc.calc_formulas(dfs, unique_exprs)
+            self.df_all = factor_calc.calc_formulas(dfs, unique_exprs, parallel=True)
 
         except Exception as e:
             print(f"  ⚠️  数据处理失败: {e}", file=old_stdout)

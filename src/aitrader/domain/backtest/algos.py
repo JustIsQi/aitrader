@@ -183,19 +183,18 @@ class SelectTopK:
 
         # 检查当前日期是否在信号索引中
         if current_date_pd not in signal.index:
-            target.temp["selected"] = []
-            return True  # 若日期不存在返回空列表
+            # 日期不在因子数据里，保持 SelectWhere 的结果不变（不清空）
+            return True
 
         # 获取当前日期的信号行
         daily_signals = signal.loc[current_date_pd]
 
         # 移除NaN值
-        #valid_signals = daily_signals.dropna()
         if 'selected' in target.temp.keys():
-
             selected = target.temp['selected']
             if selected:
-                valid_signals = daily_signals[selected]
+                # 只对已选出的股票排序；factor值为NaN的股票排最后
+                valid_signals = daily_signals.reindex(selected)
             else:
                 return True
         else:

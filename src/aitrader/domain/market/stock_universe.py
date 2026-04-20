@@ -22,6 +22,10 @@ from sqlalchemy.exc import OperationalError, DBAPIError
 from aitrader.infrastructure.db.db_manager import get_db
 from aitrader.infrastructure.db.models import StockMetadata, StockFundamentalDaily
 
+# Process-local caches for repeated strategy construction in the same process.
+_GET_ALL_STOCKS_CACHE: dict[tuple, List[str]] = {}
+_MARKET_CAP_CACHE: dict[tuple, List[str]] = {}
+
 T = TypeVar('T')
 
 
@@ -79,84 +83,123 @@ class StockUniverse:
                       exclude_new_ipo_days=None, min_data_days=180,
                       exclude_restricted_stocks=True) -> List[str]:
         """
-        获取所有可交易股票（基于实际交易数据）
+        从 Wind MySQL 数据库获取所有可交易股票。
 
-        Args:
-            exclude_st: 是否排除ST股票（需要元数据支持）
-            exclude_suspend: 是否排除停牌股票（需要元数据支持）
-            exclude_new_ipo_days: **已废弃**，保留参数仅为兼容性
-            min_data_days: 最小数据天数，默认180天（半年）
-            exclude_restricted_stocks: 是否排除限制交易股票（科创板688xxx、创业板300xxx、北交所BJ）
-                                       仅保留主板股票。默认True。
-
-        Returns:
-            股票代码列表
+        直接查询 Wind 原始表，不依赖本地 ORM 模型：
+          - ASHAREEODPRICES            : 获取有近期数据的股票
+          - ASHAREST                   : 过滤 ST 股票（失败则跳过）
+          - ASHARETRADINGSUSPENSION    : 过滤停牌股票（失败则跳过）
+          - ASHAREDESCRIPTION          : 过滤新股（失败则跳过）
         """
-        def _query_stocks():
-            from aitrader.infrastructure.db.models import StockHistory
-            from sqlalchemy import distinct
+        from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
 
-            # 计算截止日期
-            cutoff_date = datetime.now().date() - timedelta(days=min_data_days)
+        reader = MySQLAshareReader()
+        cutoff_date = (datetime.now() - timedelta(days=min_data_days)).strftime('%Y%m%d')
+        today = datetime.now().strftime('%Y%m%d')
+        recent_date = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
+        cache_key = (
+            exclude_st,
+            exclude_suspend,
+            exclude_new_ipo_days,
+            min_data_days,
+            exclude_restricted_stocks,
+            cutoff_date,
+            recent_date,
+            today,
+        )
+        cached = _GET_ALL_STOCKS_CACHE.get(cache_key)
+        if cached is not None:
+            logger.debug('get_all_stocks 缓存命中')
+            return list(cached)
 
-            with self.db.get_session() as session:
-                # 从 stock_history 表查询有足够数据的股票
-                query = session.query(
-                    distinct(StockHistory.symbol)
-                ).filter(
-                    StockHistory.date >= cutoff_date
-                )
-
-                # 如果需要排除ST/停牌股票，且元数据有标记，则进行过滤
-                if exclude_st or exclude_suspend:
-                    # 子查询：获取可交易股票的元数据
-                    metadata_query = session.query(StockMetadata.symbol)
-
-                    if exclude_st:
-                        metadata_query = metadata_query.filter(StockMetadata.is_st == False)
-
-                    if exclude_suspend:
-                        metadata_query = metadata_query.filter(StockMetadata.is_suspend == False)
-
-                    # 只保留既满足数据要求，又满足元数据要求的股票
-                    valid_symbols = [row[0] for row in metadata_query.all()]
-                    if valid_symbols:
-                        query = query.filter(StockHistory.symbol.in_(valid_symbols))
-
-                # 如果需要排除限制交易股票（科创板、创业板、北交所）
-                if exclude_restricted_stocks:
-                    from aitrader.infrastructure.db.models import AShareStockInfo
-
-                    # 获取当前查询结果中的所有股票代码
-                    temp_symbols = [row[0] for row in query.all()]
-
-                    if temp_symbols:
-                        # 获取主板股票（使用SQL级别的过滤以提高性能）
-                        main_board_query = session.query(AShareStockInfo.symbol).filter(
-                            AShareStockInfo.symbol.in_(temp_symbols),
-                            ~AShareStockInfo.stock_code.like('688%'),      # 排除科创板
-                            ~AShareStockInfo.stock_code.like('300%'),      # 排除创业板
-                            AShareStockInfo.exchange_suffix != 'BJ'         # 排除北交所
-                        )
-
-                        valid_symbols = [row[0] for row in main_board_query.all()]
-                        logger.info(f'限制交易股票过滤: 剩余 {len(valid_symbols)} 只主板股票 (原 {len(temp_symbols)} 只)')
-                        # 更新查询，只保留主板股票
-                        query = session.query(distinct(StockHistory.symbol)).filter(
-                            StockHistory.date >= cutoff_date,
-                            StockHistory.symbol.in_(valid_symbols)
-                        )
-
-                symbols = [row[0] for row in query.all()]
-                logger.info(f'获取可交易股票: {len(symbols)} 只 '
-                           f'(最近{min_data_days}天有数据)')
-                return symbols
-
+        conn = None
         try:
-            return retry_on_db_error(_query_stocks, max_retries=3, delay=1.0)
+            conn = reader.connect()
+            with conn.cursor() as cursor:
+
+                # 1. 获取有足够历史数据的股票
+                # 要求: (a) 在 cutoff_date 之前就已有数据（保证历史指标可算）
+                #        (b) 近30天仍在交易（排除已退市股票）
+                cursor.execute(
+                    "SELECT S_INFO_WINDCODE FROM ASHAREEODPRICES "
+                    "GROUP BY S_INFO_WINDCODE "
+                    "HAVING MIN(TRADE_DT) <= %s AND MAX(TRADE_DT) >= %s "
+                    "ORDER BY S_INFO_WINDCODE",
+                    [cutoff_date, recent_date],
+                )
+                symbols = {row['S_INFO_WINDCODE'] for row in cursor.fetchall()}
+                logger.info(f'Wind ASHAREEODPRICES 股票总数(有足够历史): {len(symbols)}')
+
+                # 2. 过滤 ST 股票
+                if exclude_st:
+                    try:
+                        cursor.execute(
+                            "SELECT DISTINCT S_INFO_WINDCODE FROM ASHAREST "
+                            "WHERE ENTRY_DT <= %s AND (REMOVE_DT IS NULL OR REMOVE_DT > %s)",
+                            [today, today],
+                        )
+                        st_set = {row['S_INFO_WINDCODE'] for row in cursor.fetchall()}
+                        before = len(symbols)
+                        symbols -= st_set
+                        logger.info(f'ST 过滤: {before} -> {len(symbols)} (排除 {len(st_set)} 只)')
+                    except Exception as e:
+                        logger.warning(f'ST 过滤失败，跳过: {e}')
+
+                # 3. 过滤停牌股票
+                if exclude_suspend:
+                    try:
+                        cursor.execute(
+                            "SELECT DISTINCT S_INFO_WINDCODE FROM ASHARETRADINGSUSPENSION "
+                            "WHERE S_DQ_SUSPENDDATE <= %s "
+                            "AND (S_DQ_RESUMPDATE IS NULL OR S_DQ_RESUMPDATE > %s)",
+                            [today, today],
+                        )
+                        suspended = {row['S_INFO_WINDCODE'] for row in cursor.fetchall()}
+                        before = len(symbols)
+                        symbols -= suspended
+                        logger.info(f'停牌过滤: {before} -> {len(symbols)} (排除 {len(suspended)} 只)')
+                    except Exception as e:
+                        logger.warning(f'停牌过滤失败，跳过: {e}')
+
+                # 4. 过滤新股（上市不足 N 天）
+                if exclude_new_ipo_days:
+                    try:
+                        ipo_cutoff = (
+                            datetime.now() - timedelta(days=exclude_new_ipo_days)
+                        ).strftime('%Y%m%d')
+                        cursor.execute(
+                            "SELECT DISTINCT S_INFO_WINDCODE FROM ASHAREDESCRIPTION "
+                            "WHERE S_INFO_LISTDATE > %s",
+                            [ipo_cutoff],
+                        )
+                        new_ipos = {row['S_INFO_WINDCODE'] for row in cursor.fetchall()}
+                        before = len(symbols)
+                        symbols -= new_ipos
+                        logger.info(f'新股过滤 (上市<{exclude_new_ipo_days}天): '
+                                    f'{before} -> {len(symbols)} (排除 {len(new_ipos)} 只)')
+                    except Exception as e:
+                        logger.warning(f'新股过滤失败，跳过: {e}')
+
+                # 5. 过滤限制交易板块（科创板 688、创业板 300、北交所 .BJ）
+                if exclude_restricted_stocks:
+                    before = len(symbols)
+                    symbols = {
+                        s for s in symbols
+                        if not (s.startswith('688') or s.startswith('300') or '.BJ' in s)
+                    }
+                    logger.info(f'限制板块过滤: {before} -> {len(symbols)}')
+
+            result = sorted(symbols)
+            logger.info(f'最终股票池: {len(result)} 只')
+            _GET_ALL_STOCKS_CACHE[cache_key] = result
+            return list(result)
+
         except Exception as e:
             logger.error(f'获取股票列表失败: {e}')
             return []
+        finally:
+            if conn:
+                conn.close()
 
     def filter_by_market_cap(self, symbols: List[str],
                             min_mv: Optional[float] = None,
@@ -174,6 +217,12 @@ class StockUniverse:
         """
         if not symbols:
             return []
+
+        cache_key = (tuple(sorted(symbols)), min_mv, max_mv)
+        cached = _MARKET_CAP_CACHE.get(cache_key)
+        if cached is not None:
+            logger.debug('filter_by_market_cap 缓存命中')
+            return list(cached)
 
         try:
             with self.db.get_session() as session:
@@ -198,7 +247,8 @@ class StockUniverse:
 
                 filtered = [row[0] for row in query.all()]
                 logger.debug(f'市值筛选: {len(symbols)} -> {len(filtered)}')
-                return filtered
+                _MARKET_CAP_CACHE[cache_key] = filtered
+                return list(filtered)
 
         except Exception as e:
             logger.error(f'市值筛选失败: {e}')

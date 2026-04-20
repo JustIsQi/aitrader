@@ -10,6 +10,7 @@ import traceback
 from typing import Callable, Dict, List, Optional
 
 from aitrader.domain.backtest.engine import Engine
+from aitrader.domain.backtest.parallel import ParallelBacktestRunner
 
 
 def run_single_strategy(strategy_func: Callable, strategy_name: str, plot: bool = False):
@@ -30,15 +31,7 @@ def run_single_strategy(strategy_func: Callable, strategy_name: str, plot: bool 
 
     try:
         task = strategy_func()
-
-        print(f"\n策略配置:")
-        print(f"  名称: {task.name}")
-        print(f"  股票池: {len(task.symbols)} 只")
-        print(f"  买入条件: {len(task.select_buy)} 个")
-        print(f"  卖出条件: {len(task.select_sell)} 个")
-        print(f"  调仓周期: {task.period}")
-        print(f"  持仓数量: {task.order_by_topK}")
-        print(f"  A股模式: {'是' if task.ashare_mode else '否'}")
+        _print_task_summary(task)
 
         print(f"\n开始回测...")
         engine = Engine()
@@ -63,6 +56,17 @@ def run_single_strategy(strategy_func: Callable, strategy_name: str, plot: bool 
         return None
 
 
+def _print_task_summary(task):
+    print(f"\n策略配置:")
+    print(f"  名称: {task.name}")
+    print(f"  股票池: {len(task.symbols)} 只")
+    print(f"  买入条件: {len(task.select_buy)} 个")
+    print(f"  卖出条件: {len(task.select_sell)} 个")
+    print(f"  调仓周期: {task.period}")
+    print(f"  持仓数量: {task.order_by_topK}")
+    print(f"  A股模式: {'是' if task.ashare_mode else '否'}")
+
+
 def _print_summary(strategies: List, results: Dict, successful: int, failed: int):
     print("\n\n" + "=" * 60)
     print("策略对比报告")
@@ -77,7 +81,51 @@ def _print_summary(strategies: List, results: Dict, successful: int, failed: int
           f"成功率: {successful/len(strategies)*100:.1f}%")
 
 
-def run_all_strategies(plot: bool = False) -> Dict:
+def _run_strategy_batch(strategies, plot: bool, parallel: bool):
+    use_parallel = parallel and not plot and len(strategies) > 1
+
+    if use_parallel:
+        print("\n" + "#" * 60)
+        print("# 批量运行所有A股策略 (并行)")
+        print("#" * 60)
+
+        jobs = []
+        for name, func in strategies:
+            task = func()
+            print("\n" + "=" * 60)
+            print(f"准备策略: {name}")
+            print("=" * 60)
+            _print_task_summary(task)
+            jobs.append((name, task))
+
+        runner = ParallelBacktestRunner()
+        parallel_results = runner.run_strategies_parallel(jobs)
+        result_map = {item['strategy_name']: item for item in parallel_results if item.get('success')}
+
+        results: Dict = {}
+        success_count = 0
+        for name, _ in strategies:
+            item = result_map.get(name)
+            if item is not None:
+                results[name] = item['result']
+                success_count += 1
+
+        _print_summary(strategies, results, success_count, len(strategies) - success_count)
+        return results
+
+    results: Dict = {}
+    success_count = 0
+    for name, func in strategies:
+        result = run_single_strategy(func, name, plot)
+        if result is not None:
+            results[name] = result
+            success_count += 1
+
+    _print_summary(strategies, results, success_count, len(strategies) - success_count)
+    return results
+
+
+def run_all_strategies(plot: bool = False, parallel: bool = True) -> Dict:
     """批量运行所有策略"""
     from aitrader.domain.strategy.multi_factor import (
         multi_factor_strategy_weekly,
@@ -99,24 +147,10 @@ def run_all_strategies(plot: bool = False) -> Dict:
         ('动量-激进版', momentum_strategy_aggressive),
     ]
 
-    results: Dict = {}
-    success_count = 0
-
-    print("\n" + "#" * 60)
-    print("# 批量运行所有A股策略")
-    print("#" * 60)
-
-    for name, func in strategies:
-        result = run_single_strategy(func, name, plot)
-        if result is not None:
-            results[name] = result
-            success_count += 1
-
-    _print_summary(strategies, results, success_count, len(strategies) - success_count)
-    return results
+    return _run_strategy_batch(strategies, plot=plot, parallel=parallel)
 
 
-def run_multi_factor_strategies(plot: bool = False) -> Dict:
+def run_multi_factor_strategies(plot: bool = False, parallel: bool = True) -> Dict:
     """运行所有多因子策略"""
     from aitrader.domain.strategy.multi_factor import (
         multi_factor_strategy_weekly,
@@ -129,15 +163,10 @@ def run_multi_factor_strategies(plot: bool = False) -> Dict:
         ('多因子-月频', multi_factor_strategy_monthly),
         ('多因子-保守版', multi_factor_strategy_conservative),
     ]
-    results: Dict = {}
-    for name, func in strategies:
-        result = run_single_strategy(func, name, plot)
-        if result:
-            results[name] = result
-    return results
+    return _run_strategy_batch(strategies, plot=plot, parallel=parallel)
 
 
-def run_momentum_strategies(plot: bool = False) -> Dict:
+def run_momentum_strategies(plot: bool = False, parallel: bool = True) -> Dict:
     """运行所有动量策略"""
     from aitrader.domain.strategy.momentum import (
         momentum_strategy_weekly,
@@ -150,9 +179,4 @@ def run_momentum_strategies(plot: bool = False) -> Dict:
         ('动量-月频', momentum_strategy_monthly),
         ('动量-激进版', momentum_strategy_aggressive),
     ]
-    results: Dict = {}
-    for name, func in strategies:
-        result = run_single_strategy(func, name, plot)
-        if result:
-            results[name] = result
-    return results
+    return _run_strategy_batch(strategies, plot=plot, parallel=parallel)

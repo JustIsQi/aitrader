@@ -7,6 +7,11 @@ from aitrader.infrastructure.config.logging import logger
 from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
 
 
+# Process-local cache so repeated backtests with the same universe/date range
+# do not hit MySQL again inside the same Python process.
+_RAW_DFS_CACHE: dict[tuple, dict[str, pd.DataFrame]] = {}
+
+
 class DbDataLoader:
     """A-share batch data loader backed by Wind MySQL prices and indicators."""
 
@@ -30,6 +35,7 @@ class DbDataLoader:
         symbols: list[str],
         start_date="20100101",
         end_date=datetime.now().strftime("%Y%m%d"),
+        copy_result: bool = True,
     ):
         """Read multiple A-share symbols as {symbol: DataFrame}."""
         if not symbols:
@@ -41,8 +47,21 @@ class DbDataLoader:
             )
 
         unique_symbols = sorted({symbol for symbol in symbols if symbol})
-        start_date_fmt = self._format_log_date(start_date)
-        end_date_fmt = self._format_log_date(end_date)
+        start_date_norm = self._normalize_cache_bound(start_date)
+        end_date_norm = self._normalize_cache_bound(end_date)
+        cache_key = (tuple(unique_symbols), start_date_norm, end_date_norm, self.adjust_type)
+        cached = _RAW_DFS_CACHE.get(cache_key)
+        if cached is not None:
+            logger.info(
+                f"DbDataLoader: 命中内存缓存 {len(cached)} 个标的 "
+                f"({self._format_log_date(start_date_norm)} ~ {self._format_log_date(end_date_norm)})"
+            )
+            if copy_result:
+                return {symbol: df.copy() for symbol, df in cached.items()}
+            return cached
+
+        start_date_fmt = self._format_log_date(start_date_norm)
+        end_date_fmt = self._format_log_date(end_date_norm)
         logger.info(
             f"DbDataLoader: 开始加载 {len(unique_symbols)} 个A股标的数据 "
             f"({start_date_fmt} ~ {end_date_fmt})"
@@ -72,6 +91,9 @@ class DbDataLoader:
             logger.warning(f"MySQL/Wind A股行情缺失部分标的: {missing_symbols}")
 
         logger.success(f"✓ MySQL/Wind A股行情加载完成: {len(dfs)} 个标的")
+        _RAW_DFS_CACHE[cache_key] = dfs
+        if copy_result:
+            return {symbol: df.copy() for symbol, df in dfs.items()}
         return dfs
 
     def _format_log_date(self, value: str) -> str:
@@ -79,6 +101,9 @@ class DbDataLoader:
         if len(value) == 8:
             return f"{value[:4]}-{value[4:6]}-{value[6:]}"
         return value
+
+    def _normalize_cache_bound(self, value: str) -> str:
+        return str(value).replace("-", "")
 
 
 # Backward-compatible alias used by older docs/callers.

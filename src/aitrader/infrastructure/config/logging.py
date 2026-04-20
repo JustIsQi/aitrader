@@ -26,7 +26,13 @@ class _StdLoggerAdapter:
         self._logger.addHandler(handler)
         self._logger.setLevel(getattr(logging, str(level).upper(), logging.INFO))
 
+    def debug(self, message, *args, **kwargs):
+        self._logger.debug(message, *args, **kwargs)
+
     def info(self, message, *args, **kwargs):
+        self._logger.info(message, *args, **kwargs)
+
+    def success(self, message, *args, **kwargs):
         self._logger.info(message, *args, **kwargs)
 
     def warning(self, message, *args, **kwargs):

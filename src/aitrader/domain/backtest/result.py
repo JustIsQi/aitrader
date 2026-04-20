@@ -115,7 +115,11 @@ def _is_sequence(value: Any) -> bool:
 
 
 def _to_native_scalar(value: Any) -> Any:
-    if hasattr(value, "item"):
+    try:
+        has_item = hasattr(value, "item")
+    except Exception:
+        has_item = False
+    if has_item:
         try:
             return value.item()
         except Exception:

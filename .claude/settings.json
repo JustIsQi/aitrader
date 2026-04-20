@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(lsblk:*)"
+      "Bash(lsblk:*)",
+      "Bash(python .claude/skills/arxiv-paper-pipeline/scripts/file_parse.py *)",
+      "Bash(mkdir *)",
+      "Write(papers/arxiv/processed/**)"
     ]
   }
 }

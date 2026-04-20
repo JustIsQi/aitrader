@@ -77,13 +77,18 @@ from aitrader.infrastructure.market_data.loaders import DbDataLoader
 from aitrader.infrastructure.market_data.factor_expr import FactorExpr
 class DataFeed:
     def __init__(self, task: Task):
-        dfs = DbDataLoader().read_dfs(symbols=task.symbols,start_date=task.start_date, end_date=task.end_date)
+        dfs = DbDataLoader().read_dfs(
+            symbols=task.symbols,
+            start_date=task.start_date,
+            end_date=task.end_date,
+            copy_result=False,
+        )
 
         fields = list(set(task.select_buy + task.select_sell))
         if task.order_by_signal:
             fields += [task.order_by_signal]
         names = fields
-        df_all = FactorExpr().calc_formulas(dfs,fields)
+        df_all = FactorExpr().calc_formulas(dfs, fields, parallel=True)
         self.df_all = df_all
         #self.df_all.to_csv('df_all.csv')
 
@@ -225,8 +230,9 @@ class Engine:
 
         bkts = [bkt]
         for bench in [task.benchmark]:
-            df = DbDataLoader().read_df([bench])
-            df.set_index('date',inplace=True)
+            dfs = DbDataLoader().read_dfs(symbols=[bench], copy_result=False)
+            df = dfs[bench].copy()
+            df.set_index('date', inplace=True)
             df.index = pd.to_datetime(df.index)
             data = df.pivot_table(values='close', index=df.index, columns='symbol')
             #data =self.loader.get_col_df_by_symbols([bench])
