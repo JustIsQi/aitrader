@@ -378,7 +378,7 @@ if __name__ == '__main__':
         from aitrader.domain.backtest.engine import Task
         return Task(
             name='示例策略',
-            symbols=['510300.SH'],
+            symbols=['000001.SZ'],
             start_date='20230101',
             end_date='20231231'
         )

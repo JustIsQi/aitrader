@@ -109,6 +109,50 @@ _CURVE_VALUE_KEYS = (
     "策略",
 )
 
+_METRIC_LABELS = {
+    "metric": "指标",
+    "value": "数值",
+    "strategy": "策略",
+    "benchmark": "基准",
+    "total_return": "总收益",
+    "return": "收益率",
+    "cagr": "复合年化收益",
+    "annual_return": "年化收益率",
+    "daily_sharpe": "日频夏普比率",
+    "sharpe": "夏普比率",
+    "sharpe_ratio": "夏普比率",
+    "sortino": "索提诺比率",
+    "sortino_ratio": "索提诺比率",
+    "calmar": "卡玛比率",
+    "calmar_ratio": "卡玛比率",
+    "max_drawdown": "最大回撤",
+    "drawdown": "回撤",
+    "volatility": "波动率",
+    "annual_volatility": "年化波动率",
+    "daily_volatility": "日波动率",
+    "benchmark_return": "基准收益",
+    "excess_return": "超额收益",
+    "win_rate": "胜率",
+    "profit_factor": "盈亏比",
+    "profit_loss_ratio": "盈亏比",
+    "avg_return_per_trade": "单笔平均收益",
+    "avg_holding_days": "平均持有天数",
+    "total_trades": "总交易次数",
+    "trade_count": "交易次数",
+    "first_trade_date": "首次交易日",
+    "invested_days_pct": "持仓天数占比",
+    "avg_holdings": "平均持仓数",
+    "alpha": "阿尔法",
+    "beta": "贝塔",
+    "information_ratio": "信息比率",
+    "upside_capture": "上涨捕获率",
+    "downside_capture": "下跌捕获率",
+    "timereturn": "时点收益",
+    "returns": "收益分析",
+    "diagnostics": "交易诊断",
+    "period": "周期",
+}
+
 
 def _is_sequence(value: Any) -> bool:
     return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
@@ -453,6 +497,28 @@ def _normalize_statistics(value: Any) -> Dict[str, Any]:
     return {"value": _to_builtin_data(value)}
 
 
+def _localize_metric_label(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    if value in _METRIC_LABELS:
+        return _METRIC_LABELS[value]
+    lowered = value.lower()
+    if lowered in _METRIC_LABELS:
+        return _METRIC_LABELS[lowered]
+    return value
+
+
+def _localize_display_mapping(value: Mapping[str, Any]) -> Dict[str, Any]:
+    localized: Dict[str, Any] = {}
+    for key, item in value.items():
+        localized_key = _localize_metric_label(key)
+        if isinstance(item, Mapping):
+            localized[localized_key] = _localize_display_mapping(item)
+        else:
+            localized[localized_key] = item
+    return localized
+
+
 @dataclass
 class TradeRecord:
     """Normalized trade record."""
@@ -701,23 +767,26 @@ class BacktestResult:
         `engine.run(task).stats()`.
         """
         if pd is None:
-            print(self.statistics)
-            return self.statistics
+            localized = _localize_display_mapping(self.statistics)
+            print(localized)
+            return localized
 
         if not self.statistics:
-            print("No backtest statistics available.")
+            print("暂无可用回测统计指标。")
             return pd.DataFrame()
 
         rows = []
         for key, value in self.statistics.items():
             if isinstance(value, Mapping):
-                row = {"metric": key}
-                row.update(value)
+                row = {"metric": _localize_metric_label(key)}
+                for inner_key, inner_value in value.items():
+                    row[_localize_metric_label(inner_key)] = inner_value
             else:
-                row = {"metric": key, "value": value}
+                row = {"metric": _localize_metric_label(key), "value": value}
             rows.append(row)
 
         df = pd.DataFrame(rows)
+        df.rename(columns=lambda column: _localize_metric_label(column), inplace=True)
         print(df.to_string(index=False))
         return df
 
@@ -739,15 +808,17 @@ class BacktestResult:
         equity_df = equity_df.sort_values("date")
 
         plt.figure(figsize=(12, 6))
-        plt.plot(equity_df["date"], equity_df["value"], label="strategy", linewidth=2)
+        plt.plot(equity_df["date"], equity_df["value"], label="策略净值", linewidth=2)
 
         if self.benchmark_curve:
             benchmark_df = pd.DataFrame(self.benchmark_curve)
             benchmark_df["date"] = pd.to_datetime(benchmark_df["date"])
             benchmark_df = benchmark_df.sort_values("date")
-            plt.plot(benchmark_df["date"], benchmark_df["value"], label="benchmark", linewidth=1.5)
+            plt.plot(benchmark_df["date"], benchmark_df["value"], label="基准净值", linewidth=1.5)
 
         plt.legend()
+        plt.xlabel("日期")
+        plt.ylabel("净值")
         plt.tight_layout()
         plt.show()
 

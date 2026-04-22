@@ -1,5 +1,6 @@
 import importlib
 import os
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, asdict
 from typing import List, Dict
 
@@ -30,7 +31,7 @@ class Task:
     start_date: str = '20100101'
     end_date: str = datetime.now().strftime('%Y%m%d')
 
-    benchmark: str = '510300.SH'
+    benchmark: str = ''
     select: str = 'SelectAll'
 
     select_buy: List[str] = field(default_factory=list)
@@ -111,7 +112,7 @@ from aitrader.infrastructure.market_data.factor_expr import FactorExpr
 import time
 
 # 进程级基准数据缓存: {(symbol, start, end): df}
-# 避免同一进程内多次 Engine.run() 重复查询基准 (例如 510300.SH)。
+# 避免同一进程内多次 Engine.run() 重复查询同一基准。
 _BENCHMARK_CACHE: dict = {}
 
 # 进程内宽表缓存: {(symbols, start, end, fields): df_all}
@@ -196,6 +197,276 @@ def _resolve_factor_workers() -> int | None:
         logger.warning(f"AITRADER_FACTOR_WORKERS={raw!r} 必须 > 0, 使用自动 worker 数")
         return None
     return value
+
+
+def _normalize_benchmark_symbol(value: str | None) -> str:
+    return str(value or '').strip()
+
+
+_POSITION_DATE_KEYS = {'date', 'datetime', 'time', 'index', 'dt'}
+_POSITION_SYMBOL_KEYS = {'symbol', 'ticker', 'code', 'security', 'asset', 'name', '标的', '证券'}
+_POSITION_VALUE_KEYS = {
+    'value',
+    'amount',
+    'shares',
+    'size',
+    'qty',
+    'quantity',
+    'weight',
+    'position',
+    'holding',
+    'exposure',
+}
+
+
+def _normalize_position_key(value: object) -> str:
+    return str(value).strip().lower()
+
+
+def _is_cash_column(col_name: object) -> bool:
+    col_text = _normalize_position_key(col_name)
+    return col_text in {'cash', '现金'} or 'cash' in col_text
+
+
+def _pick_mapping_value(record: Mapping, key_pool: set[str]):
+    for key, value in record.items():
+        if _normalize_position_key(key) in key_pool and value not in (None, ''):
+            return value
+    return None
+
+
+def _to_finite_float(value: object) -> float | None:
+    if value is None or value == '':
+        return None
+
+    try:
+        value = value.item()
+    except Exception:
+        pass
+
+    if isinstance(value, (pd.Timestamp, datetime)):
+        return None
+
+    try:
+        number = float(value)
+    except Exception:
+        return None
+
+    if not np.isfinite(number):
+        return None
+    return number
+
+
+def _coerce_position_record(item) -> dict | None:
+    if item is None:
+        return None
+
+    if pd is not None and isinstance(item, pd.Series):
+        return item.to_dict()
+
+    if isinstance(item, Mapping):
+        record = dict(item)
+        nested_value = record.get('value')
+        if set(record.keys()) <= {'date', 'datetime', 'time', 'index', 'value'} and isinstance(nested_value, Mapping):
+            expanded = dict(nested_value)
+            for key in ('date', 'datetime', 'time', 'index'):
+                if key in record and key not in expanded:
+                    expanded[key] = record[key]
+            return expanded
+        return record
+
+    if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)) and len(item) >= 2:
+        head, tail = item[0], item[1]
+        if isinstance(tail, Mapping):
+            record = dict(tail)
+            record.setdefault('date', head)
+            return record
+
+    return None
+
+
+def _position_records(positions) -> list[dict]:
+    if positions is None:
+        return []
+
+    if pd is not None and isinstance(positions, pd.DataFrame):
+        return positions.to_dict('records')
+
+    if pd is not None and isinstance(positions, pd.Series):
+        return [positions.to_dict()]
+
+    if isinstance(positions, Mapping):
+        if positions and all(isinstance(value, Mapping) for value in positions.values()):
+            records = []
+            for key, value in positions.items():
+                record = dict(value)
+                if not any(k in record for k in ('date', 'datetime', 'time', 'index')):
+                    record['date'] = key
+                records.append(record)
+            return records
+        return [dict(positions)]
+
+    if isinstance(positions, Sequence) and not isinstance(positions, (str, bytes, bytearray)):
+        records = []
+        for item in positions:
+            record = _coerce_position_record(item)
+            if record:
+                records.append(record)
+        return records
+
+    return []
+
+
+def _sparse_position_holding_counts(rows: list[dict]) -> list[int]:
+    counts_by_date: dict[str, set[str]] = defaultdict(set)
+
+    for idx, row in enumerate(rows):
+        symbol = _pick_mapping_value(row, _POSITION_SYMBOL_KEYS)
+        numeric_value = _pick_mapping_value(row, _POSITION_VALUE_KEYS)
+        numeric_value = _to_finite_float(numeric_value)
+        if symbol in (None, '') or numeric_value is None or abs(numeric_value) <= 1e-8:
+            continue
+
+        date_value = _pick_mapping_value(row, _POSITION_DATE_KEYS)
+        date_key = str(date_value or idx)
+        counts_by_date[date_key].add(str(symbol))
+
+    return [len(symbols) for symbols in counts_by_date.values() if symbols]
+
+
+def _wide_position_holding_counts(rows: list[dict]) -> list[int]:
+    holding_counts = []
+    meta_keys = _POSITION_DATE_KEYS | _POSITION_SYMBOL_KEYS
+
+    for row in rows:
+        count = 0
+        for key, value in row.items():
+            key_text = _normalize_position_key(key)
+            if key_text in meta_keys or _is_cash_column(key):
+                continue
+
+            numeric_value = _to_finite_float(value)
+            if numeric_value is None or abs(numeric_value) <= 1e-8:
+                continue
+            count += 1
+
+        holding_counts.append(count)
+
+    return holding_counts
+
+
+def _normalize_timestamp(value) -> pd.Timestamp | None:
+    if value in (None, ''):
+        return None
+    try:
+        ts = pd.Timestamp(value)
+    except Exception:
+        return None
+    return ts.tz_localize(None).normalize() if ts.tzinfo is not None else ts.normalize()
+
+
+def _signal_holding_counts(signals, trading_dates) -> list[int]:
+    if not isinstance(signals, Mapping) or not signals:
+        return []
+    if trading_dates is None:
+        return []
+
+    holdings_by_date: dict[pd.Timestamp, int] = {}
+    for raw_date, items in signals.items():
+        signal_date = _normalize_timestamp(raw_date)
+        if signal_date is None or not isinstance(items, Sequence):
+            continue
+
+        active_symbols = set()
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            symbol = _pick_mapping_value(item, _POSITION_SYMBOL_KEYS)
+            pos_to = _to_finite_float(item.get('pos_to'))
+            if symbol in (None, '') or pos_to is None or pos_to <= 1e-8:
+                continue
+            active_symbols.add(str(symbol))
+
+        holdings_by_date[signal_date] = len(active_symbols)
+
+    if not holdings_by_date:
+        return []
+
+    normalized_dates = []
+    for value in trading_dates:
+        ts = _normalize_timestamp(value)
+        if ts is not None:
+            normalized_dates.append(ts)
+
+    if not normalized_dates:
+        return []
+
+    holding_counts = []
+    current_count = 0
+    for trade_date in normalized_dates:
+        if trade_date in holdings_by_date:
+            current_count = holdings_by_date[trade_date]
+        holding_counts.append(current_count)
+
+    return holding_counts
+
+
+def _extract_trade_dates(trades: list) -> list[str]:
+    dates = []
+    for trade in trades:
+        for value in (
+            getattr(trade, 'buy_date', ''),
+            getattr(trade, 'date', ''),
+            getattr(trade, 'sell_date', ''),
+        ):
+            if value:
+                dates.append(str(value))
+    return dates
+
+
+def _compute_backtest_diagnostics(
+    trades: list,
+    positions,
+    signals=None,
+    trading_dates=None,
+) -> dict:
+    diagnostics = {
+        'trade_count': len(trades),
+        'first_trade_date': '',
+        'invested_days_pct': 0.0,
+        'avg_holdings': 0.0,
+    }
+
+    trade_dates = sorted(_extract_trade_dates(trades))
+    if trade_dates:
+        diagnostics['first_trade_date'] = trade_dates[0]
+
+    holding_counts = _signal_holding_counts(signals, trading_dates)
+    if not holding_counts:
+        rows = _position_records(positions)
+        if not rows:
+            return diagnostics
+
+        sparse_rows = sum(
+            1
+            for row in rows
+            if _pick_mapping_value(row, _POSITION_SYMBOL_KEYS) not in (None, '')
+            and any(_normalize_position_key(key) in _POSITION_VALUE_KEYS for key in row.keys())
+        )
+        if sparse_rows and sparse_rows >= len(rows) / 2:
+            holding_counts = _sparse_position_holding_counts(rows)
+        else:
+            holding_counts = _wide_position_holding_counts(rows)
+
+    if not holding_counts:
+        return diagnostics
+
+    invested_counts = [count for count in holding_counts if count > 0]
+    diagnostics['invested_days_pct'] = float(len(invested_counts) / len(holding_counts))
+    if invested_counts:
+        diagnostics['avg_holdings'] = float(sum(invested_counts) / len(invested_counts))
+
+    return diagnostics
 
 
 class DataFeed:
@@ -318,8 +589,7 @@ class Engine:
 
                 df_r = self.datafeed.get_factor_df(r)
                 if df_r is not None:
-                    df_r = df_r.replace({True: 1, False: 0})
-                    df_r = df_r.astype('Int64')
+                    df_r = df_r.astype('boolean').astype('Int64')
 
                     #print(df_r)
                     #df_r = df_r.astype(int)
@@ -560,7 +830,11 @@ class Engine:
         import ffn
         datas = [equity]
         benchmark_curve = pd.DataFrame()
-        for bench in [task.benchmark]:
+        benchmark_symbol = _normalize_benchmark_symbol(task.benchmark)
+        if not benchmark_symbol:
+            logger.info(f"  [{task.name}] 未设置基准，跳过基准对比")
+
+        for bench in ([benchmark_symbol] if benchmark_symbol else []):
             cache_key = (bench, task.start_date, task.end_date)
             cached = _BENCHMARK_CACHE.get(cache_key)
             if cached is not None:
@@ -598,6 +872,18 @@ class Engine:
         self.hist_trades = [trade.to_dict() for trade in reversed(normalized_trades)]
         self.signals = self.results[0].signals
         self.weights = self.results[0].weights
+        diagnostics = _compute_backtest_diagnostics(
+            normalized_trades,
+            self.positions,
+            signals=self.signals,
+            trading_dates=returns.index,
+        )
+        logger.info(
+            f"  [{task.name}] 交易诊断: trades={diagnostics['trade_count']}, "
+            f"first_trade={diagnostics['first_trade_date'] or 'NA'}, "
+            f"invested_days_pct={diagnostics['invested_days_pct']:.2%}, "
+            f"avg_holdings={diagnostics['avg_holdings']:.1f}"
+        )
         self.backtest_result = BacktestResult.from_common_inputs(
             statistics=self.perf.stats,
             equity_curve=self.perf.prices[['策略']] if hasattr(self.perf, 'prices') else equity,
@@ -611,11 +897,13 @@ class Engine:
                 'returns': self.results[0].analyzers.returns.get_analysis(),
                 'drawdown': self.results[0].analyzers.drawdown.get_analysis(),
                 'sharpe': self.results[0].analyzers.sharpe.get_analysis(),
+                'diagnostics': diagnostics,
             },
             raw={
                 'strategy_name': task.name,
                 'start_date': effective_start_date,
                 'end_date': effective_end_date,
+                'diagnostics': diagnostics,
             }
         )
         return self.backtest_result

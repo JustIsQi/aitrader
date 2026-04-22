@@ -108,17 +108,15 @@ def roc(se: pd.Series, N:int):
 #     return se.rolling(window=d).apply(np.product)
 
 
-# def zscore(se: pd.Series, N:int):
-#     def _zscore(x):
-#
-#         try:
-#             x.dropna(inplace=True)
-#             #print('sub', x)
-#             value = (x[-1] - x.mean()) / x.std()
-#             if value:
-#                 return value
-#         except:
-#             return -1
-#
-#     ret = se.rolling(window=N).apply(lambda x: _zscore(x))
-#     return ret
+def zscore(se, N: int):
+    """
+    Rolling z-score that accepts either pandas Series or numpy array-like input.
+
+    FactorExpr uppercases function names, which means many formulas end up
+    calling helpers like `MA` from `mytt` that return numpy arrays. Converting
+    to Series here keeps chained rolling expressions usable.
+    """
+    series = pd.Series(se)
+    mean = series.rolling(window=N).mean()
+    std = series.rolling(window=N).std()
+    return (series - mean) / (std + 1e-9)

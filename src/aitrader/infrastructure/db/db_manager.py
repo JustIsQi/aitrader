@@ -15,12 +15,11 @@ from sqlalchemy import select, update, delete, func as sql_func, text, distinct
 from sqlalchemy.exc import IntegrityError
 
 from aitrader.infrastructure.db.models import (
-    StockHistory, StockMetadata, StockFundamentalDaily,
     Trader, Transaction, Position, FactorCache, StockCode,
     StrategyBacktest, SignalBacktestAssociation, AShareStockInfo,
-    StockHistoryQfq
 )
 from aitrader.infrastructure.db.models.base import SessionLocal, engine
+from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
 
 
 # ==================== Performance Monitoring ====================
@@ -52,6 +51,7 @@ class DatabaseManager:
         """初始化数据库连接"""
         self.engine = engine
         self._session_local = SessionLocal
+        self.wind_reader = MySQLAshareReader()
         logger.info('Database 数据库已连接')
 
     @contextmanager
@@ -74,6 +74,34 @@ class DatabaseManager:
         finally:
             session.close()
 
+    def _mirror_removed(self, feature: str):
+        raise RuntimeError(
+            f"{feature} 已移除。当前数据链路统一直读 Wind MySQL，不再读写本地镜像表。"
+        )
+
+    def _normalize_wind_date(self, value: Optional[date | datetime | str], default: str) -> str:
+        if value is None:
+            return default
+        return pd.to_datetime(value).strftime("%Y%m%d")
+
+    def _normalize_wind_history_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame(
+                columns=[
+                    "date", "symbol", "open", "high", "low", "close", "volume",
+                    "amount", "change_pct", "turnover_rate",
+                ]
+            )
+
+        out = df.copy()
+        out["date"] = pd.to_datetime(out["date"], format="%Y%m%d", errors="coerce").dt.date
+        preferred_columns = [
+            "date", "symbol", "real_open", "real_close", "real_low", "open", "close",
+            "high", "low", "volume", "amount", "change_pct", "turnover_rate",
+        ]
+        available = [column for column in preferred_columns if column in out.columns]
+        return out[available].sort_values(["symbol", "date"]).reset_index(drop=True)
+
     # ==================== 股票操作 ====================
 
     def insert_stock_history(self, df: pd.DataFrame, symbol: str = None) -> bool:
@@ -84,30 +112,7 @@ class DatabaseManager:
             df: 包含历史数据的 DataFrame
             symbol: 股票代码
         """
-        try:
-            if symbol and 'symbol' not in df.columns:
-                df = df.copy()
-                df['symbol'] = symbol
-
-            df['date'] = pd.to_datetime(df['date']).dt.date
-
-            with self.get_session() as session:
-                # 删除原有数据
-                if symbol:
-                    session.query(StockHistory).filter(StockHistory.symbol == symbol).delete()
-                else:
-                    for sym in df['symbol'].unique():
-                        session.query(StockHistory).filter(StockHistory.symbol == sym).delete()
-
-                # 插入新数据
-                records = df.to_dict('records')
-                session.bulk_insert_mappings(StockHistory, records)
-
-                logger.info(f'成功插入 {len(df)} 条股票历史数据')
-                return True
-        except Exception as e:
-            logger.error(f'插入股票数据失败: {e}')
-            return False
+        self._mirror_removed("stock_history 写入接口")
 
     def append_stock_history(self, df: pd.DataFrame, symbol: str) -> bool:
         """
@@ -117,30 +122,7 @@ class DatabaseManager:
             df: 新的数据 DataFrame
             symbol: 股票代码
         """
-        try:
-            df = df.copy()
-            df['symbol'] = symbol
-            df['date'] = pd.to_datetime(df['date']).dt.date
-
-            with self.get_session() as session:
-                df.to_sql('temp_stock_insert', self.engine, if_exists='replace', index=False)
-
-                session.execute(text("""
-                    INSERT IGNORE INTO stock_history
-                    (symbol, date, open, high, low, close, volume, amount,
-                     amplitude, change_pct, change_amount, turnover_rate)
-                    SELECT symbol, date, open, high, low, close, volume, amount,
-                           amplitude, change_pct, change_amount, turnover_rate
-                    FROM temp_stock_insert
-                """))
-
-                session.execute(text("DROP TABLE temp_stock_insert"))
-
-                logger.info(f'成功追加 {len(df)} 条股票数据')
-                return True
-        except Exception as e:
-            logger.error(f'追加股票数据失败: {e}')
-            return False
+        self._mirror_removed("stock_history 追加写入接口")
 
     def batch_append_stock_history(self, df: pd.DataFrame) -> int:
         """
@@ -154,46 +136,7 @@ class DatabaseManager:
         Returns:
             int: 实际插入的记录数
         """
-        try:
-            df = df.copy()
-            df['date'] = pd.to_datetime(df['date']).dt.date
-
-            # 使用唯一的临时表名避免并发冲突
-            temp_table_name = f'temp_stock_batch_{uuid.uuid4().hex[:8]}'
-
-            with self.get_session() as session:
-                # 创建临时表
-                df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
-
-                # 先检查有多少记录是重复的
-                duplicate_check = session.execute(text(f"""
-                    SELECT COUNT(*) FROM {temp_table_name} t
-                    INNER JOIN stock_history s ON t.symbol = s.symbol AND t.date = s.date
-                """))
-                duplicate_count = duplicate_check.scalar() or 0
-
-                # 批量插入，忽略重复记录
-                result = session.execute(text(f"""
-                    INSERT IGNORE INTO stock_history
-                    (symbol, date, open, high, low, close, volume, amount,
-                     amplitude, change_pct, change_amount, turnover_rate)
-                    SELECT symbol, date, open, high, low, close, volume, amount,
-                           amplitude, change_pct, change_amount, turnover_rate
-                    FROM {temp_table_name}
-                """))
-
-                # 删除临时表
-                session.execute(text(f"DROP TABLE {temp_table_name}"))
-
-                # 计算实际插入的记录数（总记录数 - 重复记录数）
-                inserted_count = len(df) - duplicate_count
-
-                logger.info(f'批量追加股票数据: {inserted_count} 条新增, {duplicate_count} 条重复 ({len(df)} 个股票)')
-                return inserted_count
-
-        except Exception as e:
-            logger.error(f'批量追加股票数据失败: {e}')
-            return 0
+        self._mirror_removed("stock_history 批量写入接口")
 
     def get_stock_completeness_info(self, symbols: List[str], target_start: str) -> dict:
         """
@@ -210,61 +153,57 @@ class DatabaseManager:
         """
         try:
             target_start_dt = datetime.strptime(target_start, '%Y%m%d')
+            if not symbols:
+                return {}
 
-            with self.get_session() as session:
-                # 一次查询获取所有股票的统计信息
-                results = session.query(
-                    StockHistory.symbol,
-                    sql_func.max(StockHistory.date).label('latest_date'),
-                    sql_func.count(StockHistory.id).label('record_count')
-                ).filter(
-                    StockHistory.symbol.in_(symbols)
-                ).group_by(StockHistory.symbol).all()
+            placeholders = ", ".join(["%s"] * len(symbols))
+            df = self.wind_reader.read_query(
+                f"""
+                SELECT
+                    S_INFO_WINDCODE AS symbol,
+                    MAX(TRADE_DT) AS latest_date,
+                    COUNT(*) AS record_count
+                FROM ASHAREEODPRICES
+                WHERE S_INFO_WINDCODE IN ({placeholders})
+                GROUP BY S_INFO_WINDCODE
+                """,
+                list(symbols),
+            )
 
-                completeness_map = {}
+            completeness_map = {}
+            days_since_target = (datetime.now() - target_start_dt).days
+            expected_records = int(days_since_target * 0.7)
 
-                # 计算期望的记录数（考虑周末和节假日，约为70%）
-                days_since_target = (datetime.now() - target_start_dt).days
-                expected_records = int(days_since_target * 0.7)
+            for _, row in df.iterrows():
+                latest_date = pd.to_datetime(row.get("latest_date"), format="%Y%m%d", errors="coerce")
+                latest_date_dt = latest_date.to_pydatetime() if not pd.isna(latest_date) else None
+                record_count = int(row.get("record_count") or 0)
+                symbol = str(row.get("symbol"))
+                needs_download = (
+                    latest_date_dt is None or
+                    latest_date_dt < target_start_dt or
+                    record_count < expected_records
+                )
+                completeness_map[symbol] = {
+                    'needs_download': needs_download,
+                    'latest_date': latest_date_dt.date() if latest_date_dt else None,
+                    'record_count': record_count,
+                    'reason': 'incomplete' if needs_download else 'complete'
+                }
 
-                for symbol, latest_date, record_count in results:
-                    # 确保 latest_date 是 datetime 类型（可能是 date 或 datetime）
-                    if latest_date is not None and isinstance(latest_date, date):
-                        latest_date_dt = datetime.combine(latest_date, datetime.min.time())
-                    else:
-                        latest_date_dt = latest_date
-
-                    # 判断是否需要下载：
-                    # 1. 最新日期早于目标起始日期
-                    # 2. 记录数少于期望值（考虑周末和节假日）
-                    needs_download = (
-                        latest_date is None or
-                        latest_date_dt < target_start_dt or
-                        record_count < expected_records
-                    )
-
+            for symbol in symbols:
+                if symbol not in completeness_map:
                     completeness_map[symbol] = {
-                        'needs_download': needs_download,
-                        'latest_date': latest_date,
-                        'record_count': record_count,
-                        'reason': 'incomplete' if needs_download else 'complete'
+                        'needs_download': True,
+                        'latest_date': None,
+                        'record_count': 0,
+                        'reason': 'no_data'
                     }
 
-                # 补充没有数据的股票
-                for symbol in symbols:
-                    if symbol not in completeness_map:
-                        completeness_map[symbol] = {
-                            'needs_download': True,
-                            'latest_date': None,
-                            'record_count': 0,
-                            'reason': 'no_data'
-                        }
-
-                return completeness_map
+            return completeness_map
 
         except Exception as e:
             logger.error(f'批量检查股票完整性失败: {e}')
-            # 出错时返回所有股票都需要下载
             return {symbol: {'needs_download': True, 'latest_date': None,
                             'record_count': 0, 'reason': 'error'} for symbol in symbols}
 
@@ -281,17 +220,17 @@ class DatabaseManager:
         Returns:
             DataFrame: 历史数据
         """
-        with self.get_session() as session:
-            query = session.query(StockHistory).filter(StockHistory.symbol == symbol)
-
-            if start_date:
-                query = query.filter(StockHistory.date >= start_date)
-            if end_date:
-                query = query.filter(StockHistory.date <= end_date)
-
-            query = query.order_by(StockHistory.date.asc())
-
-            return pd.read_sql(query.statement, session.bind)
+        start_bound = self._normalize_wind_date(start_date, "19000101")
+        end_bound = self._normalize_wind_date(
+            end_date,
+            self.wind_reader.get_latest_trade_date(),
+        )
+        df = self.wind_reader.read_prices(
+            symbols=[symbol],
+            start_date=start_bound,
+            end_date=end_bound,
+        )
+        return self._normalize_wind_history_df(df)
 
     def batch_get_stock_history(self, symbols: List[str], start_date: date = None,
                                end_date: date = None) -> pd.DataFrame:
@@ -310,19 +249,17 @@ class DatabaseManager:
         """
         query_name = f"batch_stock_{len(symbols)}_symbols"
         with query_timer(query_name):
-            with self.get_session() as session:
-                query = session.query(StockHistory).filter(
-                    StockHistory.symbol.in_(symbols)
-                )
-
-                if start_date:
-                    query = query.filter(StockHistory.date >= start_date)
-                if end_date:
-                    query = query.filter(StockHistory.date <= end_date)
-
-                query = query.order_by(StockHistory.symbol.asc(), StockHistory.date.asc())
-
-                return pd.read_sql(query.statement, session.bind)
+            start_bound = self._normalize_wind_date(start_date, "19000101")
+            end_bound = self._normalize_wind_date(
+                end_date,
+                self.wind_reader.get_latest_trade_date(),
+            )
+            df = self.wind_reader.read_prices(
+                symbols=symbols,
+                start_date=start_bound,
+                end_date=end_bound,
+            )
+            return self._normalize_wind_history_df(df)
 
     def get_stock_latest_date(self, symbol: str) -> Optional[datetime]:
         """
@@ -334,11 +271,21 @@ class DatabaseManager:
         Returns:
             最新日期，如果没有数据则返回 None
         """
-        with self.get_session() as session:
-            result = session.query(sql_func.max(StockHistory.date)).filter(
-                StockHistory.symbol == symbol
-            ).scalar()
-            return result
+        df = self.wind_reader.read_query(
+            """
+            SELECT MAX(TRADE_DT) AS latest_date
+            FROM ASHAREEODPRICES
+            WHERE S_INFO_WINDCODE = %s
+            """,
+            [symbol],
+        )
+        if df.empty:
+            return None
+
+        latest_date = pd.to_datetime(df.iloc[0].get("latest_date"), format="%Y%m%d", errors="coerce")
+        if pd.isna(latest_date):
+            return None
+        return latest_date.to_pydatetime()
 
     # ==================== 前复权数据操作 ====================
 
@@ -355,17 +302,7 @@ class DatabaseManager:
         Returns:
             DataFrame: 前复权历史数据
         """
-        with self.get_session() as session:
-            query = session.query(StockHistoryQfq).filter(StockHistoryQfq.symbol == symbol)
-
-            if start_date:
-                query = query.filter(StockHistoryQfq.date >= start_date)
-            if end_date:
-                query = query.filter(StockHistoryQfq.date <= end_date)
-
-            query = query.order_by(StockHistoryQfq.date.asc())
-
-            return pd.read_sql(query.statement, session.bind)
+        self._mirror_removed("stock_history_qfq 读取接口")
 
     def batch_get_stock_history_qfq(self, symbols: List[str], start_date: date = None,
                                    end_date: date = None) -> pd.DataFrame:
@@ -382,21 +319,7 @@ class DatabaseManager:
         Returns:
             DataFrame: 包含所有股票的前复权历史数据
         """
-        query_name = f"batch_stock_qfq_{len(symbols)}_symbols"
-        with query_timer(query_name):
-            with self.get_session() as session:
-                query = session.query(StockHistoryQfq).filter(
-                    StockHistoryQfq.symbol.in_(symbols)
-                )
-
-                if start_date:
-                    query = query.filter(StockHistoryQfq.date >= start_date)
-                if end_date:
-                    query = query.filter(StockHistoryQfq.date <= end_date)
-
-                query = query.order_by(StockHistoryQfq.symbol.asc(), StockHistoryQfq.date.asc())
-
-                return pd.read_sql(query.statement, session.bind)
+        self._mirror_removed("stock_history_qfq 批量读取接口")
 
     def get_stock_qfq_latest_date(self, symbol: str) -> Optional[datetime]:
         """
@@ -408,11 +331,7 @@ class DatabaseManager:
         Returns:
             最新日期，如果没有数据则返回 None
         """
-        with self.get_session() as session:
-            result = session.query(sql_func.max(StockHistoryQfq.date)).filter(
-                StockHistoryQfq.symbol == symbol
-            ).scalar()
-            return result
+        self._mirror_removed("stock_history_qfq 最新日期接口")
 
     def append_stock_history_qfq(self, df: pd.DataFrame, symbol: str) -> bool:
         """
@@ -422,30 +341,7 @@ class DatabaseManager:
             df: 新的数据 DataFrame
             symbol: 股票代码
         """
-        try:
-            df = df.copy()
-            df['symbol'] = symbol
-            df['date'] = pd.to_datetime(df['date']).dt.date
-
-            with self.get_session() as session:
-                df.to_sql('temp_stock_qfq_insert', self.engine, if_exists='replace', index=False)
-
-                session.execute(text("""
-                    INSERT IGNORE INTO stock_history_qfq
-                    (symbol, date, open, high, low, close, volume, amount,
-                     amplitude, change_pct, change_amount, turnover_rate)
-                    SELECT symbol, date, open, high, low, close, volume, amount,
-                           amplitude, change_pct, change_amount, turnover_rate
-                    FROM temp_stock_qfq_insert
-                """))
-
-                session.execute(text("DROP TABLE temp_stock_qfq_insert"))
-
-                logger.info(f'成功追加 {len(df)} 条股票前复权数据')
-                return True
-        except Exception as e:
-            logger.error(f'追加股票前复权数据失败: {e}')
-            return False
+        self._mirror_removed("stock_history_qfq 写入接口")
 
     def batch_append_stock_history_qfq(self, df: pd.DataFrame) -> int:
         """
@@ -459,46 +355,7 @@ class DatabaseManager:
         Returns:
             int: 实际插入的记录数
         """
-        try:
-            df = df.copy()
-            df['date'] = pd.to_datetime(df['date']).dt.date
-
-            # 使用唯一的临时表名避免并发冲突
-            temp_table_name = f'temp_stock_qfq_batch_{uuid.uuid4().hex[:8]}'
-
-            with self.get_session() as session:
-                # 创建临时表
-                df.to_sql(temp_table_name, self.engine, if_exists='replace', index=False)
-
-                # 先检查有多少记录是重复的
-                duplicate_check = session.execute(text(f"""
-                    SELECT COUNT(*) FROM {temp_table_name} t
-                    INNER JOIN stock_history_qfq s ON t.symbol = s.symbol AND t.date = s.date
-                """))
-                duplicate_count = duplicate_check.scalar() or 0
-
-                # 批量插入，忽略重复记录
-                result = session.execute(text(f"""
-                    INSERT IGNORE INTO stock_history_qfq
-                    (symbol, date, open, high, low, close, volume, amount,
-                     amplitude, change_pct, change_amount, turnover_rate)
-                    SELECT symbol, date, open, high, low, close, volume, amount,
-                           amplitude, change_pct, change_amount, turnover_rate
-                    FROM {temp_table_name}
-                """))
-
-                # 删除临时表
-                session.execute(text(f"DROP TABLE {temp_table_name}"))
-
-                # 计算实际插入的记录数（总记录数 - 重复记录数）
-                inserted_count = len(df) - duplicate_count
-
-                logger.info(f'批量追加股票前复权数据: {inserted_count} 条新增, {duplicate_count} 条重复 ({len(df)} 个股票)')
-                return inserted_count
-
-        except Exception as e:
-            logger.error(f'批量追加股票前复权数据失败: {e}')
-            return 0
+        self._mirror_removed("stock_history_qfq 批量写入接口")
 
     # ==================== 交易操作 ====================
 
@@ -882,12 +739,7 @@ class DatabaseManager:
         Returns:
             最新收盘价，如果没有数据返回 None
         """
-        with self.get_session() as session:
-            latest = session.query(StockHistoryQfq.close).filter(
-                StockHistoryQfq.symbol == symbol
-            ).order_by(StockHistoryQfq.date.desc()).first()
-
-            return latest[0] if latest else None
+        self._mirror_removed("stock_history_qfq 最新价格接口")
 
     def get_qfq_latest_prices(self, symbols: List[str]) -> dict:
         """
@@ -899,13 +751,7 @@ class DatabaseManager:
         Returns:
             dict: {symbol: latest_price}
         """
-        prices = {}
-        with self.get_session() as session:
-            for symbol in symbols:
-                # 获取股票最新价格
-                prices[symbol] = self._get_latest_price_for_symbol(session, symbol)
-
-        return prices
+        self._mirror_removed("stock_history_qfq 批量最新价格接口")
 
     def _get_latest_price_for_symbol(self, session, symbol: str) -> Optional[float]:
         """
@@ -918,11 +764,7 @@ class DatabaseManager:
         Returns:
             最新收盘价，如果没有数据返回 None
         """
-        latest = session.query(StockHistoryQfq.close).filter(
-            StockHistoryQfq.symbol == symbol
-        ).order_by(StockHistoryQfq.date.desc()).first()
-
-        return latest[0] if latest else None
+        self._mirror_removed("stock_history_qfq 单票最新价格接口")
 
     def calculate_realized_pl(self) -> float:
         """
@@ -1213,33 +1055,7 @@ class DatabaseManager:
             is_suspend: 是否停牌
             is_new_ipo: 是否新股
         """
-        with self.get_session() as session:
-            metadata = session.query(StockMetadata).filter(
-                StockMetadata.symbol == symbol
-            ).first()
-
-            if metadata:
-                metadata.name = name
-                metadata.sector = sector
-                metadata.industry = industry
-                metadata.list_date = pd.to_datetime(list_date).date() if list_date else None
-                metadata.is_st = is_st
-                metadata.is_suspend = is_suspend
-                metadata.is_new_ipo = is_new_ipo
-            else:
-                new_metadata = StockMetadata(
-                    symbol=symbol,
-                    name=name,
-                    sector=sector,
-                    industry=industry,
-                    list_date=pd.to_datetime(list_date).date() if list_date else None,
-                    is_st=is_st,
-                    is_suspend=is_suspend,
-                    is_new_ipo=is_new_ipo
-                )
-                session.add(new_metadata)
-
-            logger.debug(f'更新股票元数据: {symbol} - {name}')
+        self._mirror_removed("stock_metadata 写入接口")
 
     def get_stock_metadata(self, symbol: str) -> dict:
         """
@@ -1251,23 +1067,24 @@ class DatabaseManager:
         Returns:
             dict: 包含元数据的字典
         """
-        with self.get_session() as session:
-            metadata = session.query(StockMetadata).filter(
-                StockMetadata.symbol == symbol
-            ).first()
-
-            if metadata:
-                return {
-                    'symbol': metadata.symbol,
-                    'name': metadata.name,
-                    'sector': metadata.sector,
-                    'industry': metadata.industry,
-                    'list_date': metadata.list_date,
-                    'is_st': metadata.is_st,
-                    'is_suspend': metadata.is_suspend,
-                    'is_new_ipo': metadata.is_new_ipo,
-                }
+        metadata = self.wind_reader.read_stock_metadata(symbols=[symbol])
+        if metadata.empty:
             return None
+
+        row = metadata.iloc[0]
+        list_date = pd.to_datetime(row.get('list_date'), errors='coerce')
+        return {
+            'symbol': row.get('symbol'),
+            'name': row.get('name'),
+            'sector': row.get('sector'),
+            'industry': row.get('industry'),
+            'list_date': list_date.date() if not pd.isna(list_date) else None,
+            'list_board_name': row.get('list_board_name'),
+            'sw_ind_name': row.get('sw_ind_name'),
+            'is_st': None,
+            'is_suspend': None,
+            'is_new_ipo': None,
+        }
 
     def get_company_abbr(self, symbol: str) -> Optional[str]:
         """
@@ -1323,30 +1140,7 @@ class DatabaseManager:
             db.update_stock_metadata('000001.SZ', list_date='2020-01-01')
             db.update_stock_metadata('000001.SZ', is_st=True, name='新名称')
         """
-        with self.get_session() as session:
-            metadata = session.query(StockMetadata).filter(
-                StockMetadata.symbol == symbol
-            ).first()
-
-            if not metadata:
-                logger.debug(f'股票不存在: {symbol}')
-                return
-
-            # 更新指定字段
-            for key, value in fields.items():
-                if hasattr(metadata, key):
-                    # 特殊处理 list_date
-                    if key == 'list_date' and value:
-                        if isinstance(value, str):
-                            metadata.list_date = pd.to_datetime(value).date()
-                        else:
-                            metadata.list_date = value
-                    else:
-                        setattr(metadata, key, value)
-                else:
-                    logger.warning(f'无效的字段: {key}')
-
-            logger.debug(f'更新股票元数据: {symbol}')
+        self._mirror_removed("stock_metadata 更新接口")
 
     def batch_upsert_stock_metadata(self, df: pd.DataFrame):
         """
@@ -1355,15 +1149,7 @@ class DatabaseManager:
         Args:
             df: DataFrame,包含列: symbol, name, sector, industry, list_date, is_st, is_suspend, is_new_ipo
         """
-        with self.get_session() as session:
-            # 清空旧数据
-            session.query(StockMetadata).delete()
-
-            # 插入新数据
-            records = df.to_dict('records')
-            session.bulk_insert_mappings(StockMetadata, records)
-
-            logger.info(f'批量更新股票元数据: {len(df)}条')
+        self._mirror_removed("stock_metadata 批量写入接口")
 
     def upsert_fundamental_daily(self, symbol: str, date_str: str,
                                  pe_ratio: float = None, pb_ratio: float = None,
@@ -1390,43 +1176,7 @@ class DatabaseManager:
             total_mv: 总市值
             circ_mv: 流通市值
         """
-        with self.get_session() as session:
-            fundamental = session.query(StockFundamentalDaily).filter(
-                StockFundamentalDaily.symbol == symbol,
-                StockFundamentalDaily.date == pd.to_datetime(date_str).date()
-            ).first()
-
-            if fundamental:
-                fundamental.pe_ratio = pe_ratio
-                fundamental.pb_ratio = pb_ratio
-                fundamental.ps_ratio = ps_ratio
-                fundamental.roe = roe
-                fundamental.roa = roa
-                fundamental.profit_margin = profit_margin
-                fundamental.operating_margin = operating_margin
-                fundamental.debt_ratio = debt_ratio
-                fundamental.current_ratio = current_ratio
-                fundamental.total_mv = total_mv
-                fundamental.circ_mv = circ_mv
-            else:
-                new_fundamental = StockFundamentalDaily(
-                    symbol=symbol,
-                    date=pd.to_datetime(date_str).date(),
-                    pe_ratio=pe_ratio,
-                    pb_ratio=pb_ratio,
-                    ps_ratio=ps_ratio,
-                    roe=roe,
-                    roa=roa,
-                    profit_margin=profit_margin,
-                    operating_margin=operating_margin,
-                    debt_ratio=debt_ratio,
-                    current_ratio=current_ratio,
-                    total_mv=total_mv,
-                    circ_mv=circ_mv
-                )
-                session.add(new_fundamental)
-
-            logger.debug(f'更新基本面数据: {symbol} @ {date_str}')
+        self._mirror_removed("stock_fundamental_daily 写入接口")
 
     def batch_upsert_fundamental(self, df: pd.DataFrame):
         """
@@ -1435,38 +1185,7 @@ class DatabaseManager:
         Args:
             df: DataFrame,包含基本面数据列
         """
-        df['date'] = pd.to_datetime(df['date']).dt.date
-
-        with self.get_session() as session:
-            # 使用临时表和 ON CONFLICT DO UPDATE
-            df.to_sql('temp_fundamental_insert', self.engine, if_exists='replace', index=False)
-
-            session.execute(text("""
-                INSERT INTO stock_fundamental_daily
-                (symbol, date, pe_ratio, pb_ratio, ps_ratio, roe, roa,
-                 profit_margin, operating_margin, debt_ratio, current_ratio,
-                 total_mv, circ_mv)
-                SELECT symbol, date, pe_ratio, pb_ratio, ps_ratio, roe, roa,
-                       profit_margin, operating_margin, debt_ratio, current_ratio,
-                       total_mv, circ_mv
-                FROM temp_fundamental_insert
-                ON DUPLICATE KEY UPDATE
-                    pe_ratio = VALUES(pe_ratio),
-                    pb_ratio = VALUES(pb_ratio),
-                    ps_ratio = VALUES(ps_ratio),
-                    roe = VALUES(roe),
-                    roa = VALUES(roa),
-                    profit_margin = VALUES(profit_margin),
-                    operating_margin = VALUES(operating_margin),
-                    debt_ratio = VALUES(debt_ratio),
-                    current_ratio = VALUES(current_ratio),
-                    total_mv = VALUES(total_mv),
-                    circ_mv = VALUES(circ_mv)
-            """))
-
-            session.execute(text("DROP TABLE temp_fundamental_insert"))
-
-            logger.info(f'批量更新基本面数据: {len(df)}条')
+        self._mirror_removed("stock_fundamental_daily 批量写入接口")
 
     def batch_insert_fundamental_if_not_exists(self, df: pd.DataFrame) -> int:
         """
@@ -1478,43 +1197,7 @@ class DatabaseManager:
         Returns:
             实际插入的新记录数
         """
-        try:
-            df['date'] = pd.to_datetime(df['date']).dt.date
-
-            # 确保数值列类型正确
-            numeric_columns = [
-                'pe_ratio', 'pb_ratio', 'ps_ratio', 'roe', 'roa',
-                'profit_margin', 'operating_margin', 'debt_ratio', 'current_ratio',
-                'total_mv', 'circ_mv'
-            ]
-            for col in numeric_columns:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-
-            with self.get_session() as session:
-                # 使用临时表和 ON CONFLICT DO NOTHING
-                df.to_sql('temp_fundamental_insert', self.engine, if_exists='replace', index=False)
-
-                result = session.execute(text("""
-                    INSERT IGNORE INTO stock_fundamental_daily
-                    (symbol, date, pe_ratio, pb_ratio, ps_ratio, roe, roa,
-                     profit_margin, operating_margin, debt_ratio, current_ratio,
-                     total_mv, circ_mv)
-                    SELECT symbol, date, pe_ratio, pb_ratio, ps_ratio, roe, roa,
-                           profit_margin, operating_margin, debt_ratio, current_ratio,
-                           total_mv, circ_mv
-                    FROM temp_fundamental_insert
-                """))
-
-                session.execute(text("DROP TABLE temp_fundamental_insert"))
-
-                inserted_count = result.rowcount
-                logger.info(f'批量插入基本面数据: {inserted_count} 条新记录, 总计 {len(df)} 条')
-                return inserted_count
-
-        except Exception as e:
-            logger.error(f'批量插入基本面数据失败: {e}')
-            return 0
+        self._mirror_removed("stock_fundamental_daily 去重写入接口")
 
     def get_fundamental_daily(self, symbol: str, start_date: date = None,
                              end_date: date = None) -> pd.DataFrame:
@@ -1529,19 +1212,17 @@ class DatabaseManager:
         Returns:
             DataFrame: 基本面数据
         """
-        with self.get_session() as session:
-            query = session.query(StockFundamentalDaily).filter(
-                StockFundamentalDaily.symbol == symbol
-            )
-
-            if start_date:
-                query = query.filter(StockFundamentalDaily.date >= start_date)
-            if end_date:
-                query = query.filter(StockFundamentalDaily.date <= end_date)
-
-            query = query.order_by(StockFundamentalDaily.date.desc())
-
-            return pd.read_sql(query.statement, session.bind)
+        start_bound = self._normalize_wind_date(start_date, "19000101")
+        end_bound = self._normalize_wind_date(
+            end_date,
+            self.wind_reader.get_latest_trade_date(),
+        )
+        df = self.wind_reader.read_derivative_indicator_history(
+            symbols=[symbol],
+            start_date=start_bound,
+            end_date=end_bound,
+        )
+        return df.sort_values("date", ascending=False).reset_index(drop=True)
 
     def get_latest_fundamental(self, symbol: str) -> dict:
         """
@@ -1553,28 +1234,31 @@ class DatabaseManager:
         Returns:
             dict: 最新基本面数据
         """
-        with self.get_session() as session:
-            fundamental = session.query(StockFundamentalDaily).filter(
-                StockFundamentalDaily.symbol == symbol
-            ).order_by(StockFundamentalDaily.date.desc()).first()
-
-            if fundamental:
-                return {
-                    'symbol': fundamental.symbol,
-                    'date': fundamental.date,
-                    'pe_ratio': fundamental.pe_ratio,
-                    'pb_ratio': fundamental.pb_ratio,
-                    'ps_ratio': fundamental.ps_ratio,
-                    'roe': fundamental.roe,
-                    'roa': fundamental.roa,
-                    'profit_margin': fundamental.profit_margin,
-                    'operating_margin': fundamental.operating_margin,
-                    'debt_ratio': fundamental.debt_ratio,
-                    'current_ratio': fundamental.current_ratio,
-                    'total_mv': fundamental.total_mv,
-                    'circ_mv': fundamental.circ_mv,
-                }
+        df = self.wind_reader.read_latest_derivative_indicators(symbols=[symbol])
+        if df.empty:
             return None
+
+        row = df.iloc[0]
+        fundamental_date = pd.to_datetime(row.get('date'), errors='coerce')
+        return {
+            'symbol': row.get('symbol'),
+            'date': fundamental_date.date() if not pd.isna(fundamental_date) else None,
+            'pe_ratio': row.get('pe_ratio'),
+            'pb_ratio': row.get('pb_ratio'),
+            'ps_ratio': row.get('ps_ratio'),
+            'roe': None,
+            'roa': None,
+            'profit_margin': None,
+            'operating_margin': None,
+            'debt_ratio': None,
+            'current_ratio': None,
+            'total_mv': row.get('total_mv'),
+            'circ_mv': row.get('circ_mv'),
+            'pe_ttm': row.get('pe_ttm'),
+            'ps_ttm': row.get('ps_ttm'),
+            'turnover_rate': row.get('turnover_rate'),
+            'free_turnover_rate': row.get('free_turnover_rate'),
+        }
 
     def get_stock_latest_fundamental_date(self, symbol: str) -> Optional[date]:
         """
@@ -1586,11 +1270,8 @@ class DatabaseManager:
         Returns:
             最新日期，如果没有数据则返回 None
         """
-        with self.get_session() as session:
-            result = session.query(sql_func.max(StockFundamentalDaily.date)).filter(
-                StockFundamentalDaily.symbol == symbol
-            ).scalar()
-            return result
+        fundamental = self.get_latest_fundamental(symbol)
+        return fundamental.get('date') if fundamental else None
 
     def get_stock_fundamental_count(self, symbol: str) -> int:
         """
@@ -1602,11 +1283,17 @@ class DatabaseManager:
         Returns:
             记录数量
         """
-        with self.get_session() as session:
-            result = session.query(sql_func.count(StockFundamentalDaily.id)).filter(
-                StockFundamentalDaily.symbol == symbol
-            ).scalar()
-            return result or 0
+        df = self.wind_reader.read_query(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM ASHAREEODDERIVATIVEINDICATOR
+            WHERE S_INFO_WINDCODE = %s
+            """,
+            [symbol],
+        )
+        if df.empty:
+            return 0
+        return int(df.iloc[0].get("cnt") or 0)
 
     def batch_get_latest_fundamental(self, symbols: List[str]) -> pd.DataFrame:
         """
@@ -1621,35 +1308,17 @@ class DatabaseManager:
         if not symbols:
             return pd.DataFrame()
 
-        with self.get_session() as session:
-            # 使用子查询获取每只股票的最新日期
-            subquery = session.query(
-                StockFundamentalDaily.symbol,
-                sql_func.max(StockFundamentalDaily.date).label('max_date')
-            ).filter(
-                StockFundamentalDaily.symbol.in_(symbols)
-            ).group_by(StockFundamentalDaily.symbol).subquery()
+        df = self.wind_reader.read_latest_derivative_indicators(symbols=symbols)
+        if df.empty:
+            return pd.DataFrame(columns=["symbol", "pe", "pb"])
 
-            # 联接获取最新数据
-            query = session.query(
-                StockFundamentalDaily.symbol,
-                StockFundamentalDaily.pe_ratio,
-                StockFundamentalDaily.pb_ratio
-            ).join(
-                subquery,
-                (StockFundamentalDaily.symbol == subquery.c.symbol) &
-                (StockFundamentalDaily.date == subquery.c.max_date)
-            )
-
-            df = pd.read_sql(query.statement, session.bind)
-
-            # 重命名列为简短名称（便于公式使用）
-            df.rename(columns={
-                'pe_ratio': 'pe',
-                'pb_ratio': 'pb'
-            }, inplace=True)
-
-            return df
+        return (
+            df.rename(columns={"pe_ratio": "pe", "pb_ratio": "pb"})[
+                ["symbol", "pe", "pb"]
+            ]
+            .sort_values("symbol")
+            .reset_index(drop=True)
+        )
 
     def cleanup_old_fundamental(self, keep_days: int = 30):
         """
@@ -1658,15 +1327,7 @@ class DatabaseManager:
         Args:
             keep_days: 保留天数
         """
-        from datetime import timedelta
-        cutoff_date = datetime.now() - timedelta(days=keep_days)
-
-        with self.get_session() as session:
-            deleted = session.query(StockFundamentalDaily).filter(
-                StockFundamentalDaily.date < cutoff_date.date()
-            ).delete()
-
-            logger.info(f'清理了 {deleted} 条旧基本面数据')
+        self._mirror_removed("stock_fundamental_daily 清理接口")
 
     # ==================== 代码管理 ====================
 
@@ -1834,11 +1495,18 @@ class DatabaseManager:
         Returns:
             List[str]: 股票代码列表
         """
-        with self.get_session() as session:
-            result = session.query(StockHistory.symbol).distinct().order_by(
-                StockHistory.symbol
-            ).all()
-            return [r[0] for r in result]
+        df = self.wind_reader.read_query(
+            """
+            SELECT DISTINCT S_INFO_WINDCODE AS symbol
+            FROM ASHAREEODPRICES
+            WHERE S_INFO_WINDCODE IS NOT NULL
+            ORDER BY S_INFO_WINDCODE
+            """,
+            [],
+        )
+        if df.empty:
+            return []
+        return df["symbol"].dropna().astype(str).tolist()
 
     def get_statistics(self) -> dict:
         """
@@ -1847,20 +1515,34 @@ class DatabaseManager:
         Returns:
             dict: 统计信息
         """
-        with self.get_session() as session:
-            stats = session.query(
-                sql_func.count(distinct(StockHistory.symbol)).label('total_symbols'),
-                sql_func.count().label('total_records'),
-                sql_func.min(StockHistory.date).label('earliest_date'),
-                sql_func.max(StockHistory.date).label('latest_date')
-            ).first()
-
+        df = self.wind_reader.read_query(
+            """
+            SELECT
+                COUNT(DISTINCT S_INFO_WINDCODE) AS total_symbols,
+                COUNT(*) AS total_records,
+                MIN(TRADE_DT) AS earliest_date,
+                MAX(TRADE_DT) AS latest_date
+            FROM ASHAREEODPRICES
+            """,
+            [],
+        )
+        if df.empty:
             return {
-                'total_symbols': stats.total_symbols,
-                'total_records': stats.total_records,
-                'earliest_date': stats.earliest_date,
-                'latest_date': stats.latest_date
+                'total_symbols': 0,
+                'total_records': 0,
+                'earliest_date': None,
+                'latest_date': None,
             }
+
+        row = df.iloc[0]
+        earliest_date = pd.to_datetime(row.get("earliest_date"), format="%Y%m%d", errors="coerce")
+        latest_date = pd.to_datetime(row.get("latest_date"), format="%Y%m%d", errors="coerce")
+        return {
+            'total_symbols': int(row.get('total_symbols') or 0),
+            'total_records': int(row.get('total_records') or 0),
+            'earliest_date': earliest_date.date() if not pd.isna(earliest_date) else None,
+            'latest_date': latest_date.date() if not pd.isna(latest_date) else None,
+        }
 
     # ==================== 回测和报告 ====================
 

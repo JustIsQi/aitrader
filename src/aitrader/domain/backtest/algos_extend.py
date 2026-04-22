@@ -45,7 +45,7 @@ class MultiStrategies:
     id_or_symbols: List[str] = field(default_factory=list)  # 策略组合的id
     start_date: str = '20100101'
     end_date: str = None
-    benchmark: str = '510300.SH'
+    benchmark: str = ''
     weight: str = 'WeighEqually'
     select: str = 'SelectAll'
     weight_fixed: Dict[str, int] = field(default_factory=dict)
@@ -60,7 +60,7 @@ class Task:
     start_date: str = '20100101'
     end_date: str = None
 
-    benchmark: str = '510300.SH'
+    benchmark: str = ''
     select: str = 'SelectAll'
 
     select_buy: List[str] = field(default_factory=list)
@@ -88,5 +88,4 @@ class StrategyConfig:
 
 
 import importlib
-
 

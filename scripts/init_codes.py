@@ -13,9 +13,8 @@ src_dir = project_root / "src"
 if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
-from loguru import logger
-
 from aitrader.infrastructure.db.db_manager import get_db
+from aitrader.infrastructure.config.logging import logger
 from aitrader.infrastructure.market_data.downloaders.stock_downloader import StockDownloader
 
 

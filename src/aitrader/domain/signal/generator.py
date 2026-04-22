@@ -336,7 +336,7 @@ class MultiStrategySignalGenerator:
                 continue
 
             # 转换为 0/1
-            df_condition = df_condition.replace({True: 1, False: 0})
+            df_condition = df_condition.astype('boolean').astype('Int64')
             latest_values = df_condition.iloc[-1]
 
             # 找出满足条件的标的
@@ -407,7 +407,7 @@ class MultiStrategySignalGenerator:
                 continue
 
             # 转换为 0/1
-            df_condition = df_condition.replace({True: 1, False: 0})
+            df_condition = df_condition.astype('boolean').astype('Int64')
             latest_values = df_condition.iloc[-1]
 
             # 统计满足条件的标的

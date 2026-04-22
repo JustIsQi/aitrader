@@ -45,7 +45,8 @@ def momentum_strategy_weekly():
     base_symbols = universe.get_all_stocks(
         exclude_st=True,              # 剔除ST股票
         exclude_suspend=True,         # 剔除停牌股票
-        exclude_new_ipo_days=252      # 排除上市1年内新股
+        exclude_new_ipo_days=252,     # 排除上市1年内新股
+        as_of_date=t.end_date,
     )
 
     # 流动性筛选 - 日成交额>5000万

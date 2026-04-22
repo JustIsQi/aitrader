@@ -168,7 +168,7 @@ class FactorCache:
 if __name__ == '__main__':
     # 测试因子缓存
     cache = FactorCache(
-        symbols=['510300.SH', '513100.SH', '159915.SZ'],
+        symbols=['000001.SZ', '600036.SH', '600519.SH'],
         start_date='20240101',
         end_date='20241231'
     )
@@ -188,9 +188,9 @@ if __name__ == '__main__':
     df_close = cache.get_factor('close')
     if df_close is not None:
         print(f"close 形状: {df_close.shape}")
-        print(f"510300.SH 最新价格: {df_close.iloc[-1]['510300.SH']:.3f}")
+        print(f"000001.SZ 最新价格: {df_close.iloc[-1]['000001.SZ']:.3f}")
 
     df_roc = cache.get_factor('roc(close,5)')
     if df_roc is not None:
         print(f"roc(close,5) 形状: {df_roc.shape}")
-        print(f"513100.SH 最新 ROC: {df_roc.iloc[-1]['513100.SH']:.4f}")
+        print(f"600036.SH 最新 ROC: {df_roc.iloc[-1]['600036.SH']:.4f}")

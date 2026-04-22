@@ -1,60 +1,73 @@
 #!/usr/bin/env python3
 """
-填充股票上市日期（Wind/本地行情路径）
+检查 Wind 行情与 Wind 元数据的上市日期一致性。
 
-通过 `stock_history` 的最早交易日推断 `stock_metadata.list_date`。
+原先基于本地 `stock_history` / `stock_metadata` 的回填逻辑已移除。
 """
 
 import sys
 from pathlib import Path
 
-from sqlalchemy import func
+import pandas as pd
 
 project_root = Path(__file__).resolve().parents[1]
 src_dir = project_root / "src"
 if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
-from loguru import logger
-
-from aitrader.infrastructure.db.db_manager import get_db
-from aitrader.infrastructure.db.models import StockMetadata, StockHistory
+from aitrader.infrastructure.config.logging import logger
+from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
 
 
-def populate_list_dates():
-    db = get_db()
-    logger.info("开始通过 stock_history 回填上市日期...")
-    updated = 0
+def verify_list_dates(limit: int = 50):
+    reader = MySQLAshareReader()
+    metadata = reader.read_stock_metadata()
 
-    with db.get_session() as session:
-        rows = session.query(
-            StockHistory.symbol,
-            func.min(StockHistory.date).label("first_trade_date"),
-        ).group_by(StockHistory.symbol).all()
+    if metadata.empty:
+        logger.warning("Wind 元数据为空，无法校验上市日期")
+        return
 
-        for symbol, first_trade_date in rows:
-            if not first_trade_date:
-                continue
-            stock = session.query(StockMetadata).filter(StockMetadata.symbol == symbol).first()
-            if stock is None:
-                continue
-            if stock.list_date is None or stock.list_date > first_trade_date:
-                stock.list_date = first_trade_date
-                updated += 1
-        session.commit()
+    symbols = metadata["symbol"].dropna().astype(str).tolist()[:limit]
+    placeholders = ", ".join(["%s"] * len(symbols))
+    first_trade = reader.read_query(
+        f"""
+        SELECT
+            S_INFO_WINDCODE AS symbol,
+            MIN(TRADE_DT) AS first_trade_date
+        FROM ASHAREEODPRICES
+        WHERE S_INFO_WINDCODE IN ({placeholders})
+        GROUP BY S_INFO_WINDCODE
+        ORDER BY S_INFO_WINDCODE
+        """,
+        symbols,
+    )
 
-    logger.info(f"上市日期回填完成，更新 {updated} 条记录")
+    merged = metadata[metadata["symbol"].isin(symbols)][["symbol", "name", "list_date"]].merge(
+        first_trade,
+        on="symbol",
+        how="left",
+    )
+    merged["first_trade_date"] = pd.to_datetime(
+        merged["first_trade_date"],
+        format="%Y%m%d",
+        errors="coerce",
+    ).dt.strftime("%Y-%m-%d")
 
+    logger.info(f"抽样校验 {len(merged)} 只股票的上市日期/首个交易日")
+    mismatch = merged[
+        merged["list_date"].notna()
+        & merged["first_trade_date"].notna()
+        & (merged["list_date"] != merged["first_trade_date"])
+    ]
+    logger.info(f"存在差异的样本数: {len(mismatch)}")
 
-def verify_list_dates():
-    db = get_db()
-    with db.get_session() as session:
-        total = session.query(StockMetadata).count()
-        with_date = session.query(StockMetadata).filter(StockMetadata.list_date.isnot(None)).count()
-    pct = (with_date / total * 100) if total else 0.0
-    logger.info(f"总股票数: {total}, 有上市日期: {with_date} ({pct:.1f}%)")
+    preview = merged.head(20)
+    for _, row in preview.iterrows():
+        logger.info(
+            f"  {row['symbol']} | {row['name']} | list_date={row['list_date']} | "
+            f"first_trade={row['first_trade_date']}"
+        )
 
 
 if __name__ == "__main__":
-    populate_list_dates()
     verify_list_dates()

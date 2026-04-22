@@ -1,9 +1,7 @@
 """
-A-share derivative-indicator updater.
+Wind A股衍生指标读取工具。
 
-PE/PB/PS and market-cap fields come from Wind MySQL table
-ASHAREEODDERIVATIVEINDICATOR. This module keeps the historical
-FundamentalDownloader entry point used by scripts/unified_update.py.
+本地基本面快照镜像已退役，调用方应直接从 Wind MySQL 读取。
 """
 from __future__ import annotations
 
@@ -14,11 +12,10 @@ import pandas as pd
 from aitrader.infrastructure.config.logging import logger
 
 from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
-from aitrader.infrastructure.db.db_manager import get_db
 
 
 class FundamentalDownloader:
-    """Update local fundamental snapshots from Wind derivative indicators."""
+    """Direct Wind derivative-indicator reader kept for compatibility."""
 
     REQUIRED_COLUMNS = [
         "pe_ratio",
@@ -35,7 +32,6 @@ class FundamentalDownloader:
     ]
 
     def __init__(self, reader: Optional[MySQLAshareReader] = None):
-        self.db = get_db()
         self.reader = reader or MySQLAshareReader()
         self.today = datetime.now().strftime("%Y-%m-%d")
         self.stats = {
@@ -75,50 +71,7 @@ class FundamentalDownloader:
         batch_size: int = 100,
         **_ignored,
     ) -> dict:
-        """
-        Update local fundamental snapshots from ASHAREEODDERIVATIVEINDICATOR.
-
-        Args:
-            symbols: Wind codes to update. None updates the latest row for all
-                symbols available in the derivative-indicator table.
-            batch_size: retained for compatibility; rows are still written in
-                chunks to keep memory and transaction size bounded.
-
-        Returns:
-            dict: update statistics.
-        """
-        self.stats = {
-            "success": 0,
-            "failed": 0,
-            "skipped": 0,
-            "total": 0,
-        }
-        try:
-            logger.info("从 Wind MySQL ASHAREEODDERIVATIVEINDICATOR 读取基本面快照...")
-            indicators = self.reader.read_latest_derivative_indicators(symbols=symbols)
-            if indicators.empty:
-                logger.error("未读取到任何基本面衍生指标")
-                return self.stats
-
-            fundamentals = self._to_fundamental_records(indicators)
-            self.stats["total"] = len(fundamentals)
-            logger.info(f"开始更新 {len(fundamentals)} 条基本面快照...")
-
-            for start in range(0, len(fundamentals), batch_size):
-                batch = fundamentals.iloc[start:start + batch_size]
-                self.db.batch_upsert_fundamental(batch.copy())
-                self.stats["success"] += len(batch)
-
-            logger.info("基本面数据更新完成:")
-            logger.info(f"  总计: {self.stats['total']}")
-            logger.info(f"  成功: {self.stats['success']}")
-            logger.info(f"  失败: {self.stats['failed']}")
-            return self.stats
-
-        except Exception as exc:
-            logger.error(f"更新基本面数据失败: {exc}")
-            self.stats["failed"] = self.stats.get("total", 0)
-            return self.stats
+        raise RuntimeError("本地基本面镜像已移除，请直接从 Wind MySQL 读取衍生指标。")
 
     def _to_fundamental_records(self, df: pd.DataFrame) -> pd.DataFrame:
         records = df.copy()
@@ -158,5 +111,6 @@ class FundamentalDownloader:
 
 if __name__ == "__main__":
     downloader = FundamentalDownloader()
-    stats = downloader.update_fundamental_data()
-    print(stats)
+    raise SystemExit(
+        "本地基本面镜像入口已移除，请直接通过 Wind MySQL 读取衍生指标。"
+    )

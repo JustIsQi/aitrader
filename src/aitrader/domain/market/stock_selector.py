@@ -26,8 +26,9 @@ except ImportError:
 
 from aitrader.infrastructure.db.db_manager import get_db
 from aitrader.infrastructure.db.models.models import (
-    StockHistory, StockMetadata, StockFundamentalDaily, StockRiskData
+    StockRiskData
 )
+from aitrader.domain.market.stock_universe import StockUniverse
 
 
 @dataclass
@@ -140,6 +141,7 @@ class StockSelector:
         self.dip_config = dip_config or DipStrategyConfig()
         self.risk_config = risk_config or RiskFilterConfig()
         self.db = db if db else get_db()
+        self.universe = StockUniverse(db=self.db)
 
     def get_stocks_in_sectors(
         self,
@@ -157,58 +159,50 @@ class StockSelector:
             按板块分组的股票字典 {sector_name: [(symbol, name), ...]}
         """
         try:
-            with self.db.get_session() as session:
-                # 特殊处理: 如果是"全市场",获取所有股票
-                if "全市场" in sector_names:
-                    from sqlalchemy import func
+            # 特殊处理: 如果是"全市场",获取指定交易日成交额靠前股票
+            if "全市场" in sector_names:
+                amount_df = self.universe.wind_reader.read_query(
+                    """
+                    SELECT
+                        p.S_INFO_WINDCODE AS stock_code
+                    FROM ASHAREEODPRICES p
+                    WHERE p.TRADE_DT = %s
+                    ORDER BY p.S_DQ_AMOUNT DESC
+                    LIMIT 500
+                    """,
+                    [date],
+                )
+                symbols = amount_df.get("stock_code", pd.Series(dtype="string")).dropna().astype(str).tolist()
+                metadata = self.universe.get_stock_metadata_snapshot(symbols=symbols, as_of_date=date)
 
-                    # 获取最近有数据的股票 (限制数量避免内存溢出)
-                    date_obj = datetime.strptime(date, '%Y%m%d').date()
+                sector_stocks = {"全市场": []}
+                if not metadata.empty:
+                    name_map = metadata.set_index("symbol")["name"].to_dict()
+                    for symbol in symbols:
+                        sector_stocks["全市场"].append((symbol, name_map.get(symbol, "")))
 
-                    # 随机抽样或按流动性排序获取股票
-                    stocks_query = session.query(
-                        StockMetadata.symbol,
-                        StockMetadata.name,
-                        StockMetadata.sector
-                    ).join(
-                        StockHistory,
-                        StockMetadata.symbol == StockHistory.symbol
-                    ).filter(
-                        StockHistory.date == date_obj
-                    ).order_by(
-                        StockHistory.amount.desc()  # 按成交额降序
-                    ).limit(500)  # 限制为500只股票
-
-                    stocks = stocks_query.all()
-
-                    # 手动设置sector为"全市场"
-                    sector_stocks = {"全市场": []}
-                    for symbol, name, _ in stocks:
-                        sector_stocks["全市场"].append((symbol, name))
-
-                    logger.info(f"✓ 全市场模式: 获取到 {len(stocks)} 只股票")
-
-                    return sector_stocks
-
-                # 正常的板块筛选
-                stocks = session.query(
-                    StockMetadata.symbol,
-                    StockMetadata.name,
-                    StockMetadata.sector
-                ).filter(
-                    StockMetadata.sector.in_(sector_names)
-                ).all()
-
-                # 按板块分组
-                sector_stocks = {}
-                for symbol, name, sector in stocks:
-                    if sector not in sector_stocks:
-                        sector_stocks[sector] = []
-                    sector_stocks[sector].append((symbol, name))
-
-                logger.info(f"获取到 {len(stocks)} 只股票, 分布在 {len(sector_stocks)} 个板块")
-
+                logger.info(f"✓ 全市场模式: 获取到 {len(sector_stocks['全市场'])} 只股票")
                 return sector_stocks
+
+            metadata = self.universe.get_stock_metadata_snapshot(as_of_date=date)
+            if metadata.empty:
+                logger.warning("Wind 元数据为空，无法按板块获取股票")
+                return {}
+
+            stocks = metadata[metadata["sector"].isin(sector_names)].copy()
+
+            sector_stocks = {}
+            for _, row in stocks.iterrows():
+                sector = row.get("sector")
+                if not sector:
+                    continue
+                if sector not in sector_stocks:
+                    sector_stocks[sector] = []
+                sector_stocks[sector].append((str(row.get("symbol")), row.get("name") or ""))
+
+            logger.info(f"获取到 {len(stocks)} 只股票, 分布在 {len(sector_stocks)} 个板块")
+
+            return sector_stocks
 
         except Exception as e:
             logger.error(f"获取板块股票失败: {e}")
@@ -432,19 +426,15 @@ class StockSelector:
 
             # 获取历史数据
             try:
-                with self.db.get_session() as session:
-                    query = session.query(
-                        StockHistory.symbol,
-                        StockHistory.date,
-                        StockHistory.close,
-                        StockHistory.volume
-                    ).filter(
-                        StockHistory.symbol.in_(stock_codes),
-                        StockHistory.date >= start_date_obj,
-                        StockHistory.date <= date_obj
-                    ).order_by(StockHistory.date)
+                from aitrader.infrastructure.market_data.loaders import DbDataLoader
 
-                    df = pd.read_sql(query.statement, session.bind)
+                loader = DbDataLoader(auto_download=False)
+                dfs = loader.read_dfs(
+                    symbols=stock_codes,
+                    start_date=start_date_str,
+                    end_date=date,
+                )
+                df = pd.concat(dfs.values(), ignore_index=True) if dfs else pd.DataFrame()
 
                 if df.empty:
                     continue
@@ -766,6 +756,17 @@ class StockSelector:
                 risk_stats['total'] = len(stocks)
 
             stock_codes = [s.stock_code for s in stocks]
+            snapshot = self.universe.get_latest_fundamental_snapshot(
+                stock_codes,
+                as_of_date=date,
+            )
+            mv_dict = {}
+            if not snapshot.empty and "circ_mv" in snapshot.columns:
+                mv_dict = (
+                    snapshot.dropna(subset=["circ_mv"])
+                    .set_index("symbol")["circ_mv"]
+                    .to_dict()
+                )
 
             with self.db.get_session() as session:
                 # 1. 获取风险数据
@@ -774,19 +775,6 @@ class StockSelector:
                 ).all()
 
                 risk_dict = {r.stock_code: r for r in risk_data}
-
-                # 2. 获取市值数据
-                date_obj = datetime.strptime(date, '%Y%m%d').date()
-
-                fundamental_data = session.query(
-                    StockFundamentalDaily.symbol,
-                    StockFundamentalDaily.circ_mv
-                ).filter(
-                    StockFundamentalDaily.symbol.in_(stock_codes),
-                    StockFundamentalDaily.date == date_obj
-                ).all()
-
-                mv_dict = {f[0]: f[1] for f in fundamental_data if f[1]}
 
             for stock in stocks:
                 # 检查风险数据

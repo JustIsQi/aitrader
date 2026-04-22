@@ -74,6 +74,7 @@ def agentic_turnover_strategy_weekly():
         exclude_new_ipo_days=None,
         min_data_days=2500,             # 约7年历史，确保2019-01-01前已上市
         exclude_restricted_stocks=True,
+        as_of_date=t.end_date,
     )
 
     # 买入条件（至少满足 2 个）— 宽松版以保证足够候选池

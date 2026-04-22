@@ -17,6 +17,14 @@ from urllib.parse import unquote, urlparse
 import pandas as pd
 import pymysql
 
+DEFAULT_READ_CHUNK_SIZE = 200
+MARKET_CAP_UNIT_DIVISOR = 10000.0  # Wind market-cap fields are in 10k RMB; convert to 100M RMB.
+
+_LATEST_TRADE_DATE_CACHE: dict[tuple[str, str], str] = {}
+_DERIVATIVE_SNAPSHOT_CACHE: dict[tuple, pd.DataFrame] = {}
+_DERIVATIVE_HISTORY_CACHE: dict[tuple, pd.DataFrame] = {}
+_STOCK_METADATA_CACHE: dict[tuple, pd.DataFrame] = {}
+
 
 PRICE_COLUMNS = [
     "date",
@@ -63,6 +71,18 @@ DERIVATIVE_COLUMNS = [
     "float_shares",
     "free_shares",
     "up_down_limit_status",
+]
+
+METADATA_COLUMNS = [
+    "symbol",
+    "name",
+    "list_date",
+    "delist_date",
+    "list_board_name",
+    "sw_ind_name",
+    "sector",
+    "sw_level2",
+    "industry",
 ]
 
 
@@ -168,6 +188,10 @@ class MySQLAshareReader:
         )
         self.connection_factory = connection_factory
 
+    def _batched(self, items: list[str], batch_size: int):
+        for start in range(0, len(items), batch_size):
+            yield items[start:start + batch_size]
+
     def connect(self):
         kwargs = self.config.to_connection_kwargs()
         return self.connection_factory(
@@ -184,25 +208,70 @@ class MySQLAshareReader:
         symbols: Iterable[str],
         start_date: str,
         end_date: str,
+        include_derivatives: bool = True,
     ) -> pd.DataFrame:
         symbols = sorted({symbol for symbol in symbols if symbol})
         if not symbols:
             return pd.DataFrame(columns=PRICE_COLUMNS)
 
-        query, params = self.build_price_query(
+        query, params = self.build_price_only_query(
             symbols=symbols,
             start_date=start_date,
             end_date=end_date,
         )
 
         try:
-            df = self.read_query(query, params)
+            price_df = self.read_query(query, params)
+            if include_derivatives:
+                derivative_df = self.read_derivative_indicator_history(
+                    symbols=symbols,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                if not derivative_df.empty:
+                    derivative_df = derivative_df.rename(
+                        columns={
+                            "date": "trade_date",
+                            "symbol": "stock_code",
+                            "pe_ratio": "pe",
+                            "pb_ratio": "pb",
+                            "pb_ratio": "pb",
+                            "ps_ratio": "ps",
+                        }
+                    )
+                    derivative_df["trade_date"] = derivative_df["trade_date"].astype(str).str.replace("-", "")
+                    for column in ("total_mv", "circ_mv"):
+                        if column in derivative_df.columns:
+                            derivative_df[column] = pd.to_numeric(derivative_df[column], errors="coerce") * MARKET_CAP_UNIT_DIVISOR
+                    merge_columns = [
+                        "trade_date",
+                        "stock_code",
+                        "turnover_rate",
+                        "free_turnover_rate",
+                        "pe",
+                        "pe_ttm",
+                        "pb",
+                        "ps",
+                        "ps_ttm",
+                        "total_mv",
+                        "circ_mv",
+                        "total_shares",
+                        "float_shares",
+                        "free_shares",
+                        "up_down_limit_status",
+                    ]
+                    derivative_df = derivative_df[merge_columns]
+                    price_df = price_df.merge(
+                        derivative_df,
+                        on=["trade_date", "stock_code"],
+                        how="left",
+                    )
         except Exception as exc:
             raise MySQLAshareReaderQueryError(
                 "Failed to read A-share prices from MySQL"
             ) from exc
 
-        return self.normalize_prices(df)
+        return self.normalize_prices(price_df)
 
     def read_latest_derivative_indicators(
         self,
@@ -211,19 +280,145 @@ class MySQLAshareReader:
     ) -> pd.DataFrame:
         """Read the latest derivative-indicator row per symbol up to end_date."""
         normalized_symbols = sorted({symbol for symbol in (symbols or []) if symbol})
-        query, params = self.build_latest_derivative_query(
-            symbols=normalized_symbols,
-            end_date=end_date or datetime.now().strftime("%Y%m%d"),
-        )
+        end_bound = self._normalize_bound(end_date or datetime.now().strftime("%Y%m%d"))
+        trade_date = self.get_latest_trade_date(end_bound=end_bound)
+        cache_key = (tuple(normalized_symbols), trade_date)
+        cached = _DERIVATIVE_SNAPSHOT_CACHE.get(cache_key)
+        if cached is not None:
+            return cached.copy()
 
         try:
-            df = self.read_query(query, params)
+            frames: list[pd.DataFrame] = []
+            if normalized_symbols:
+                for batch in self._batched(normalized_symbols, DEFAULT_READ_CHUNK_SIZE):
+                    query, params = self.build_derivative_snapshot_query(
+                        symbols=batch,
+                        trade_date=trade_date,
+                    )
+                    df = self.read_query(query, params)
+                    if not df.empty:
+                        frames.append(df)
+            else:
+                query, params = self.build_derivative_snapshot_query(
+                    symbols=None,
+                    trade_date=trade_date,
+                )
+                df = self.read_query(query, params)
+                if not df.empty:
+                    frames.append(df)
         except Exception as exc:
             raise MySQLAshareReaderQueryError(
                 "Failed to read A-share derivative indicators from MySQL"
             ) from exc
 
-        return self.normalize_derivative_indicators(df)
+        merged = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        normalized = self.normalize_derivative_indicators(merged)
+        _DERIVATIVE_SNAPSHOT_CACHE[cache_key] = normalized
+        return normalized.copy()
+
+    def read_derivative_indicator_history(
+        self,
+        symbols: Iterable[str],
+        start_date: str,
+        end_date: str,
+        chunk_size: int = DEFAULT_READ_CHUNK_SIZE,
+    ) -> pd.DataFrame:
+        normalized_symbols = sorted({symbol for symbol in symbols if symbol})
+        if not normalized_symbols:
+            return pd.DataFrame(columns=DERIVATIVE_COLUMNS)
+
+        start_bound = self._normalize_bound(start_date)
+        end_bound = self._normalize_bound(end_date)
+        cache_key = (tuple(normalized_symbols), start_bound, end_bound)
+        cached = _DERIVATIVE_HISTORY_CACHE.get(cache_key)
+        if cached is not None:
+            return cached.copy()
+
+        frames: list[pd.DataFrame] = []
+        try:
+            for batch in self._batched(normalized_symbols, chunk_size):
+                query, params = self.build_derivative_history_query(
+                    symbols=batch,
+                    start_date=start_bound,
+                    end_date=end_bound,
+                )
+                df = self.read_query(query, params)
+                if not df.empty:
+                    frames.append(df)
+        except Exception as exc:
+            raise MySQLAshareReaderQueryError(
+                "Failed to read A-share derivative-indicator history from MySQL"
+            ) from exc
+
+        merged = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        normalized = self.normalize_derivative_indicators(merged)
+        _DERIVATIVE_HISTORY_CACHE[cache_key] = normalized
+        return normalized.copy()
+
+    def get_latest_trade_date(self, end_bound: Optional[str] = None) -> str:
+        end_bound = self._normalize_bound(end_bound or datetime.now().strftime("%Y%m%d"))
+        cache_key = ("ASHAREEODPRICES", end_bound)
+        cached = _LATEST_TRADE_DATE_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+        query = """
+            SELECT MAX(TRADE_DT) AS trade_date
+            FROM ASHAREEODPRICES
+            WHERE TRADE_DT <= %s
+        """
+        df = self.read_query(query, [end_bound])
+        trade_date = ""
+        if not df.empty:
+            trade_date = str(df.iloc[0]["trade_date"] or "")
+        if not trade_date:
+            raise MySQLAshareReaderQueryError(
+                f"Failed to resolve latest Wind trade date up to {end_bound}"
+            )
+        _LATEST_TRADE_DATE_CACHE[cache_key] = trade_date
+        return trade_date
+
+    def read_stock_metadata(
+        self,
+        symbols: Optional[Iterable[str]] = None,
+        as_of_date: Optional[str] = None,
+        chunk_size: int = DEFAULT_READ_CHUNK_SIZE,
+    ) -> pd.DataFrame:
+        normalized_symbols = sorted({symbol for symbol in (symbols or []) if symbol})
+        as_of_bound = self._normalize_bound(as_of_date or datetime.now().strftime("%Y%m%d"))
+        cache_key = (tuple(normalized_symbols), as_of_bound)
+        cached = _STOCK_METADATA_CACHE.get(cache_key)
+        if cached is not None:
+            return cached.copy()
+
+        frames: list[pd.DataFrame] = []
+        try:
+            if normalized_symbols:
+                for batch in self._batched(normalized_symbols, chunk_size):
+                    query, params = self.build_stock_metadata_query(
+                        symbols=batch,
+                        as_of_date=as_of_bound,
+                    )
+                    df = self.read_query(query, params)
+                    if not df.empty:
+                        frames.append(df)
+            else:
+                query, params = self.build_stock_metadata_query(
+                    symbols=None,
+                    as_of_date=as_of_bound,
+                )
+                df = self.read_query(query, params)
+                if not df.empty:
+                    frames.append(df)
+        except Exception as exc:
+            raise MySQLAshareReaderQueryError(
+                "Failed to read A-share metadata from MySQL"
+            ) from exc
+
+        merged = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        normalized = self.normalize_stock_metadata(merged)
+        _STOCK_METADATA_CACHE[cache_key] = normalized
+        return normalized.copy()
 
     def normalize_prices(self, df: pd.DataFrame) -> pd.DataFrame:
         if df is None or df.empty:
@@ -277,6 +472,7 @@ class MySQLAshareReader:
         ).dt.strftime("%Y%m%d")
         df["symbol"] = df["symbol"].astype(str)
         self._coerce_numeric_columns(df, exclude={"date", "symbol"})
+        self._normalize_market_cap_units(df)
         df = df[PRICE_COLUMNS].sort_values(["symbol", "date"]).reset_index(drop=True)
         return df
 
@@ -304,7 +500,48 @@ class MySQLAshareReader:
         ).dt.strftime("%Y-%m-%d")
         df["symbol"] = df["symbol"].astype(str)
         self._coerce_numeric_columns(df, exclude={"date", "symbol"})
+        self._normalize_market_cap_units(df)
         return df[DERIVATIVE_COLUMNS].sort_values(["symbol", "date"]).reset_index(drop=True)
+
+    def normalize_stock_metadata(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame(columns=METADATA_COLUMNS)
+
+        df = df.copy()
+        df.rename(
+            columns={
+                "stock_code": "symbol",
+                "stock_name": "name",
+            },
+            inplace=True,
+        )
+
+        for column in METADATA_COLUMNS:
+            if column not in df.columns:
+                df[column] = pd.NA
+
+        df["symbol"] = df["symbol"].astype(str)
+        for column in ("name", "list_board_name", "sw_ind_name"):
+            df[column] = df[column].astype("string").str.strip()
+            df[column] = df[column].replace({"": pd.NA, "None": pd.NA, "nan": pd.NA})
+
+        for column in ("list_date", "delist_date"):
+            df[column] = pd.to_datetime(
+                df[column].astype("string").str.strip(),
+                format="%Y%m%d",
+                errors="coerce",
+            ).dt.strftime("%Y-%m-%d")
+
+        parsed = df["sw_ind_name"].apply(self._parse_sw_industry_path)
+        parsed_df = pd.DataFrame(parsed.tolist(), columns=["sector", "sw_level2", "industry"])
+        df[["sector", "sw_level2", "industry"]] = parsed_df
+
+        return (
+            df[METADATA_COLUMNS]
+            .drop_duplicates(subset=["symbol"], keep="first")
+            .sort_values("symbol")
+            .reset_index(drop=True)
+        )
 
     def read_query(self, query: str, params: list) -> pd.DataFrame:
         with self.connect() as connection:
@@ -313,7 +550,7 @@ class MySQLAshareReader:
                 rows = cursor.fetchall()
         return pd.DataFrame(rows)
 
-    def build_price_query(
+    def build_price_only_query(
         self,
         symbols: Optional[Iterable[str]] = None,
         start_date: Optional[str] = None,
@@ -335,24 +572,8 @@ class MySQLAshareReader:
                 p.S_DQ_AVGPRICE AS vwap,
                 p.S_DQ_VOLUME AS volume,
                 p.S_DQ_AMOUNT AS amount,
-                p.S_DQ_PCTCHANGE AS change_pct,
-                d.S_DQ_TURN AS turnover_rate,
-                d.S_DQ_FREETURNOVER AS free_turnover_rate,
-                d.S_VAL_PE AS pe,
-                d.S_VAL_PE_TTM AS pe_ttm,
-                d.S_VAL_PB_NEW AS pb,
-                d.S_VAL_PS AS ps,
-                d.S_VAL_PS_TTM AS ps_ttm,
-                d.S_VAL_MV AS total_mv,
-                d.S_DQ_MV AS circ_mv,
-                d.TOT_SHR_TODAY AS total_shares,
-                d.FLOAT_A_SHR_TODAY AS float_shares,
-                d.FREE_SHARES_TODAY AS free_shares,
-                d.UP_DOWN_LIMIT_STATUS AS up_down_limit_status
+                p.S_DQ_PCTCHANGE AS change_pct
             FROM ASHAREEODPRICES p
-            LEFT JOIN ASHAREEODDERIVATIVEINDICATOR d
-              ON d.S_INFO_WINDCODE = p.S_INFO_WINDCODE
-             AND d.TRADE_DT = p.TRADE_DT
             WHERE p.S_INFO_WINDCODE IN ({placeholders})
               AND p.TRADE_DT >= %s
               AND p.TRADE_DT <= %s
@@ -363,6 +584,118 @@ class MySQLAshareReader:
             self._normalize_bound(start_date or "19000101"),
             self._normalize_bound(end_date or datetime.now().strftime("%Y%m%d")),
         ]
+        return query, params
+
+    def build_derivative_history_query(
+        self,
+        symbols: Optional[Iterable[str]] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ):
+        codes = list(symbols or [])
+        placeholders = ", ".join(["%s"] * len(codes)) or "NULL"
+        query = f"""
+            SELECT
+                d.TRADE_DT AS trade_date,
+                d.S_INFO_WINDCODE AS stock_code,
+                d.S_VAL_PE AS pe_ratio,
+                d.S_VAL_PE_TTM AS pe_ttm,
+                d.S_VAL_PB_NEW AS pb_ratio,
+                d.S_VAL_PS AS ps_ratio,
+                d.S_VAL_PS_TTM AS ps_ttm,
+                d.S_VAL_MV AS total_mv,
+                d.S_DQ_MV AS circ_mv,
+                d.S_DQ_TURN AS turnover_rate,
+                d.S_DQ_FREETURNOVER AS free_turnover_rate,
+                d.TOT_SHR_TODAY AS total_shares,
+                d.FLOAT_A_SHR_TODAY AS float_shares,
+                d.FREE_SHARES_TODAY AS free_shares,
+                d.UP_DOWN_LIMIT_STATUS AS up_down_limit_status
+            FROM ASHAREEODDERIVATIVEINDICATOR d FORCE INDEX (WIDX214134828_DATE_WINDCODE_WI)
+            WHERE d.TRADE_DT >= %s
+              AND d.TRADE_DT <= %s
+              AND d.S_INFO_WINDCODE IN ({placeholders})
+            ORDER BY d.S_INFO_WINDCODE ASC, d.TRADE_DT ASC
+        """
+        params = [
+            self._normalize_bound(start_date or "19000101"),
+            self._normalize_bound(end_date or datetime.now().strftime("%Y%m%d")),
+            *codes,
+        ]
+        return query, params
+
+    def build_derivative_snapshot_query(
+        self,
+        symbols: Optional[Iterable[str]],
+        trade_date: str,
+    ):
+        codes = list(symbols or [])
+        filter_codes = bool(codes)
+        placeholders = ", ".join(["%s"] * len(codes)) or "NULL"
+        code_filter = f"AND d.S_INFO_WINDCODE IN ({placeholders})" if filter_codes else ""
+        query = f"""
+            SELECT
+                d.TRADE_DT AS trade_date,
+                d.S_INFO_WINDCODE AS stock_code,
+                d.S_VAL_PE AS pe_ratio,
+                d.S_VAL_PE_TTM AS pe_ttm,
+                d.S_VAL_PB_NEW AS pb_ratio,
+                d.S_VAL_PS AS ps_ratio,
+                d.S_VAL_PS_TTM AS ps_ttm,
+                d.S_VAL_MV AS total_mv,
+                d.S_DQ_MV AS circ_mv,
+                d.S_DQ_TURN AS turnover_rate,
+                d.S_DQ_FREETURNOVER AS free_turnover_rate,
+                d.TOT_SHR_TODAY AS total_shares,
+                d.FLOAT_A_SHR_TODAY AS float_shares,
+                d.FREE_SHARES_TODAY AS free_shares,
+                d.UP_DOWN_LIMIT_STATUS AS up_down_limit_status
+            FROM ASHAREEODDERIVATIVEINDICATOR d FORCE INDEX (WIDX214134828_DATE_WINDCODE_WI)
+            WHERE d.TRADE_DT = %s
+            {code_filter}
+            ORDER BY d.S_INFO_WINDCODE ASC
+        """
+        params = [self._normalize_bound(trade_date)]
+        if filter_codes:
+            params.extend(codes)
+        return query, params
+
+    def build_stock_metadata_query(
+        self,
+        symbols: Optional[Iterable[str]] = None,
+        as_of_date: Optional[str] = None,
+    ):
+        codes = list(symbols or [])
+        filter_codes = bool(codes)
+        placeholders = ", ".join(["%s"] * len(codes)) or "NULL"
+        code_filter = f"AND d.S_INFO_WINDCODE IN ({placeholders})" if filter_codes else ""
+        as_of_bound = self._normalize_bound(as_of_date or datetime.now().strftime("%Y%m%d"))
+        query = f"""
+            SELECT
+                d.S_INFO_WINDCODE AS stock_code,
+                COALESCE(NULLIF(CAST(i.S_INFO_NAME AS CHAR), ''), d.S_INFO_NAME) AS stock_name,
+                COALESCE(NULLIF(CAST(i.S_INFO_LISTDATE AS CHAR), ''), d.S_INFO_LISTDATE) AS list_date,
+                COALESCE(NULLIF(CAST(i.S_INFO_DELISTDATE AS CHAR), ''), d.S_INFO_DELISTDATE) AS delist_date,
+                COALESCE(NULLIF(CAST(i.S_INFO_LISTBOARDNAME AS CHAR), ''), d.S_INFO_LISTBOARDNAME) AS list_board_name,
+                CAST(i.SW_IND_NAME AS CHAR) AS sw_ind_name
+            FROM ASHAREDESCRIPTION d
+            LEFT JOIN ASHAREINTRODUCTIONE_EXT_DF i
+              ON i.S_INFO_WINDCODE = d.S_INFO_WINDCODE
+            WHERE d.S_INFO_WINDCODE REGEXP '^[0-9]{{6}}\\.(SH|SZ|BJ)$'
+              AND d.S_INFO_LISTDATE IS NOT NULL
+              AND d.S_INFO_LISTDATE <> ''
+              AND d.S_INFO_LISTDATE <= %s
+              AND (
+                    d.S_INFO_DELISTDATE IS NULL
+                    OR d.S_INFO_DELISTDATE = ''
+                    OR d.S_INFO_DELISTDATE >= %s
+                  )
+              {code_filter}
+            ORDER BY d.S_INFO_WINDCODE ASC
+        """
+        params = [as_of_bound, as_of_bound]
+        if filter_codes:
+            params.extend(codes)
         return query, params
 
     def build_latest_derivative_query(
@@ -414,6 +747,26 @@ class MySQLAshareReader:
 
     def _normalize_bound(self, value: str) -> str:
         return str(value).replace("-", "")
+
+    def _parse_sw_industry_path(self, value: object) -> tuple[object, object, object]:
+        if value is None or pd.isna(value):
+            return pd.NA, pd.NA, pd.NA
+
+        parts = [part.strip() for part in str(value).split("-") if part and part.strip()]
+        if parts and "申万行业分类" in parts[0]:
+            parts = parts[1:]
+        if not parts:
+            return pd.NA, pd.NA, pd.NA
+
+        sector = parts[0]
+        sw_level2 = parts[1] if len(parts) > 1 else pd.NA
+        industry = parts[-1]
+        return sector, sw_level2, industry
+
+    def _normalize_market_cap_units(self, df: pd.DataFrame) -> None:
+        for column in ("total_mv", "circ_mv"):
+            if column in df.columns:
+                df[column] = pd.to_numeric(df[column], errors="coerce") / MARKET_CAP_UNIT_DIVISOR
 
     def _coerce_numeric_columns(self, df: pd.DataFrame, exclude: set[str]) -> None:
         for column in df.columns:

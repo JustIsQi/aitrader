@@ -1,5 +1,6 @@
 import pandas as pd
 from matplotlib.font_manager import weight_dict
+from aitrader.infrastructure.config.logging import logger
 
 
 class RunDaily:
@@ -329,13 +330,13 @@ class ReBalance:
                 target.order_target_percent(symbol, w)
             else:
                 #logger.debug('买入：{}'.format(w - percent))
-                to_buy.append(symbol)
+                to_buy.append((symbol, w))
 
-        for s in to_buy:
+        for s, w in to_buy:
             data = target.getdatabyname(s)
             pos_from = round(target.getposition(target.getdatabyname(s)).size * data.close[0] / total_value, 3)
             buy_signal = {
-                'symbol': symbol,
+                'symbol': s,
 
                 'pos_from': pos_from,
                 'pos_to': w,
@@ -345,8 +346,7 @@ class ReBalance:
             #target.weights[symbol] = w
             target.order_target_percent(s, w * 0.99)
         self.pre_symbols = set(target_weights.keys())
-        print('当前调仓后的权重',target.weights)
+        logger.debug(f'当前调仓后的权重 {target.weights}')
         target.temp = {}
 
         return True
-

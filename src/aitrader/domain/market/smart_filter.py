@@ -233,34 +233,17 @@ class SmartStockFilter:
     def _filter_new_ipos(self, symbols: List[str]) -> List[str]:
         """过滤新上市股票"""
         try:
-            cutoff_date = (datetime.now() -
-                          timedelta(days=self.config.exclude_new_ipo_days)).date()
-
-            with self.db.get_session() as session:
-                from aitrader.infrastructure.db.models import StockMetadata
-
-                # 获取股票元数据
-                query = session.query(
-                    StockMetadata.symbol,
-                    StockMetadata.list_date
-                ).filter(
-                    StockMetadata.symbol.in_(symbols)
+            eligible = set(
+                self.universe.get_all_stocks(
+                    exclude_st=False,
+                    exclude_suspend=False,
+                    exclude_new_ipo_days=self.config.exclude_new_ipo_days,
+                    exclude_restricted_stocks=False,
                 )
-
-                results = query.all()
-
-                # 筛选上市日期早于截止日期的股票
-                filtered = []
-                for symbol, list_date in results:
-                    if list_date is None:
-                        # 如果没有上市日期,保留该股票
-                        filtered.append(symbol)
-                    elif list_date < cutoff_date:
-                        filtered.append(symbol)
-                    # 否则过滤掉(新上市)
-
-                logger.debug(f"新股过滤: {len(symbols)} -> {len(filtered)}")
-                return filtered
+            )
+            filtered = [symbol for symbol in symbols if symbol in eligible]
+            logger.debug(f"新股过滤: {len(symbols)} -> {len(filtered)}")
+            return filtered
 
         except Exception as e:
             logger.error(f"新股过滤失败: {e}")
@@ -273,20 +256,14 @@ class SmartStockFilter:
         策略: 按市值排序,选择前N只
         """
         try:
-            with self.db.get_session() as session:
-                from aitrader.infrastructure.db.models import StockFundamentalDaily
+            snapshot = self.universe.get_latest_fundamental_snapshot(symbols)
+            if snapshot.empty or "total_mv" not in snapshot.columns:
+                logger.warning("数量限制失败: Wind 市值快照为空,退化为原始顺序截断")
+                return symbols[:self.config.target_count]
 
-                # 按市值排序,取前N只
-                query = session.query(
-                    StockFundamentalDaily.symbol
-                ).filter(
-                    StockFundamentalDaily.symbol.in_(symbols)
-                ).order_by(
-                    StockFundamentalDaily.total_mv.desc()
-                ).limit(self.config.target_count)
-
-                results = query.all()
-                return [r[0] for r in results]
+            ranked = snapshot.sort_values("total_mv", ascending=False)
+            selected = ranked["symbol"].astype(str).head(self.config.target_count).tolist()
+            return selected
 
         except Exception as e:
             logger.error(f"数量限制失败: {e}")

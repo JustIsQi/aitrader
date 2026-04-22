@@ -20,11 +20,13 @@ from aitrader.infrastructure.config.logging import logger
 from sqlalchemy.exc import OperationalError, DBAPIError
 
 from aitrader.infrastructure.db.db_manager import get_db
-from aitrader.infrastructure.db.models import StockMetadata, StockFundamentalDaily
+from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
 
 # Process-local caches for repeated strategy construction in the same process.
 _GET_ALL_STOCKS_CACHE: dict[tuple, List[str]] = {}
 _MARKET_CAP_CACHE: dict[tuple, List[str]] = {}
+_FUNDAMENTAL_SNAPSHOT_CACHE: dict[tuple, pd.DataFrame] = {}
+_METADATA_SNAPSHOT_CACHE: dict[tuple, pd.DataFrame] = {}
 
 T = TypeVar('T')
 
@@ -77,11 +79,74 @@ class StockUniverse:
             db: 数据库管理器实例，为None则自动创建
         """
         self.db = db if db else get_db()
+        self.wind_reader = MySQLAshareReader()
         logger.debug('股票池管理器初始化完成')
+
+    def _normalize_as_of_date(self, value: object | None) -> str:
+        if value is None:
+            return datetime.now().strftime('%Y%m%d')
+
+        try:
+            ts = pd.to_datetime(value)
+        except Exception as exc:
+            raise ValueError(f'无效的 as_of_date: {value!r}') from exc
+
+        if pd.isna(ts):
+            raise ValueError(f'无效的 as_of_date: {value!r}')
+        return ts.strftime('%Y%m%d')
+
+    def _format_log_date(self, value: str) -> str:
+        value = str(value).replace('-', '')
+        if len(value) == 8:
+            return f'{value[:4]}-{value[4:6]}-{value[6:]}'
+        return value
+
+    def get_latest_fundamental_snapshot(
+        self,
+        symbols: List[str],
+        as_of_date: object | None = None,
+    ) -> pd.DataFrame:
+        """直接从 Wind 读取最新衍生指标快照，市值单位统一为亿元。"""
+        if not symbols:
+            return pd.DataFrame()
+
+        as_of_date_norm = self._normalize_as_of_date(as_of_date)
+        unique_symbols = tuple(sorted({symbol for symbol in symbols if symbol}))
+        cache_key = (unique_symbols, as_of_date_norm)
+        cached = _FUNDAMENTAL_SNAPSHOT_CACHE.get(cache_key)
+        if cached is not None:
+            return cached.copy()
+
+        df = self.wind_reader.read_latest_derivative_indicators(
+            symbols=list(unique_symbols),
+            end_date=as_of_date_norm,
+        )
+        _FUNDAMENTAL_SNAPSHOT_CACHE[cache_key] = df
+        return df.copy()
+
+    def get_stock_metadata_snapshot(
+        self,
+        symbols: Optional[List[str]] = None,
+        as_of_date: object | None = None,
+    ) -> pd.DataFrame:
+        """直接从 Wind 读取股票元数据快照。"""
+        as_of_date_norm = self._normalize_as_of_date(as_of_date)
+        unique_symbols = tuple(sorted({symbol for symbol in (symbols or []) if symbol}))
+        cache_key = (unique_symbols, as_of_date_norm)
+        cached = _METADATA_SNAPSHOT_CACHE.get(cache_key)
+        if cached is not None:
+            return cached.copy()
+
+        df = self.wind_reader.read_stock_metadata(
+            symbols=list(unique_symbols) if unique_symbols else None,
+            as_of_date=as_of_date_norm,
+        )
+        _METADATA_SNAPSHOT_CACHE[cache_key] = df
+        return df.copy()
 
     def get_all_stocks(self, exclude_st=True, exclude_suspend=True,
                       exclude_new_ipo_days=None, min_data_days=180,
-                      exclude_restricted_stocks=True) -> List[str]:
+                      exclude_restricted_stocks=True, as_of_date: object | None = None) -> List[str]:
         """
         从 Wind MySQL 数据库获取所有可交易股票。
 
@@ -91,12 +156,11 @@ class StockUniverse:
           - ASHARETRADINGSUSPENSION    : 过滤停牌股票（失败则跳过）
           - ASHAREDESCRIPTION          : 过滤新股（失败则跳过）
         """
-        from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
-
-        reader = MySQLAshareReader()
-        cutoff_date = (datetime.now() - timedelta(days=min_data_days)).strftime('%Y%m%d')
-        today = datetime.now().strftime('%Y%m%d')
-        recent_date = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d')
+        as_of_date_norm = self._normalize_as_of_date(as_of_date)
+        as_of_dt = datetime.strptime(as_of_date_norm, '%Y%m%d')
+        cutoff_date = (as_of_dt - timedelta(days=min_data_days)).strftime('%Y%m%d')
+        today = as_of_date_norm
+        recent_date = (as_of_dt - timedelta(days=30)).strftime('%Y%m%d')
         cache_key = (
             exclude_st,
             exclude_suspend,
@@ -112,6 +176,9 @@ class StockUniverse:
             logger.debug('get_all_stocks 缓存命中')
             return list(cached)
 
+        from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
+
+        reader = MySQLAshareReader()
         conn = None
         try:
             conn = reader.connect()
@@ -128,7 +195,10 @@ class StockUniverse:
                     [cutoff_date, recent_date],
                 )
                 symbols = {row['S_INFO_WINDCODE'] for row in cursor.fetchall()}
-                logger.info(f'Wind ASHAREEODPRICES 股票总数(有足够历史): {len(symbols)}')
+                logger.info(
+                    f'Wind ASHAREEODPRICES 股票总数(有足够历史, 截止 {self._format_log_date(as_of_date_norm)}): '
+                    f'{len(symbols)}'
+                )
 
                 # 2. 过滤 ST 股票
                 if exclude_st:
@@ -164,9 +234,7 @@ class StockUniverse:
                 # 4. 过滤新股（上市不足 N 天）
                 if exclude_new_ipo_days:
                     try:
-                        ipo_cutoff = (
-                            datetime.now() - timedelta(days=exclude_new_ipo_days)
-                        ).strftime('%Y%m%d')
+                        ipo_cutoff = (as_of_dt - timedelta(days=exclude_new_ipo_days)).strftime('%Y%m%d')
                         cursor.execute(
                             "SELECT DISTINCT S_INFO_WINDCODE FROM ASHAREDESCRIPTION "
                             "WHERE S_INFO_LISTDATE > %s",
@@ -193,17 +261,14 @@ class StockUniverse:
             logger.info(f'最终股票池: {len(result)} 只')
             _GET_ALL_STOCKS_CACHE[cache_key] = result
             return list(result)
-
-        except Exception as e:
-            logger.error(f'获取股票列表失败: {e}')
-            return []
         finally:
             if conn:
                 conn.close()
 
     def filter_by_market_cap(self, symbols: List[str],
                             min_mv: Optional[float] = None,
-                            max_mv: Optional[float] = None) -> List[str]:
+                            max_mv: Optional[float] = None,
+                            as_of_date: object | None = None) -> List[str]:
         """
         按市值筛选股票
 
@@ -218,37 +283,29 @@ class StockUniverse:
         if not symbols:
             return []
 
-        cache_key = (tuple(sorted(symbols)), min_mv, max_mv)
+        as_of_date_norm = self._normalize_as_of_date(as_of_date)
+        cache_key = (tuple(sorted(symbols)), min_mv, max_mv, as_of_date_norm)
         cached = _MARKET_CAP_CACHE.get(cache_key)
         if cached is not None:
             logger.debug('filter_by_market_cap 缓存命中')
             return list(cached)
 
         try:
-            with self.db.get_session() as session:
-                # 获取最新基本面数据
-                subquery = session.query(
-                    StockFundamentalDaily.symbol,
-                    StockFundamentalDaily.total_mv
-                ).filter(
-                    StockFundamentalDaily.symbol.in_(symbols)
-                ).distinct(
-                    StockFundamentalDaily.symbol
-                ).subquery()
+            snapshot = self.get_latest_fundamental_snapshot(symbols, as_of_date=as_of_date_norm)
+            if snapshot.empty:
+                logger.warning('市值筛选失败: Wind 衍生指标快照为空')
+                return []
 
-                query = session.query(subquery.c.symbol)
+            mask = pd.Series(True, index=snapshot.index)
+            if min_mv is not None:
+                mask &= snapshot["total_mv"] >= float(min_mv)
+            if max_mv is not None:
+                mask &= snapshot["total_mv"] <= float(max_mv)
 
-                # 应用市值过滤
-                if min_mv is not None:
-                    query = query.filter(subquery.c.total_mv >= min_mv)
-
-                if max_mv is not None:
-                    query = query.filter(subquery.c.total_mv <= max_mv)
-
-                filtered = [row[0] for row in query.all()]
-                logger.debug(f'市值筛选: {len(symbols)} -> {len(filtered)}')
-                _MARKET_CAP_CACHE[cache_key] = filtered
-                return list(filtered)
+            filtered = snapshot.loc[mask, "symbol"].astype(str).tolist()
+            logger.debug(f'市值筛选: {len(symbols)} -> {len(filtered)}')
+            _MARKET_CAP_CACHE[cache_key] = filtered
+            return list(filtered)
 
         except Exception as e:
             logger.error(f'市值筛选失败: {e}')
@@ -261,7 +318,8 @@ class StockUniverse:
                              max_pb: Optional[float] = None,
                              min_roe: Optional[float] = None,
                              max_roe: Optional[float] = None,
-                             min_roa: Optional[float] = None) -> List[str]:
+                             min_roa: Optional[float] = None,
+                             as_of_date: object | None = None) -> List[str]:
         """
         按基本面指标筛选股票
 
@@ -282,40 +340,27 @@ class StockUniverse:
             return []
 
         try:
-            with self.db.get_session() as session:
-                # 获取最新基本面数据
-                subquery = session.query(
-                    StockFundamentalDaily
-                ).filter(
-                    StockFundamentalDaily.symbol.in_(symbols)
-                ).distinct(
-                    StockFundamentalDaily.symbol
-                ).subquery()
+            snapshot = self.get_latest_fundamental_snapshot(symbols, as_of_date=as_of_date)
+            if snapshot.empty:
+                logger.warning('基本面筛选失败: Wind 衍生指标快照为空')
+                return []
 
-                query = session.query(subquery.c.symbol)
+            mask = pd.Series(True, index=snapshot.index)
+            if min_pe is not None:
+                mask &= snapshot["pe_ratio"] >= float(min_pe)
+            if max_pe is not None:
+                mask &= snapshot["pe_ratio"] <= float(max_pe)
+            if min_pb is not None:
+                mask &= snapshot["pb_ratio"] >= float(min_pb)
+            if max_pb is not None:
+                mask &= snapshot["pb_ratio"] <= float(max_pb)
 
-                # 应用基本面过滤
-                if min_pe is not None:
-                    query = query.filter(subquery.c.pe_ratio >= min_pe)
-                if max_pe is not None:
-                    query = query.filter(subquery.c.pe_ratio <= max_pe)
+            if any(value is not None for value in (min_roe, max_roe, min_roa)):
+                logger.warning('Wind 直读快照当前不包含 ROE/ROA，已忽略对应过滤条件')
 
-                if min_pb is not None:
-                    query = query.filter(subquery.c.pb_ratio >= min_pb)
-                if max_pb is not None:
-                    query = query.filter(subquery.c.pb_ratio <= max_pb)
-
-                if min_roe is not None:
-                    query = query.filter(subquery.c.roe >= min_roe)
-                if max_roe is not None:
-                    query = query.filter(subquery.c.roe <= max_roe)
-
-                if min_roa is not None:
-                    query = query.filter(subquery.c.roa >= min_roa)
-
-                filtered = [row[0] for row in query.all()]
-                logger.debug(f'基本面筛选: {len(symbols)} -> {len(filtered)}')
-                return filtered
+            filtered = snapshot.loc[mask, "symbol"].astype(str).tolist()
+            logger.debug(f'基本面筛选: {len(symbols)} -> {len(filtered)}')
+            return filtered
 
         except Exception as e:
             logger.error(f'基本面筛选失败: {e}')
@@ -323,7 +368,8 @@ class StockUniverse:
 
     def filter_by_industry(self, symbols: List[str],
                           industries: Optional[List[str]] = None,
-                          sectors: Optional[List[str]] = None) -> List[str]:
+                          sectors: Optional[List[str]] = None,
+                          as_of_date: object | None = None) -> List[str]:
         """
         按行业筛选股票
 
@@ -342,22 +388,29 @@ class StockUniverse:
             return symbols
 
         try:
-            with self.db.get_session() as session:
-                query = session.query(StockMetadata.symbol).filter(
-                    StockMetadata.symbol.in_(symbols)
-                )
+            metadata = self.get_stock_metadata_snapshot(symbols, as_of_date=as_of_date)
+            if metadata.empty:
+                logger.warning('行业筛选失败: Wind 元数据快照为空')
+                return []
 
-                # 行业筛选
-                if industries:
-                    query = query.filter(StockMetadata.industry.in_(industries))
+            mask = pd.Series(True, index=metadata.index)
+            if industries:
+                industry_mask = pd.Series(False, index=metadata.index)
+                for column in ("industry", "sw_level2", "sw_ind_name"):
+                    if column in metadata.columns:
+                        industry_mask |= metadata[column].isin(industries)
+                mask &= industry_mask
 
-                # 板块筛选
-                if sectors:
-                    query = query.filter(StockMetadata.sector.in_(sectors))
+            if sectors:
+                sector_mask = pd.Series(False, index=metadata.index)
+                for column in ("sector", "list_board_name"):
+                    if column in metadata.columns:
+                        sector_mask |= metadata[column].isin(sectors)
+                mask &= sector_mask
 
-                filtered = [row[0] for row in query.all()]
-                logger.debug(f'行业筛选: {len(symbols)} -> {len(filtered)}')
-                return filtered
+            filtered = metadata.loc[mask, "symbol"].astype(str).tolist()
+            logger.debug(f'行业筛选: {len(symbols)} -> {len(filtered)}')
+            return filtered
 
         except Exception as e:
             logger.error(f'行业筛选失败: {e}')
@@ -422,7 +475,8 @@ class StockUniverse:
         symbols = self.get_all_stocks(
             exclude_st=filters.get('exclude_st', True),
             exclude_suspend=filters.get('exclude_suspend', True),
-            exclude_new_ipo_days=filters.get('exclude_new_ipo')
+            exclude_new_ipo_days=filters.get('exclude_new_ipo'),
+            as_of_date=date,
         )
 
         if not symbols:
@@ -433,7 +487,7 @@ class StockUniverse:
         min_mv = filters.get('min_market_cap')
         max_mv = filters.get('max_market_cap')
         if min_mv is not None or max_mv is not None:
-            symbols = self.filter_by_market_cap(symbols, min_mv, max_mv)
+            symbols = self.filter_by_market_cap(symbols, min_mv, max_mv, as_of_date=date)
 
         if not symbols:
             logger.warning('市值筛选后无股票')
@@ -450,7 +504,7 @@ class StockUniverse:
             'min_roa': filters.get('min_roa')
         }
         if any(v is not None for v in fundamental_filters.values()):
-            symbols = self.filter_by_fundamental(symbols, **fundamental_filters)
+            symbols = self.filter_by_fundamental(symbols, as_of_date=date, **fundamental_filters)
 
         if not symbols:
             logger.warning('基本面筛选后无股票')
@@ -460,7 +514,7 @@ class StockUniverse:
         industries = filters.get('industries')
         sectors = filters.get('sectors')
         if industries or sectors:
-            symbols = self.filter_by_industry(symbols, industries, sectors)
+            symbols = self.filter_by_industry(symbols, industries, sectors, as_of_date=date)
 
         if not symbols:
             logger.warning('行业筛选后无股票')
@@ -488,64 +542,53 @@ class StockUniverse:
             return {}
 
         try:
-            with self.db.get_session() as session:
-                # 获取元数据统计
-                metadata = session.query(StockMetadata).filter(
-                    StockMetadata.symbol.in_(symbols)
-                ).all()
+            metadata = self.get_stock_metadata_snapshot(symbols)
+            fundamental = self.get_latest_fundamental_snapshot(symbols)
 
-                # 获取基本面统计
-                fundamental = session.query(StockFundamentalDaily).filter(
-                    StockFundamentalDaily.symbol.in_(symbols)
-                ).all()
-
-                # 统计
-                stats = {
-                    'total_count': len(symbols),
-                    'sectors': {},
-                    'industries': {},
-                    'market_cap': {
-                        'total': 0,
-                        'avg': 0,
-                        'median': 0
-                    },
-                    'fundamental': {
-                        'avg_pe': 0,
-                        'avg_pb': 0,
-                        'avg_roe': 0
-                    }
+            # 统计
+            stats = {
+                'total_count': len(symbols),
+                'sectors': {},
+                'industries': {},
+                'market_cap': {
+                    'total': 0,
+                    'avg': 0,
+                    'median': 0
+                },
+                'fundamental': {
+                    'avg_pe': 0,
+                    'avg_pb': 0,
+                    'avg_roe': 0
                 }
+            }
 
-                # 板块统计
-                for stock in metadata:
-                    sector = stock.sector or '未知'
-                    stats['sectors'][sector] = stats['sectors'].get(sector, 0) + 1
+            # 板块统计
+            for _, stock in metadata.iterrows():
+                sector = stock.get('sector') or '未知'
+                stats['sectors'][sector] = stats['sectors'].get(sector, 0) + 1
 
-                # 行业统计
-                for stock in metadata:
-                    industry = stock.industry or '未知'
-                    stats['industries'][industry] = stats['industries'].get(industry, 0) + 1
+            # 行业统计
+            for _, stock in metadata.iterrows():
+                industry = stock.get('industry') or stock.get('sw_ind_name') or '未知'
+                stats['industries'][industry] = stats['industries'].get(industry, 0) + 1
 
-                # 市值统计
-                mvs = [f.total_mv for f in fundamental if f.total_mv]
-                if mvs:
-                    stats['market_cap']['total'] = sum(mvs)
-                    stats['market_cap']['avg'] = sum(mvs) / len(mvs)
-                    stats['market_cap']['median'] = sorted(mvs)[len(mvs) // 2]
+            # 市值统计
+            mvs = pd.to_numeric(fundamental.get('total_mv'), errors='coerce').dropna().tolist() if not fundamental.empty else []
+            if mvs:
+                stats['market_cap']['total'] = sum(mvs)
+                stats['market_cap']['avg'] = sum(mvs) / len(mvs)
+                stats['market_cap']['median'] = sorted(mvs)[len(mvs) // 2]
 
-                # 基本面统计
-                pes = [f.pe_ratio for f in fundamental if f.pe_ratio]
-                pbs = [f.pb_ratio for f in fundamental if f.pb_ratio]
-                roes = [f.roe for f in fundamental if f.roe]
+            # 基本面统计
+            pes = pd.to_numeric(fundamental.get('pe_ratio'), errors='coerce').dropna().tolist() if not fundamental.empty else []
+            pbs = pd.to_numeric(fundamental.get('pb_ratio'), errors='coerce').dropna().tolist() if not fundamental.empty else []
 
-                if pes:
-                    stats['fundamental']['avg_pe'] = sum(pes) / len(pes)
-                if pbs:
-                    stats['fundamental']['avg_pb'] = sum(pbs) / len(pbs)
-                if roes:
-                    stats['fundamental']['avg_roe'] = sum(roes) / len(roes)
+            if pes:
+                stats['fundamental']['avg_pe'] = sum(pes) / len(pes)
+            if pbs:
+                stats['fundamental']['avg_pb'] = sum(pbs) / len(pbs)
 
-                return stats
+            return stats
 
         except Exception as e:
             logger.error(f'获取统计信息失败: {e}')

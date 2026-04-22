@@ -45,7 +45,7 @@ class Task:
     start_date: str = '20100101'
     end_date: str = datetime.now().strftime('%Y%m%d')
 
-    benchmark: str = '510300.SH'
+    benchmark: str = ''
     select: str = 'SelectAll'
 
     select_buy: List[str] = field(default_factory=list)
@@ -122,8 +122,7 @@ class Engine:
 
                 df_r = self.datafeed.get_factor_df(r)
                 if df_r is not None:
-                    df_r = df_r.replace({True: 1, False: 0})
-                    df_r = df_r.astype('Int64')
+                    df_r = df_r.astype('boolean').astype('Int64')
 
                     #print(df_r)
                     #df_r = df_r.astype(int)
@@ -229,7 +228,8 @@ class Engine:
         bkt = self._get_bkt(task)
 
         bkts = [bkt]
-        for bench in [task.benchmark]:
+        benchmark_symbol = str(task.benchmark or '').strip()
+        for bench in ([benchmark_symbol] if benchmark_symbol else []):
             dfs = DbDataLoader().read_dfs(symbols=[bench], copy_result=False)
             df = dfs[bench].copy()
             df.set_index('date', inplace=True)
@@ -255,7 +255,10 @@ class Engine:
         quotes['date'] = quotes.index
         # quotes['date'] = quotes['date'].apply(lambda x: x.strftime('%Y%m%d'))
         quotes.index = pd.to_datetime(quotes.index).map(lambda x: x.value)
-        quotes = quotes[['策略', 'benchmark']]
+        selected_cols = ['策略']
+        if 'benchmark' in quotes.columns:
+            selected_cols.append('benchmark')
+        quotes = quotes[selected_cols]
         dict = quotes.to_dict(orient='series')
 
         results = {}

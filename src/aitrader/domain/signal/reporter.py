@@ -366,28 +366,28 @@ if __name__ == '__main__':
         '策略1': StrategySignals(
             strategy_name='策略1',
             buy_signals=[
-                BuySignal(symbol='513100.SH', score=0.05, rank=1, price=1.38, suggested_quantity=72),
-                BuySignal(symbol='518880.SH', score=0.04, rank=2, price=5.45, suggested_quantity=18)
+                BuySignal(symbol='600036.SH', score=0.05, rank=1, price=46.20, suggested_quantity=72),
+                BuySignal(symbol='600519.SH', score=0.04, rank=2, price=1520.00, suggested_quantity=18)
             ],
             sell_signals=[
-                SellSignal(symbol='159915.SZ', current_price=0.92, quantity=200,
-                          avg_cost=0.85, profit_loss_pct=8.24, trigger_reason='满足卖出条件')
+                SellSignal(symbol='000001.SZ', current_price=12.20, quantity=200,
+                          avg_cost=11.30, profit_loss_pct=7.96, trigger_reason='满足卖出条件')
             ],
-            hold_recommendations=['510300.SH'],
-            symbols_analyzed=['513100.SH', '518880.SH', '159915.SZ', '510300.SH'],
+            hold_recommendations=['000333.SZ'],
+            symbols_analyzed=['600036.SH', '600519.SH', '000001.SZ', '000333.SZ'],
             analysis_date='20251226'
         ),
         '策略2': StrategySignals(
             strategy_name='策略2',
             buy_signals=[
-                BuySignal(symbol='513100.SH', score=0.06, rank=1, price=1.38, suggested_quantity=72)
+                BuySignal(symbol='600036.SH', score=0.06, rank=1, price=46.20, suggested_quantity=72)
             ],
             sell_signals=[
-                SellSignal(symbol='159915.SZ', current_price=0.92, quantity=200,
-                          avg_cost=0.85, profit_loss_pct=8.24, trigger_reason='满足卖出条件')
+                SellSignal(symbol='000001.SZ', current_price=12.20, quantity=200,
+                          avg_cost=11.30, profit_loss_pct=7.96, trigger_reason='满足卖出条件')
             ],
             hold_recommendations=[],
-            symbols_analyzed=['513100.SH', '159915.SZ'],
+            symbols_analyzed=['600036.SH', '000001.SZ'],
             analysis_date='20251226'
         )
     }
@@ -395,11 +395,11 @@ if __name__ == '__main__':
     # 创建模拟持仓
     import pandas as pd
     test_positions = pd.DataFrame({
-        'symbol': ['513100.SH', '159915.SZ', '510300.SH'],
+        'symbol': ['600036.SH', '000001.SZ', '000333.SZ'],
         'quantity': [100, 200, 150],
-        'avg_cost': [1.25, 0.85, 4.20],
-        'current_price': [1.38, 0.92, 4.35],
-        'market_value': [138.0, 184.0, 652.5],
+        'avg_cost': [44.80, 11.30, 43.50],
+        'current_price': [46.20, 12.20, 45.10],
+        'market_value': [4620.0, 2440.0, 6765.0],
         'updated_at': pd.to_datetime(['2025-12-26'] * 3)
     })
 

@@ -19,7 +19,7 @@ import numpy as np
 from aitrader.infrastructure.config.logging import logger
 
 from aitrader.infrastructure.db.db_manager import get_db
-from aitrader.infrastructure.db.models.models import StockHistory
+from aitrader.infrastructure.market_data.mysql_reader import MySQLAshareReader
 
 
 @dataclass
@@ -140,6 +140,39 @@ class PositionManager:
         self.open_trigger_config = open_trigger_config or OpenTriggerConfig()
         self.portfolio_risk_config = portfolio_risk_config or PortfolioRiskConfig()
         self.db = db if db else get_db()
+        self.wind_reader = MySQLAshareReader()
+
+    def _load_recent_qfq_prices(self, stock_code: str, start_date_obj, end_date_obj) -> pd.DataFrame:
+        """直接从 Wind 读取前复权 OHLC 数据。"""
+        query = """
+            SELECT
+                TRADE_DT AS date,
+                S_DQ_ADJCLOSE AS close,
+                S_DQ_ADJHIGH AS high,
+                S_DQ_ADJLOW AS low
+            FROM ASHAREEODPRICES
+            WHERE S_INFO_WINDCODE = %s
+              AND TRADE_DT >= %s
+              AND TRADE_DT <= %s
+            ORDER BY TRADE_DT ASC
+        """
+        df = self.wind_reader.read_query(
+            query,
+            [
+                stock_code,
+                start_date_obj.strftime('%Y%m%d'),
+                end_date_obj.strftime('%Y%m%d'),
+            ],
+        )
+        if df is None or df.empty:
+            return pd.DataFrame(columns=["date", "close", "high", "low"])
+
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"], format="%Y%m%d", errors="coerce")
+        for column in ["close", "high", "low"]:
+            df[column] = pd.to_numeric(df[column], errors="coerce")
+        df.dropna(subset=["date", "close"], inplace=True)
+        return df.sort_values("date").reset_index(drop=True)
 
     def calculate_position_ratio(
         self,
@@ -206,23 +239,7 @@ class PositionManager:
         try:
             date_obj = datetime.strptime(date, '%Y%m%d').date()
             start_date_obj = date_obj - timedelta(days=30)  # 扩大查询范围以支持ATR
-
-            with self.db.get_session() as session:
-                from aitrader.infrastructure.db.models.models import StockHistoryQfq
-
-                # 获取前复权历史数据（包含high/low用于ATR计算）
-                query = session.query(
-                    StockHistoryQfq.date,
-                    StockHistoryQfq.close,
-                    StockHistoryQfq.high,
-                    StockHistoryQfq.low
-                ).filter(
-                    StockHistoryQfq.symbol == stock_code,
-                    StockHistoryQfq.date >= start_date_obj,
-                    StockHistoryQfq.date <= date_obj
-                ).order_by(StockHistoryQfq.date)
-
-                df = pd.read_sql(query.statement, session.bind)
+            df = self._load_recent_qfq_prices(stock_code, start_date_obj, date_obj)
 
             if df.empty or len(df) < 2:
                 logger.warning(f"股票 {stock_code} 前复权数据不足（{len(df) if not df.empty else 0}条）,无法计算止损价")
@@ -313,23 +330,7 @@ class PositionManager:
         try:
             date_obj = datetime.strptime(date, '%Y%m%d').date()
             start_date_obj = date_obj - timedelta(days=30)
-
-            with self.db.get_session() as session:
-                from aitrader.infrastructure.db.models.models import StockHistoryQfq
-
-                # 获取前复权历史数据
-                query = session.query(
-                    StockHistoryQfq.date,
-                    StockHistoryQfq.close,
-                    StockHistoryQfq.high,
-                    StockHistoryQfq.low
-                ).filter(
-                    StockHistoryQfq.symbol == stock_code,
-                    StockHistoryQfq.date >= start_date_obj,
-                    StockHistoryQfq.date <= date_obj
-                ).order_by(StockHistoryQfq.date)
-
-                df = pd.read_sql(query.statement, session.bind)
+            df = self._load_recent_qfq_prices(stock_code, start_date_obj, date_obj)
 
             if df.empty:
                 logger.warning(f"股票 {stock_code} 无前复权数据,无法计算止盈价")

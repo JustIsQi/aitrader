@@ -19,7 +19,9 @@ import numpy as np
 from aitrader.infrastructure.config.logging import logger
 
 from aitrader.infrastructure.db.db_manager import get_db
-from aitrader.infrastructure.db.models.models import SectorData, StockHistory, StockMetadata
+from aitrader.infrastructure.db.models.models import SectorData
+from aitrader.infrastructure.market_data.loaders import DbDataLoader
+from aitrader.domain.market.stock_universe import StockUniverse
 
 
 @dataclass
@@ -87,6 +89,110 @@ class SectorAnalyzer:
         """
         self.config = config or SectorConfig()
         self.db = db if db else get_db()
+        self.universe = StockUniverse(db=self.db)
+        self.loader = DbDataLoader(auto_download=False, reader=self.universe.wind_reader)
+
+    def _get_sector_stock_codes(self, sector_name: str, as_of_date: str) -> List[str]:
+        metadata = self.universe.get_stock_metadata_snapshot(as_of_date=as_of_date)
+        if metadata.empty:
+            return []
+        sector_df = metadata[metadata["sector"] == sector_name]
+        return sector_df["symbol"].dropna().astype(str).tolist()
+
+    def _get_full_market_symbols(self, as_of_date: str, limit: int = 500) -> List[str]:
+        df = self.universe.wind_reader.read_query(
+            """
+            SELECT
+                p.S_INFO_WINDCODE AS stock_code
+            FROM ASHAREEODPRICES p
+            WHERE p.TRADE_DT = %s
+            ORDER BY p.S_DQ_AMOUNT DESC
+            LIMIT %s
+            """,
+            [as_of_date, int(limit)],
+        )
+        return df.get("stock_code", pd.Series(dtype="string")).dropna().astype(str).tolist()
+
+    def _load_sector_history(
+        self,
+        sector_name: str,
+        end_date: str,
+        lookback_days: int,
+    ) -> pd.DataFrame:
+        end_date_obj = datetime.strptime(end_date, '%Y%m%d')
+        start_date = (end_date_obj - timedelta(days=lookback_days)).strftime('%Y%m%d')
+
+        if sector_name == "全市场":
+            stock_codes = self._get_full_market_symbols(end_date)
+        else:
+            stock_codes = self._get_sector_stock_codes(sector_name, end_date)
+
+        if not stock_codes:
+            return pd.DataFrame()
+
+        dfs = self.loader.read_dfs(
+            symbols=stock_codes,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if not dfs:
+            return pd.DataFrame()
+
+        df = pd.concat(dfs.values(), ignore_index=True)
+        if df.empty:
+            return df
+
+        df = df.copy()
+        df["date"] = pd.to_datetime(df["date"], format="%Y%m%d", errors="coerce").dt.date
+        return df.dropna(subset=["date"]).sort_values(["symbol", "date"]).reset_index(drop=True)
+
+    def compute_sector_metrics(self, sector_name: str, date: str) -> Dict[str, float]:
+        df = self._load_sector_history(sector_name, date, lookback_days=60)
+        if df.empty:
+            logger.warning(f"板块 {sector_name} 无历史数据")
+            return {}
+
+        daily_avg = df.groupby('date')['close'].mean().reset_index().sort_values('date')
+        if len(daily_avg) < 10:
+            logger.warning(f"板块 {sector_name} 数据不足10天")
+            return {}
+
+        close = daily_avg['close'].iloc[-1]
+        ma5 = daily_avg['close'].tail(5).mean()
+        ma10 = daily_avg['close'].tail(10).mean()
+        is_ma_bullish = (close > ma5) and (ma5 > ma10)
+
+        try:
+            import talib
+            closes = daily_avg['close'].values
+            rsi = talib.RSI(closes, timeperiod=14)[-1]
+            if np.isnan(rsi):
+                rsi = 50.0
+        except Exception:
+            rsi = 50.0
+
+        daily_amount = df.groupby('date')['amount'].sum().reset_index().sort_values('date')
+        if len(daily_amount) >= 6:
+            today_amount = daily_amount['amount'].iloc[-1]
+            avg_5d_amount = daily_amount['amount'].iloc[-6:-1].mean()
+            volume_expansion_ratio = today_amount / avg_5d_amount if avg_5d_amount > 0 else 1.0
+        else:
+            volume_expansion_ratio = 1.0
+
+        trade_date = datetime.strptime(date, '%Y%m%d').date()
+        limit_up_count = int(
+            df[(df['date'] == trade_date) & (pd.to_numeric(df['change_pct'], errors='coerce') >= 9.5)]['symbol'].nunique()
+        )
+
+        return {
+            'close': float(close),
+            'ma5': float(ma5),
+            'ma10': float(ma10),
+            'is_ma_bullish': bool(is_ma_bullish),
+            'rsi': float(rsi),
+            'volume_expansion_ratio': float(volume_expansion_ratio),
+            'limit_up_count': limit_up_count,
+        }
 
     def fetch_sector_data(self, date: str) -> pd.DataFrame:
         """
@@ -99,12 +205,8 @@ class SectorAnalyzer:
             板块数据 DataFrame，至少包含 sector_name/main_net_inflow 列
         """
         try:
-            with self.db.get_session() as session:
-                sectors = session.query(StockMetadata.sector).filter(
-                    StockMetadata.sector.isnot(None)
-                ).distinct().all()
-
-            sector_names = sorted({s[0] for s in sectors if s[0]})
+            metadata = self.universe.get_stock_metadata_snapshot(as_of_date=date)
+            sector_names = sorted(metadata["sector"].dropna().astype(str).unique().tolist()) if not metadata.empty else []
             if not sector_names:
                 return pd.DataFrame()
 
@@ -168,109 +270,15 @@ class SectorAnalyzer:
             技术指标字典 {'close': xxx, 'ma5': xxx, 'ma10': xxx, 'rsi': xxx}
         """
         try:
-            end_date_obj = datetime.strptime(end_date, '%Y%m%d')
-            start_date_obj = end_date_obj - timedelta(days=60)
-
-            with self.db.get_session() as session:
-                # 特殊处理: "全市场"获取所有股票
-                if sector_name == "全市场":
-                    # 获取该日期有数据的前500只股票
-                    query = session.query(
-                        StockHistory.symbol,
-                        StockHistory.date,
-                        StockHistory.close
-                    ).filter(
-                        StockHistory.date == end_date_obj.date()
-                    ).order_by(
-                        StockHistory.amount.desc()
-                    ).limit(500)
-
-                    df = pd.read_sql(query.statement, session.bind)
-
-                    if df.empty:
-                        logger.warning(f"全市场无数据")
-                        return {}
-
-                    stock_codes = df['symbol'].unique().tolist()
-                    logger.debug(f"全市场有 {len(stock_codes)} 只股票")
-
-                    # 获取历史数据
-                    query_history = session.query(
-                        StockHistory.symbol,
-                        StockHistory.date,
-                        StockHistory.close
-                    ).filter(
-                        StockHistory.symbol.in_(stock_codes),
-                        StockHistory.date >= start_date_obj.date(),
-                        StockHistory.date <= end_date_obj.date()
-                    ).order_by(StockHistory.date)
-
-                    df = pd.read_sql(query_history.statement, session.bind)
-
-                else:
-                    # 正常板块筛选
-                    stocks = session.query(StockMetadata.symbol).filter(
-                        StockMetadata.sector == sector_name
-                    ).all()
-
-                    stock_codes = [s[0] for s in stocks]
-
-                    if not stock_codes:
-                        logger.warning(f"板块 {sector_name} 内无股票")
-                        return {}
-
-                    logger.debug(f"板块 {sector_name} 有 {len(stock_codes)} 只股票")
-
-                    # 获取历史数据
-                    query = session.query(
-                        StockHistory.symbol,
-                        StockHistory.date,
-                        StockHistory.close
-                    ).filter(
-                        StockHistory.symbol.in_(stock_codes),
-                        StockHistory.date >= start_date_obj.date(),
-                        StockHistory.date <= end_date_obj.date()
-                    ).order_by(StockHistory.date)
-
-                    df = pd.read_sql(query.statement, session.bind)
-
-            if df.empty:
-                logger.warning(f"板块 {sector_name} 无历史数据")
+            metrics = self.compute_sector_metrics(sector_name, end_date)
+            if not metrics:
                 return {}
-
-            # 计算板块指数 (简单平均)
-            # 先按日期分组,计算每日收盘价均值
-            daily_avg = df.groupby('date')['close'].mean().reset_index()
-            daily_avg = daily_avg.sort_values('date')
-
-            if len(daily_avg) < 10:
-                logger.warning(f"板块 {sector_name} 数据不足10天")
-                return {}
-
-            # 计算技术指标
-            close = daily_avg['close'].iloc[-1]
-            ma5 = daily_avg['close'].tail(5).mean()
-            ma10 = daily_avg['close'].tail(10).mean()
-
-            # 判断是否站上均线
-            is_ma_bullish = (close > ma5) and (ma5 > ma10)
-
-            # 计算RSI (使用talib)
-            try:
-                import talib
-                closes = daily_avg['close'].values
-                rsi = talib.RSI(closes, timeperiod=14)[-1]
-                if np.isnan(rsi):
-                    rsi = 50.0  # 默认值
-            except:
-                rsi = 50.0  # 默认值
-
             return {
-                'close': close,
-                'ma5': ma5,
-                'ma10': ma10,
-                'is_ma_bullish': is_ma_bullish,
-                'rsi': rsi
+                'close': metrics['close'],
+                'ma5': metrics['ma5'],
+                'ma10': metrics['ma10'],
+                'is_ma_bullish': metrics['is_ma_bullish'],
+                'rsi': metrics['rsi'],
             }
 
         except Exception as e:
@@ -289,27 +297,8 @@ class SectorAnalyzer:
             涨停家数
         """
         try:
-            date_obj = datetime.strptime(date, '%Y%m%d').date()
-
-            with self.db.get_session() as session:
-                # 获取该板块的所有股票
-                stocks = session.query(StockMetadata.symbol).filter(
-                    StockMetadata.sector == sector_name
-                ).all()
-
-                stock_codes = [s[0] for s in stocks]
-
-                if not stock_codes:
-                    return 0
-
-                # 统计涨停家数 (涨幅≥9.5%)
-                limit_up_count = session.query(StockHistory).filter(
-                    StockHistory.symbol.in_(stock_codes),
-                    StockHistory.date == date_obj,
-                    StockHistory.change_pct >= 9.5
-                ).count()
-
-                return limit_up_count
+            metrics = self.compute_sector_metrics(sector_name, date)
+            return int(metrics.get('limit_up_count', 0)) if metrics else 0
 
         except Exception as e:
             logger.error(f"统计涨停家数失败: {e}")
@@ -331,52 +320,8 @@ class SectorAnalyzer:
             放量率 (当日成交额 / 近5日平均成交额)
         """
         try:
-            date_obj = datetime.strptime(date, '%Y%m%d').date()
-            start_date_obj = date_obj - timedelta(days=10)
-
-            with self.db.get_session() as session:
-                # 获取板块内股票
-                stocks = session.query(StockMetadata.symbol).filter(
-                    StockMetadata.sector == sector_name
-                ).all()
-
-                stock_codes = [s[0] for s in stocks]
-
-                if not stock_codes:
-                    return 0.0
-
-                # 获取近10日成交额
-                query = session.query(
-                    StockHistory.date,
-                    StockHistory.amount
-                ).filter(
-                    StockHistory.symbol.in_(stock_codes),
-                    StockHistory.date >= start_date_obj,
-                    StockHistory.date <= date_obj
-                )
-
-                df = pd.read_sql(query.statement, session.bind)
-
-            if df.empty:
-                return 0.0
-
-            # 按日期汇总成交额
-            daily_amount = df.groupby('date')['amount'].sum().reset_index()
-            daily_amount = daily_amount.sort_values('date')
-
-            if len(daily_amount) < 6:
-                return 1.0
-
-            # 当日成交额
-            today_amount = daily_amount['amount'].iloc[-1]
-
-            # 近5日平均成交额 (不含当日)
-            avg_5d_amount = daily_amount['amount'].iloc[-6:-1].mean()
-
-            if avg_5d_amount == 0:
-                return 1.0
-
-            return today_amount / avg_5d_amount
+            metrics = self.compute_sector_metrics(sector_name, date)
+            return float(metrics.get('volume_expansion_ratio', 0.0)) if metrics else 0.0
 
         except Exception as e:
             logger.error(f"计算放量率失败: {e}")
@@ -455,13 +400,9 @@ class SectorAnalyzer:
 
         if df_sector.empty:
             logger.warning("未获取到板块数据,尝试从数据库加载")
-            # Fallback: 从数据库获取所有板块
-            with self.db.get_session() as session:
-                sectors = session.query(
-                    StockMetadata.sector
-                ).distinct().all()
-                sector_names = [s[0] for s in sectors if s[0]]
-                logger.info(f"从数据库获取到 {len(sector_names)} 个板块")
+            metadata = self.universe.get_stock_metadata_snapshot(as_of_date=date)
+            sector_names = metadata["sector"].dropna().astype(str).unique().tolist() if not metadata.empty else []
+            logger.info(f"从 Wind 元数据获取到 {len(sector_names)} 个板块")
         else:
             sector_names = df_sector['sector_name'].tolist()
 

@@ -1,12 +1,10 @@
 """
-A-share data update script.
+A-share direct-Wind maintenance script.
 
-Historical price updates are no longer downloaded into Database. Daily
-prices are read directly from Wind MySQL by datafeed.db_dataloader.
+本地价格/基本面镜像已退役，脚本仅保留代码表检查与初始化。
 """
 import argparse
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -17,23 +15,18 @@ for path in (project_root, src_dir):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from loguru import logger
-
 from aitrader.infrastructure.db.db_manager import get_db
-from aitrader.infrastructure.market_data.downloaders.fundamental_downloader import FundamentalDownloader
+from aitrader.infrastructure.config.logging import logger
 
 
 class UnifiedUpdater:
-    """A-share-only updater for retained non-price datasets."""
+    """A-share direct-Wind maintenance helper."""
 
     def __init__(self):
         self.db = get_db()
-        self.fundamental_downloader = FundamentalDownloader()
         self.stats = {
             "start_time": datetime.now(),
-            "stages": {
-                "fundamental": {"success": 0, "failed": 0, "skipped": 0, "duration": 0},
-            },
+            "stages": {},
         }
 
     def check_and_init_codes(self) -> bool:
@@ -51,22 +44,6 @@ class UnifiedUpdater:
         logger.info("✓ A股代码表状态正常")
         return False
 
-    def update_fundamental_stage(self) -> dict:
-        logger.info("=" * 60)
-        logger.info("[阶段1] 更新A股基本面数据")
-        logger.info("=" * 60)
-
-        start = time.time()
-        symbols = self.db.get_stock_codes()
-        if not symbols:
-            logger.warning("没有找到A股代码,跳过基本面更新")
-            return {"success": 0, "failed": 0, "skipped": 0, "duration": 0}
-
-        stats = self.fundamental_downloader.update_fundamental_data(symbols=symbols)
-        stats["duration"] = time.time() - start
-        logger.info(f"✓ 基本面更新完成: 成功 {stats['success']}, 失败 {stats['failed']}")
-        return stats
-
     def unified_data_update(
         self,
         stages: Optional[List[str]] = None,
@@ -78,9 +55,9 @@ class UnifiedUpdater:
         if not skip_code_check:
             self.check_and_init_codes()
 
-        stages = stages or ["fundamental"]
-        if "fundamental" in stages:
-            self.stats["stages"]["fundamental"] = self.update_fundamental_stage()
+        stages = stages or []
+        if stages:
+            logger.warning(f"已忽略镜像更新阶段 {stages}；当前模式统一直读 Wind，不再落本地镜像。")
 
         total_duration = (datetime.now() - start_time).total_seconds()
         logger.info(f"统一A股数据更新完成, 总耗时 {total_duration:.2f} 秒")
@@ -88,12 +65,11 @@ class UnifiedUpdater:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="A股数据更新流程")
+    parser = argparse.ArgumentParser(description="A股直读 Wind 维护流程")
     parser.add_argument(
         "--stage",
         action="append",
-        choices=["fundamental"],
-        help="要执行的阶段。历史行情从MySQL读取，不再本地下载。",
+        help="镜像更新阶段已移除，保留参数仅为兼容旧调用。",
     )
     parser.add_argument("--skip-code-check", action="store_true")
     args = parser.parse_args()

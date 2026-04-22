@@ -22,9 +22,10 @@ from tqdm import tqdm
 
 from aitrader.infrastructure.db.db_manager import get_db
 from aitrader.infrastructure.db.models.models import (
-    SectorData, StockMetadata, StockHistory, DailyOperationList,
+    SectorData, DailyOperationList,
 )
 from aitrader.domain.market.sector_analyzer import SectorAnalyzer, SectorConfig
+from aitrader.domain.market.stock_universe import StockUniverse
 from aitrader.domain.market.stock_selector import (
     StockSelector, ChaseStrategyConfig, DipStrategyConfig, RiskFilterConfig,
 )
@@ -39,6 +40,8 @@ class SectorDataFetcher:
 
     def __init__(self, db=None):
         self.db = db if db else get_db()
+        self.universe = StockUniverse(db=self.db)
+        self.sector_analyzer = SectorAnalyzer(db=self.db)
 
     def check_data_exists(self, date: str) -> bool:
         try:
@@ -52,14 +55,10 @@ class SectorDataFetcher:
             logger.error(f"检查板块数据失败: {e}")
             return False
 
-    def fetch_sector_fund_flow(self) -> pd.DataFrame:
+    def fetch_sector_fund_flow(self, as_of_date: Optional[str] = None) -> pd.DataFrame:
         try:
-            with self.db.get_session() as session:
-                sectors = session.query(StockMetadata.sector).filter(
-                    StockMetadata.sector.isnot(None)
-                ).distinct().all()
-
-            sector_names = sorted({s[0] for s in sectors if s[0]})
+            metadata = self.universe.get_stock_metadata_snapshot(as_of_date=as_of_date)
+            sector_names = sorted(metadata["sector"].dropna().astype(str).unique().tolist()) if not metadata.empty else []
             if not sector_names:
                 return pd.DataFrame()
 
@@ -76,72 +75,16 @@ class SectorDataFetcher:
 
     def calculate_sector_indicators(self, date: str, sector_name: str) -> Optional[dict]:
         try:
-            date_obj = datetime.strptime(date, '%Y%m%d')
-            start_date_obj = date_obj - timedelta(days=60)
-
-            with self.db.get_session() as session:
-                stocks = session.query(StockMetadata.symbol).filter(
-                    StockMetadata.sector == sector_name
-                ).all()
-                stock_codes = [s[0] for s in stocks]
-
-                if not stock_codes:
-                    return None
-
-                query = session.query(
-                    StockHistory.symbol,
-                    StockHistory.date,
-                    StockHistory.close,
-                    StockHistory.high,
-                    StockHistory.amount,
-                    StockHistory.change_pct,
-                ).filter(
-                    StockHistory.symbol.in_(stock_codes),
-                    StockHistory.date >= start_date_obj.date(),
-                    StockHistory.date <= date_obj.date(),
-                ).order_by(StockHistory.date)
-
-                df = pd.read_sql(query.statement, session.bind)
-
-            if df.empty:
+            metrics = self.sector_analyzer.compute_sector_metrics(sector_name, date)
+            if not metrics:
                 return None
-
-            daily_avg = df.groupby('date')['close'].mean().reset_index().sort_values('date')
-            if len(daily_avg) < 10:
-                return None
-
-            close = daily_avg['close'].iloc[-1]
-            ma5 = daily_avg['close'].tail(5).mean()
-            ma10 = daily_avg['close'].tail(10).mean()
-
-            try:
-                import talib
-                closes = daily_avg['close'].values
-                rsi_vals = talib.RSI(closes, timeperiod=14)
-                rsi = float(rsi_vals[-1]) if not np.isnan(rsi_vals[-1]) else 50.0
-            except Exception:
-                rsi = 50.0
-
-            daily_amount = df.groupby('date')['amount'].sum().reset_index().sort_values('date')
-            if len(daily_amount) >= 6:
-                today_amount = daily_amount['amount'].iloc[-1]
-                avg_5d_amount = daily_amount['amount'].iloc[-6:-1].mean()
-                volume_expansion_ratio = today_amount / avg_5d_amount if avg_5d_amount > 0 else 1.0
-            else:
-                volume_expansion_ratio = 1.0
-
-            date_str = date_obj.date()
-            limit_up_count = int(
-                df[(df['date'] == date_str) & (df['change_pct'] >= 9.5)]['symbol'].nunique()
-            )
-
             return {
-                'close': float(close),
-                'ma5': float(ma5),
-                'ma10': float(ma10),
-                'rsi': float(rsi),
-                'volume_expansion_ratio': float(volume_expansion_ratio),
-                'limit_up_count': limit_up_count,
+                'close': float(metrics['close']),
+                'ma5': float(metrics['ma5']),
+                'ma10': float(metrics['ma10']),
+                'rsi': float(metrics['rsi']),
+                'volume_expansion_ratio': float(metrics['volume_expansion_ratio']),
+                'limit_up_count': int(metrics['limit_up_count']),
             }
 
         except Exception as e:
@@ -159,18 +102,15 @@ class SectorDataFetcher:
             logger.info(f"数据库中已有 {date} 的板块数据")
             return True
 
-        fund_flow_df = self.fetch_sector_fund_flow()
+        fund_flow_df = self.fetch_sector_fund_flow(as_of_date=date)
         if fund_flow_df.empty:
             logger.warning("未获取到板块资金流数据")
             return False
 
-        with self.db.get_session() as session:
-            sectors = session.query(StockMetadata.sector).filter(
-                StockMetadata.sector.isnot(None)
-            ).distinct().all()
-            all_sector_names = [s[0] for s in sectors]
+        metadata = self.universe.get_stock_metadata_snapshot(as_of_date=date)
+        all_sector_names = metadata["sector"].dropna().astype(str).unique().tolist() if not metadata.empty else []
 
-        logger.info(f"数据库中共有 {len(all_sector_names)} 个板块")
+        logger.info(f"Wind 元数据中共有 {len(all_sector_names)} 个板块")
 
         sector_names = fund_flow_df['sector_name'].tolist()
         records = []

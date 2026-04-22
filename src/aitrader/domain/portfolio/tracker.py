@@ -48,7 +48,7 @@ class PortfolioStateTracker:
         Args:
             date: 日期 (YYYY-MM-DD)
             prices: 价格字典 {symbol: close_price}
-            trades: 当日交易列表 [{'symbol': '510300.SH', 'action': 'buy', 'shares': 100, 'price': 4.5, 'amount': 450}]
+            trades: 当日交易列表 [{'symbol': '000001.SZ', 'action': 'buy', 'shares': 100, 'price': 12.5, 'amount': 1250}]
 
         Returns:
             当日状态字典

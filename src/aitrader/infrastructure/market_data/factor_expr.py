@@ -84,7 +84,11 @@ class FactorExpr:
                 expr_upper = expr_upper.replace(' OR ', ') | (')
                 expr_upper = '(' + expr_upper + ')'
 
-            result = eval(expr_upper, context)
+            # Many factor formulas legitimately produce NaN during warmup periods
+            # or zero-variance windows; keep the NaN result but silence noisy
+            # numpy runtime warnings from eval-driven expressions.
+            with np.errstate(divide='ignore', invalid='ignore'):
+                result = eval(expr_upper, context)
 
             if isinstance(result, tuple):
                 results = []
@@ -227,7 +231,7 @@ def _calc_formulas_chunk(symbol_items, expr_list):
 if __name__ == '__main__':
     from aitrader.infrastructure.market_data.loaders import DbDataLoader
 
-    dfs = DbDataLoader().read_dfs(symbols=['510300.SH', '159915.SZ'])
+    dfs = DbDataLoader().read_dfs(symbols=['000001.SZ', '600036.SH'])
     expr = ['MACD(close,12,26,9)', 'SAR(high,low)']
     result = FactorExpr().calc_formulas(dfs, expr, parallel=True)
     print('这是计算结果', result)
