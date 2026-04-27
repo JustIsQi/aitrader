@@ -1,21 +1,19 @@
 # AITrader
 
-AITrader is now an A-share focused research, backtest, and signal-generation project.
-Historical daily prices are read directly from Wind MySQL table `ASHAREEODPRICES`;
-PE/PB/PS, turnover, and market-cap fields are joined from
-`ASHAREEODDERIVATIVEINDICATOR`.
+AITrader 现在专注于 A 股研究、回测与信号生成。
+日频历史行情直接从 Wind MySQL 表 `ASHAREEODPRICES` 读取；
+PE/PB/PS、换手率、市值等字段从 `ASHAREEODDERIVATIVEINDICATOR` join。
 
-## Runtime
+## 运行环境
 
-Install dependencies:
+安装依赖：
 
 ```bash
 pip install -r requirements.txt
 pip install -e .
 ```
 
-Configure the Wind MySQL price source with either `MYSQL_URL` or component
-variables. These settings are only for historical price reads:
+通过 `MYSQL_URL` 或下面这组分量变量配置 Wind MySQL 价格源；这些配置只用于历史价格读取：
 
 ```bash
 MYSQL_HOST=...
@@ -25,26 +23,26 @@ MYSQL_PASSWORD=...
 MYSQL_DATABASE=winddb
 ```
 
-Application state uses `DATABASE_URL` and defaults to SQLite when unset:
+应用层状态库使用 `DATABASE_URL`，不设置时回落到本地 SQLite：
 
 ```bash
 DATABASE_URL=sqlite:///aitrader.db
 ```
 
-Do not commit real database credentials.
+请勿把真实数据库凭据提交到仓库。
 
-## Main Workflows
+## 主要工作流
 
-### A-share Signals
+### A 股信号生成
 
-Recommended entrypoints:
+推荐入口：
 
 ```bash
 python -m aitrader.app.cli.ashare_signals
 aitrader-ashare-signals
 ```
 
-Useful flags:
+常用参数：
 
 ```bash
 python -m aitrader.app.cli.ashare_signals --workers 2
@@ -53,7 +51,7 @@ python -m aitrader.app.cli.ashare_signals --weekly
 python -m aitrader.app.cli.ashare_signals --monthly
 ```
 
-### Short-Term Workflow
+### 短线工作流
 
 ```bash
 python -m aitrader.app.cli.short_term_signals
@@ -63,32 +61,48 @@ python -m aitrader.app.cli.short_term_signals 20260120 --fetch-only
 python -m aitrader.app.cli.short_term_signals 20260120 --signals-only
 ```
 
-### Backtests And API
+### 回测
 
 ```bash
 python -m aitrader.app.cli.stock_backtests
 aitrader-stock-backtests
-uvicorn --app-dir src aitrader.interfaces.api.main:app --reload
 ```
 
-Start the Web UI:
+### ArXiv → A 股策略 Pipeline（统一入口）
+
+把"拉取近 N 天 arxiv q-fin 论文 → LLM 判断 A 股适用性 → LLM 生成 select_fn →
+跑近 1 年 H1/H2 回测 → 跨论文汇总"一条命令跑完：
 
 ```bash
-./web_server.sh
+python -m aitrader.app.cli.arxiv_pipeline                           # 默认 14d / 全 5 步
+aitrader-arxiv --since 30d --max-papers 5                           # 自定义窗口
+aitrader-arxiv --paper 2604.99999 --rerun                           # 单篇重跑
+aitrader-arxiv --steps fetch,aggregate --no-llm                     # 只跑非 LLM 步骤
+aitrader-arxiv --rerun-legacy --steps generate,backtest,aggregate   # 老论文换成 LLM 生成版
+aitrader-arxiv --dry-run                                            # 仅打印计划
 ```
 
-## Backtest Optimization
+LLM 配置见 `.env.example`（不设时回落 `model.py` 中的小蝶 AI gpt-5.4）。
 
-Current speedup path:
+每篇论文产物落到
+`papers/arxiv/processed/<arxiv_id>/`：`00_meta.json` / `01_paper.md` /
+`02_applicability.md` / `03_strategy_code.py` / `select_fn.py` /
+`04_backtest_summary.md` + 标准 csv/json/png；跨论文比较位于
+`papers/arxiv/processed/_aggregate/cross_paper_comparison.md` 与
+`pipeline_status.json`。
 
-- Batch backtests now go through `ParallelBacktestRunner`, and the parent process prewarms raw行情 and benchmark caches before forking workers.
-- Hot data loads use `DbDataLoader.read_dfs(..., copy_result=False)` so forked workers can reuse inherited cache state without extra dataframe copies.
-- `FactorExpr` now computes factors per symbol in parallel, which better saturates CPU cores on Linux.
-- `trend_score` and RSRS-related helpers in `factor_extends.py` were vectorized to reduce Python-loop overhead.
+## 回测性能优化
 
-## Verification Commands
+当前已落地的提速措施：
 
-Syntax check:
+- 批量回测改走 `ParallelBacktestRunner`，父进程在 fork worker 之前预热原始行情和基准缓存。
+- 热数据加载使用 `DbDataLoader.read_dfs(..., copy_result=False)`，让 fork 出来的 worker 复用继承的缓存状态，免去额外 dataframe 拷贝。
+- `FactorExpr` 现在按股票并行计算因子，在 Linux 下能更充分地占满 CPU 核心。
+- `factor_extends.py` 中的 `trend_score` 和 RSRS 相关辅助函数已向量化，减少 Python 循环开销。
+
+## 验证命令
+
+语法检查：
 
 ```bash
 /home/yy/anaconda3/bin/python -m py_compile \
@@ -102,7 +116,7 @@ Syntax check:
   src/aitrader/infrastructure/market_data/factor_extends.py
 ```
 
-No-DB smoke test for the factor pipeline:
+不依赖数据库的因子流水线 smoke 测试：
 
 ```bash
 /home/yy/anaconda3/bin/python - <<'PY'
@@ -140,50 +154,43 @@ print('smoke ok')
 PY
 ```
 
-Real backtest command with MySQL configured:
+配置好 MySQL 后的真实回测命令：
 
 ```bash
 MYSQL_HOST=... MYSQL_PORT=3306 MYSQL_USER=... MYSQL_PASSWORD=... MYSQL_DATABASE=... \
 /home/yy/anaconda3/bin/python -m aitrader.app.cli.stock_backtests --multi-factor-all
 ```
 
-## Architecture
+## 架构
 
 ```text
-A-share strategies -> Task -> Engine -> DbDataLoader -> MySQLAshareReader -> Wind MySQL
-                                      -> FactorExpr / FactorCache -> signals
+A 股策略 -> Task -> Engine -> DbDataLoader -> MySQLAshareReader -> Wind MySQL
+                            -> FactorExpr / FactorCache -> 信号
 ```
 
-## Source Layout
+## 源码布局
 
-Core application code is being migrated into `src/aitrader/`:
+核心应用代码正在迁移到 `src/aitrader/`：
 
-- `src/aitrader/app`: CLI entrypoints, use cases, application services
-- `src/aitrader/domain`: domain-layer landing zone for strategy, backtest, and portfolio logic
-- `src/aitrader/infrastructure`: database, market data, repositories, configuration
-- `src/aitrader/interfaces`: FastAPI/Web entrypoints and schemas
-- `src/aitrader/shared`: shared helpers
+- `src/aitrader/app`：CLI 入口、用例、应用层服务
+- `src/aitrader/domain`：策略、回测、组合相关的领域层落地区
+- `src/aitrader/infrastructure`：数据库、行情数据、配置
+- `src/aitrader/shared`：共享辅助工具
 
-Key modules:
+关键模块：
 
-- `src/aitrader/infrastructure/market_data/mysql_reader.py`: reads Wind MySQL
-  A-share daily prices and derivative indicators.
-- `src/aitrader/infrastructure/market_data/loaders.py`: preserves the existing
-  `{symbol: DataFrame}` loader contract for engines and factor code.
-- `src/aitrader/domain/backtest/engine.py`: executes strategy `Task` objects.
-- `src/aitrader/domain/strategy/loader.py`: discovers `strategies/stocks_*.py`.
-- `src/aitrader/app/cli/ashare_signals.py`: runs A-share backtests and signal
-  generation.
-- `src/aitrader/app/cli/short_term_signals.py`: runs the short-term A-share
-  selection workflow.
-- `src/aitrader/infrastructure/db/db_manager.py`: neutral application
-  persistence facade for signals, backtests, positions, reference data, and
-  short-term operation lists.
+- `src/aitrader/infrastructure/market_data/mysql_reader.py`：读取 Wind MySQL 的 A 股日频行情和衍生指标。
+- `src/aitrader/infrastructure/market_data/loaders.py`：保留原有 `{symbol: DataFrame}` 加载契约，供引擎和因子代码使用。
+- `src/aitrader/domain/backtest/engine.py`：执行策略 `Task` 对象。
+- `src/aitrader/domain/strategy/loader.py`：发现并加载 `strategies/stocks_*.py`。
+- `src/aitrader/app/cli/ashare_signals.py`：运行 A 股回测和信号生成。
+- `src/aitrader/app/cli/short_term_signals.py`：运行 A 股短线选股工作流。
+- `src/aitrader/infrastructure/db/db_manager.py`：信号、回测、持仓、参考数据、短线操作清单等的中性应用持久化门面。
 
-## Data Contract
+## 数据契约
 
-`DbDataLoader.read_dfs(symbols, start_date, end_date)` returns one DataFrame per
-symbol keyed by Wind-style stock code. Each frame contains at least:
+`DbDataLoader.read_dfs(symbols, start_date, end_date)` 按 Wind 风格的股票代码返回每只股票一份 DataFrame。
+每份 frame 至少包含以下列：
 
 - `date`
 - `symbol`
@@ -197,10 +204,10 @@ symbol keyed by Wind-style stock code. Each frame contains at least:
 - `real_close`
 - `real_low`
 
-Compatibility columns such as `amount`, `change_pct`, `turnover_rate`, `pe`,
-`pe_ttm`, `pb`, `ps`, `ps_ttm`, `total_mv`, and `circ_mv` are retained.
+兼容性列也保留，包括 `amount`、`change_pct`、`turnover_rate`、`pe`、`pe_ttm`、`pb`、
+`ps`、`ps_ttm`、`total_mv`、`circ_mv`。
 
-| Loader column | Wind source |
+| 加载器列名 | Wind 来源 |
 | --- | --- |
 | `date` | `TRADE_DT` |
 | `symbol` | `S_INFO_WINDCODE` |
@@ -225,16 +232,15 @@ Compatibility columns such as `amount`, `change_pct`, `turnover_rate`, `pe`,
 | `total_mv` | `ASHAREEODDERIVATIVEINDICATOR.S_VAL_MV` |
 | `circ_mv` | `ASHAREEODDERIVATIVEINDICATOR.S_DQ_MV` |
 
-Historical prices are read from Wind MySQL, not a local cache.
+历史价格只从 Wind MySQL 读取，不依赖本地缓存。
 
-## Local Persistence
+## 本地持久化
 
-Signals, backtests, positions, stock metadata, and short-term operation lists
-use `src/aitrader/infrastructure/db/db_manager.py` through `DATABASE_URL`.
-Price reads stay separate from application persistence.
+信号、回测、持仓、股票元数据以及短线操作清单，统一通过
+`src/aitrader/infrastructure/db/db_manager.py` 走 `DATABASE_URL`。
+价格读取与应用层持久化保持解耦。
 
-## Removed Scope
+## 已移除的范围
 
-ETF signal generation, ETF portfolio backtests, ETF downloaders, and local
-PostgreSQL market-data caching have been removed. Missing MySQL rows are treated
-as source-data issues.
+ETF 信号生成、ETF 组合回测、ETF 下载器，以及本地 PostgreSQL 行情缓存均已移除。
+MySQL 缺数据按上游数据源问题处理，不再做本地兜底。

@@ -1,0 +1,26 @@
+{
+  "arxiv_id": "2604.19107",
+  "title": "Structural Dynamics of G5 Stock Markets During Exogenous Shocks: A Random Matrix Theory-Based Complexity Gap Approach",
+  "authors": [],
+  "categories": [
+    "q-fin.ST"
+  ],
+  "published": "2026-04-29",
+  "pdf_url": "https://arxiv.org/pdf/2604.19107",
+  "pdf_path": "/data/datavol/yy/code/aitrader/papers/arxiv/2604.19107.pdf",
+  "paper_md_path": "/data/datavol/yy/code/aitrader/papers/arxiv/processed/2604.19107/01_paper.md",
+  "status": "backtested",
+  "rating": 4,
+  "suitable": true,
+  "timestamps": {
+    "fetched": "2026-04-24 18:23:11",
+    "judged": "2026-04-24 18:23:11",
+    "generated": "2026-04-24 18:23:11",
+    "backtested": "2026-04-24 18:23:11"
+  },
+  "last_error": null,
+  "extras": {
+    "slug": "complexity_gap",
+    "legacy": true
+  }
+}

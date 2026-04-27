@@ -17,20 +17,20 @@ dependencies = [
   "pyfolio-reloaded",
   "pandas",
   "tqdm",
-  "fastapi==0.104.1",
-  "uvicorn[standard]==0.24.0",
-  "pydantic==2.5.0",
-  "jinja2==3.1.2",
-  "python-multipart==0.0.6",
   "sqlalchemy>=2.0.0",
   "python-dotenv>=1.0.0",
   "pymysql>=1.1.0",
+  "arxiv>=2.0.0",
+  "pdfplumber>=0.10.0",
+  "openai>=1.0.0",
+  "requests>=2.31.0",
 ]
 
 [project.scripts]
 aitrader-ashare-signals = "aitrader.app.cli.ashare_signals:main"
 aitrader-short-term = "aitrader.app.cli.short_term_signals:main"
 aitrader-stock-backtests = "aitrader.app.cli.stock_backtests:main"
+aitrader-arxiv = "aitrader.app.cli.arxiv_pipeline:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -1,0 +1,30 @@
+{
+  "arxiv_id": "2604.07870",
+  "title": "Skewness Dispersion and Stock Market Returns",
+  "authors": [
+    "Mykola Babiak",
+    "Jozef Barunik",
+    "Josef Kurka"
+  ],
+  "categories": [
+    "q-fin.GN"
+  ],
+  "published": "2026-04-09",
+  "pdf_url": "https://arxiv.org/pdf/2604.07870",
+  "pdf_path": "/data/datavol/yy/code/aitrader/papers/arxiv/2604.07870.pdf",
+  "paper_md_path": "/data/datavol/yy/code/aitrader/papers/arxiv/processed/2604.07870/01_paper.md",
+  "status": "backtested",
+  "rating": 4,
+  "suitable": true,
+  "timestamps": {
+    "fetched": "2026-04-24 18:23:11",
+    "judged": "2026-04-24 18:23:11",
+    "generated": "2026-04-24 18:23:11",
+    "backtested": "2026-04-24 18:23:11"
+  },
+  "last_error": null,
+  "extras": {
+    "slug": "skew_dispersion",
+    "legacy": true
+  }
+}

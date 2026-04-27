@@ -1,93 +1,114 @@
-# ArXiv Quant 近两周筛选与 A 股粗回测
+# ArXiv Quant - A 股研究框架
 
-- 处理日期: 2026-04-22
-- 数据来源: `arXiv OAI-PMH + arXiv PDF`
-- 回测数据源: `Wind MySQL 直读`
-- 研究窗口: `2019-01-01` 至 `2024-12-31`
-- 说明: 本轮研究已按“只保留直读 Wind”执行，不使用 `stock_history_qfq` / `stock_fundamental_daily` 本地镜像表
+- 处理日期：2026-04-22（本轮 2026-04-23 框架升级）
+- 数据来源：`Wind MySQL 直读`
+- 研究窗口：`2019-01-01` 至 `2024-12-31`
+- 框架代码沉到 `src/aitrader/research/`，本目录仅保留每篇论文的 `select_fn` 与配置
 
-## 本轮处理
-
-- 已删除上一轮旧论文 PDF 与 `papers/arxiv/processed/*` 旧目录产物。
-- 从 `q-fin` 集合拉取 `2026-04-08` 到 `2026-04-22` 的近两周论文。
-- OAI 查询共拿到 253 条记录，其中创建时间落在窗口内的论文 210 篇。
-- 按“A股可落地、仅依赖现有 Wind 日频数据、能快速做粗回测”筛到 3 篇进入实现。
-
-## 入选论文
-
-| 论文ID | 标题 | A股映射 | 粗结论 |
-|---|---|---|---|
-| `2604.07870` | Skewness Dispersion and Stock Market Returns | 偏度分散度月频择时 | 可做风险监控，但当前不适合独立上策略 |
-| `2604.12197` | Emergence of Statistical Financial Factors by a Diffusion Process | 收益相关网络中心性选股 | 三篇里最可用，适合继续细化 |
-| `2604.19107` | Structural Dynamics of G5 Stock Markets During Exogenous Shocks: A Random Matrix Theory-Based Complexity Gap Approach | 复杂度缺口风控开关 | 更像风控指标，不像独立 alpha |
-
-## 回测结果
-
-| 论文ID | 策略 | 总收益 | 复合年化收益 | 夏普比率 | 最大回撤 |
-|---|---|---:|---:|---:|---:|
-| `2604.07870` | 偏度分散度择时 | +54.59% | +7.54% | 0.49 | -35.44% |
-| `2604.12197` | 网络中心性选股 | +252.48% | +23.38% | 0.88 | -41.78% |
-| `2604.19107` | 复杂度缺口风控 | +64.36% | +8.64% | 0.51 | -37.11% |
-
-## 最小基准对比
-
-为避免把强样本行情误判成论文有效，这里额外做了最小基准：
-
-| 对比对象 | 策略 | 总收益 | 复合年化收益 | 夏普比率 | 最大回撤 | 结论 |
-|---|---|---:|---:|---:|---:|---|
-| `2604.07870` 基准 | 始终持有同一30只高流动性股票 | +289.10% | +25.43% | 0.99 | -33.96% | 偏度分散度择时明显拖累收益 |
-| `2604.12197` 基准 | 同池周频20日动量 Top12 | +486.79% | +34.33% | 1.18 | -32.64% | 网络中心性有可用性，但暂未跑赢简单动量 |
-| `2604.19107` 基准 | 同池周频60日动量 Top15 | +305.39% | +26.29% | 0.99 | -37.83% | 复杂度缺口风控未形成足够增量 |
-
-## A股结论
-
-### 1. `2604.12197` 最值得继续
-
-- 当前版本已经具备独立策略形态，收益和夏普比率都达到“可继续开发”的水平。
-- 但它还没证明自己优于简单动量，所以更适合作为“结构辅助因子”继续细化，而不是直接定稿上线。
-- 下一步优先方向:
-  先测试“纯中心性”“中心性变化率”“行业内中心性中性化”。
-  再测试是否把中心性只作为动量排序的加权项，而不是主排序。
-
-### 2. `2604.07870` 更像监控指标
-
-- 偏度分散度本身有解释力，但把它硬映射成二元开关后，收益显著差于始终持有。
-- 这说明它在 A 股更可能适合做“仓位微调”或“风格切换提示”，不适合当前这种全仓/空仓框架。
-
-### 3. `2604.19107` 更像风控层
-
-- 论文原文就偏风险状态识别，A 股复现后也呈现出类似结论。
-- 复杂度缺口适合作为“风险环境标签”，比如限制加杠杆、限制追高，而不是单独拿来驱动收益。
-
-## 当前目录
+## 1. 目录结构
 
 ```text
-papers/arxiv/
-├── 2604.07870.pdf
-├── 2604.12197.pdf
-├── 2604.19107.pdf
-└── processed/
-    ├── 2604.07870/
-    │   ├── 01_applicability_judgment.md
-    │   ├── 02_parsed_content.md
-    │   ├── 03_strategy_code.py
-    │   └── 04_backtest_summary.md
-    ├── 2604.12197/
-    │   ├── 01_applicability_judgment.md
-    │   ├── 02_parsed_content.md
-    │   ├── 03_strategy_code.py
-    │   └── 04_backtest_summary.md
-    ├── 2604.19107/
-    │   ├── 01_applicability_judgment.md
-    │   ├── 02_parsed_content.md
-    │   ├── 03_strategy_code.py
-    │   └── 04_backtest_summary.md
-    └── common/
-        └── ashare_research_utils.py
+papers/arxiv/processed/
+├── README.md                     # 本文件
+├── _aggregate/
+│   └── cross_paper_comparison.md # 跨论文汇总（自动生成）
+├── _cache/                       # PanelLoader parquet 缓存
+├── common/
+│   └── ashare_research_utils.py  # 向后兼容薄层 → aitrader.research.*
+├── 2604.07870/                   # 偏度分散度月频择时
+│   ├── 01_applicability_judgment.md
+│   ├── 02_parsed_content.md
+│   ├── 03_strategy_code.py       # 入口（瘦身后约 60 行：声明 spec + run_research）
+│   ├── 04_backtest_summary.md    # 自动生成的回测摘要
+│   ├── select_fn.py              # 策略信号函数
+│   ├── equity_curve.csv
+│   ├── daily_returns.csv
+│   ├── holdings.csv
+│   ├── invested_exposure.csv
+│   ├── rebalance_log.csv
+│   ├── signals.csv
+│   ├── ablation_train.csv
+│   ├── ablation_holdout.csv
+│   ├── baseline_*_equity_curve.csv
+│   ├── equity_drawdown.png
+│   ├── meta.json                 # 给 aggregator 用
+│   ├── performance.json
+│   ├── performance_train.json
+│   ├── performance_holdout.json
+│   └── baselines_metrics.json
+├── 2604.12197/                   # 网络中心性选股
+└── 2604.19107/                   # 复杂度缺口风控
 ```
 
-## 备注
+## 2. 入选论文（与原始 arXiv ID 一一对应）
 
-- 本轮股票池使用主板高流动性样本，属于粗研究，存在一定幸存者偏差。
-- 所有回测都只使用 Wind 日频价格，不依赖 ETF、文本、公告语义或本地镜像缓存表。
-- 如果继续往下做，优先深挖 `2604.12197`，其次把 `2604.19107` 下沉成组合级风控指标，而不是单独策略。
+| 论文ID | 标题 | A股映射 |
+|---|---|---|
+| `2604.07870` | Skewness Dispersion and Stock Market Returns | 偏度分散度月频择时 |
+| `2604.12197` | Emergence of Statistical Financial Factors by a Diffusion Process | 收益相关网络中心性选股 |
+| `2604.19107` | Structural Dynamics of G5 Stock Markets ... Complexity Gap Approach | 复杂度缺口风控开关 |
+
+## 3. 复现单篇
+
+```bash
+cd papers/arxiv/processed/2604.12197
+PYTHONPATH=/data/datavol/yy/code/aitrader/src python 03_strategy_code.py
+```
+
+每篇会产出上节"目录结构"里列出的全部 csv / json / png / md 产物。所有论文的
+工程化部分（动态选池、向量化回测、绩效统计、基线、ablation）由
+`aitrader.research.runner.run_research` 统一负责，每篇论文文件只需声明：
+
+- `select_fn`：把价格面板 + 调仓日 → `SelectionResult(target_weights, signal_df)`；
+- `param_grid`：要做的 grid ablation 维度（每篇 ≤ 36 组合）；
+- `train_holdout`：默认 train=2019-2021、holdout=2022-2024；
+- `param_grid_filter`：可选的参数组合过滤函数（例如保证 `risk_on_q < risk_off_q`）。
+
+## 4. 跨论文汇总
+
+跑完所有论文之后：
+
+```bash
+PYTHONPATH=/data/datavol/yy/code/aitrader/src \
+  python -c "from aitrader.research.runner import aggregate_processed; \
+             aggregate_processed('papers/arxiv/processed')"
+```
+
+会自动扫描每个论文目录里的 `meta.json` / `performance.json` /
+`performance_train.json` / `performance_holdout.json` / `baselines_metrics.json`，
+重新生成 `_aggregate/cross_paper_comparison.md`。
+
+## 5. 框架修复点对照（本轮 20 项原问题 → 落点）
+
+| # | 问题 | 修复落点 |
+|---|---|---|
+| 1 | look-ahead 股票池 | `research/data/dynamic_universe.py` 按 as_of 滚动选池 |
+| 2 | T+1 时序泄漏 | `research/engine/vectorized_simulator.py` 统一 `target.shift(1)` |
+| 3 | 复杂度缺口 O(T²) | `papers/.../2604.19107/select_fn.py` 只在 rebalance 点算 |
+| 4 | 特征向量物理含义混淆 | `research/signals/network.py` 拆 `eigenvector_centrality(perron)` 与 `pca_leading_factor` |
+| 5 | 隐性过拟合 | `research/runner/{splitter, grid_ablation}.py` train+holdout |
+| 6 | 二元开关丢信号 | `research/engine/position_policies.py` 提供 tiered / signal_weighted |
+| 7 | 池子口径不一致 | `DynamicLiquidUniverse.union_symbols()` 统一池子 |
+| 8 | 行业 / 风格中性化缺失 | `research/signals/industry.py` + 论文 12197 配置项 |
+| 9 | 开关与多头耦合 | 论文 19107 拆 risk_position × holding_basket |
+| 10 | 偏度截面只有 30 只 | 论文 07870 信号池（500）/ 持仓池（30）解耦 |
+| 11 | 空仓零收益 | `cash_rate_annual` 进 simulator |
+| 12 | 交易成本粗糙 | `research/engine/cost_model.py:AshareCostModel` 拆佣金 / 印花税 / 过户 / 滑点，按笔数计最低佣金 |
+| 13 | 涨跌停 / 停牌过滤 | `research/data/tradability_mask.py` + simulator 在调仓日回退 |
+| 14 | 风险 / 绩效指标不全 | `research/metrics/performance.py:PerformanceReport` 含 alpha/beta/IR/Sortino/VaR/CVaR/Calmar/分年 |
+| 15 | 基准没进代码 | `research/baselines/{buy_and_hold, momentum_topk, equal_weight_universe}` |
+| 16 | 三脚本重复 | 统一 runner，`03_strategy_code.py` 瘦身 |
+| 17 | 缓存只在内存 | `PanelLoader` 持久化 parquet 到 `_cache/` |
+| 18 | 产物太单薄 | 自动生成 csv / md / png / json 全套 |
+| 19 | 没 logging / 测试 | `research.<paper>` logger + `tests/research/` 29 个用例 |
+| 20 | ddof / off-by-one | `_safe_std(ddof=1)`、Sharpe 扣无风险利率、`tradability` NaN 防御 |
+
+## 6. 备注
+
+- 旧入口（`pick_liquid_symbols` / `read_price_history` / `simulate_equal_weight_strategy` 等）已被
+  `papers/arxiv/processed/common/ashare_research_utils.py` 收敛成 `DeprecationWarning` 薄层，
+  仅做向后兼容，请尽快迁移到 `aitrader.research.*`。
+- 因为修复了 T+1、加了涨跌停、加了现金利率、改了分项成本，三篇论文的
+  数值会与上一轮的"粗回测"明显不同，旧 README 里的总收益数字不再有效，
+  请以 `cross_paper_comparison.md` 与每篇论文目录下的 `04_backtest_summary.md` 为准。
+- 本轮股票池仍是高流动性主板样本，但已改为按 as_of 季度刷新，幸存者偏差已显著减弱。

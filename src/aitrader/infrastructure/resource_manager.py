@@ -21,7 +21,6 @@ from typing import Tuple, Optional
 
 class WorkloadType(Enum):
     """工作负载类型"""
-    API = "api"                    # Web API请求
     BACKTEST = "backtest"          # 回测计算
     SIGNAL_GEN = "signal_gen"      # 信号生成
     DATA_LOAD = "data_load"        # 数据加载
@@ -37,7 +36,6 @@ class ResourceManager:
     - 可用内存: 6.5GB
 
     工作负载资源分配:
-    - API: 1GB max, 2 workers
     - Signal Generation: 2GB max, 2 workers
     - Backtest: 4GB max, 2 workers
     - Data Load: 3GB max, 1 worker
@@ -49,11 +47,6 @@ class ResourceManager:
 
     # 工作负载资源配置
     WORKLOAD_ALLOCATION = {
-        WorkloadType.API: {
-            "max_memory_gb": 1.0,      # API最大1GB
-            "max_workers": 2,           # 2个worker
-            "priority": 1               # 最高优先级
-        },
         WorkloadType.SIGNAL_GEN: {
             "max_memory_gb": 2.0,      # 信号生成最大2GB
             "max_workers": 2,           # 2个worker
